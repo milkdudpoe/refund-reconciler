@@ -166,6 +166,8 @@ test('unsupported stored data is shown, not reset, and only erased on explicit c
   page = await session.openDashboard();
 
   await expect(page.getByTestId('unreadable')).toContainText('unsupported version');
+  await expect(page.getByTestId('unreadable')).toContainText('will not reset, repair or overwrite this data, and new changes are blocked');
+  await expect(page.getByTestId('unreadable')).not.toContainText('Nothing has been changed');
   await expect(page.getByLabel(/Raw stored data/)).toHaveValue(/from a newer build/);
   await expect(page.getByRole('button', { name: 'Create case' })).toHaveCount(0);
   // A write attempted directly against the service worker is refused too.
@@ -190,6 +192,7 @@ test('corrupt stored data is reported without being overwritten', async ({ sessi
   await page.close();
   page = await session.openDashboard();
   await expect(page.getByTestId('unreadable')).toContainText('could not be read');
+  await expect(page.getByTestId('unreadable')).toContainText('will not reset, repair or overwrite this data');
   expect((await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY]).toEqual(corrupt);
 });
 
@@ -372,4 +375,86 @@ test('an unconfirmed receipt keeps its input and a retry reuses the same ID, rec
   expect(again).toMatchObject({ ok: true, outcome: 'duplicate' });
   await expect(page.getByTestId('timeline-entry').filter({ hasText: 'You confirmed $70.00 received' })).toHaveCount(1);
   await expect(itemCard(page, 'Monitor').getByTestId('item-net')).toHaveText('$70.00');
+});
+
+// Scoped fault injection: only this dashboard page's chrome.storage.local.get
+// fails. The service worker (a separate context) keeps its real storage access.
+async function setDashboardReadsBroken(page: import('@playwright/test').Page, broken: boolean): Promise<void> {
+  await page.evaluate((b) => {
+    const area = chrome.storage.local as unknown as { get: unknown };
+    const w = window as unknown as { __realGet?: unknown };
+    w.__realGet ??= area.get;
+    area.get = b ? () => Promise.reject(new Error('Simulated read failure')) : w.__realGet;
+  }, broken);
+}
+
+async function workerReceipts(session: { context: import('@playwright/test').BrowserContext | null }) {
+  const [worker] = session.context!.serviceWorkers();
+  const stored = await worker!.evaluate((key) => chrome.storage.local.get(key), STORE_KEY);
+  const data = stored[STORE_KEY] as { cases: { entries: { kind: string; amountCents: number }[] }[] };
+  return data.cases.flatMap((c) => c.entries.filter((e) => e.kind === 'receipt'));
+}
+
+test('a committed save followed by a failed dashboard read is not contradicted (storage-error wording)', async ({ session }) => {
+  const page = await session.openDashboard();
+  await createCase(page, { items: [{ label: 'Amplifier', amount: '70' }] });
+  await setDashboardReadsBroken(page, true);
+
+  await itemCard(page, 'Amplifier').getByRole('button', { name: 'Confirm money received' }).click();
+  await page.getByTestId('entry-form').getByRole('textbox', { name: /USD/ }).fill('70');
+  await page.getByTestId('entry-form').getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByTestId('notice')).toHaveText('Entry saved.');
+  const panel = page.getByTestId('storage-error');
+  await expect(panel).toContainText('Saved data can’t be read right now');
+  await expect(panel).toContainText('doesn’t mean an earlier change failed');
+  await expect(page.locator('body')).not.toContainText(/Nothing has been changed|not saved/i);
+
+  // Independent check through the service worker: exactly one $70 receipt is persisted.
+  expect((await workerReceipts(session)).map((r) => r.amountCents)).toEqual([7000]);
+
+  await setDashboardReadsBroken(page, false);
+  await panel.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByTestId('storage-error')).toHaveCount(0);
+  await expect(page.getByTestId('timeline-entry').filter({ hasText: 'You confirmed $70.00 received' })).toHaveCount(1);
+  await expect(itemCard(page, 'Amplifier').getByTestId('item-net')).toHaveText('$70.00');
+  await expect(itemCard(page, 'Amplifier').getByTestId('item-status')).toHaveText('Settled · confirmed received');
+  await expect(page.getByTestId('entry-form')).toHaveCount(0);
+});
+
+test('a committed save with a lost reply while dashboard reads fail stays uncertain, then resolves as saved', async ({ session }) => {
+  const page = await session.openDashboard();
+  await createCase(page, { items: [{ label: 'Turntable', amount: '70' }] });
+  await setDashboardReadsBroken(page, true);
+  await page.evaluate(() => {
+    const runtime = chrome.runtime as unknown as { sendMessage: (m: unknown) => Promise<unknown> };
+    const w = window as unknown as { __realSend: unknown };
+    const original = runtime.sendMessage.bind(chrome.runtime);
+    w.__realSend = runtime.sendMessage;
+    runtime.sendMessage = async (message: unknown) => {
+      await original(message); // reaches the real service worker, which writes storage
+      throw new Error('Simulated lost reply');
+    };
+  });
+
+  await itemCard(page, 'Turntable').getByRole('button', { name: 'Confirm money received' }).click();
+  await page.getByTestId('entry-form').getByRole('textbox', { name: /USD/ }).fill('70');
+  await page.getByTestId('entry-form').getByRole('button', { name: 'Save' }).click();
+
+  const notice = page.getByTestId('notice');
+  await expect(notice).toContainText('Could not confirm whether this change was saved, and saved data could not be re-read');
+  await expect(page.getByTestId('storage-error')).toContainText('Saved data can’t be read right now');
+  await expect(page.locator('body')).not.toContainText(/Nothing has been changed|not saved|Entry saved/i);
+  expect((await workerReceipts(session)).map((r) => r.amountCents)).toEqual([7000]);
+
+  await setDashboardReadsBroken(page, false);
+  await page.evaluate(() => {
+    (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = (window as unknown as { __realSend: unknown }).__realSend;
+  });
+  await page.getByTestId('storage-error').getByRole('button', { name: 'Try again' }).click();
+  await expect(notice).toContainText('Saved. The extension’s reply was lost, but the change is now in your saved data');
+  await expect(page.getByTestId('entry-form')).toHaveCount(0);
+  await expect(page.getByTestId('timeline-entry').filter({ hasText: 'You confirmed $70.00 received' })).toHaveCount(1);
+  await expect(itemCard(page, 'Turntable').getByTestId('item-net')).toHaveText('$70.00');
+  expect(await workerReceipts(session)).toHaveLength(1);
 });

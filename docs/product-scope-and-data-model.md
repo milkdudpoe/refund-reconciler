@@ -131,6 +131,12 @@ item as `reopened`, so the case leaves `settled`.
     never add a second receipt. Nothing is rolled back, deleted or re-issued
     under a new ID. If the change lands later, the open form closes and the
     page says it was saved.
+- If the dashboard cannot read storage (for example right after a save), it
+  says only that saved data can't be read right now. It does not claim an
+  earlier change failed or that storage is unchanged; any save notice above
+  still applies, and *Try again* re-reads. The corrupt/unsupported-data screen
+  says the dashboard will not reset or overwrite that data and that new changes
+  are blocked; it makes no claim about earlier operations.
 
 ## Limitations
 

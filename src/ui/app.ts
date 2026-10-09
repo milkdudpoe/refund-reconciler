@@ -401,8 +401,14 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
         return h(
           'section',
           { class: 'panel problem', 'data-testid': 'storage-error' },
-          h('h2', {}, 'Storage could not be read'),
-          h('p', {}, 'Chrome reported an error while reading extension storage. Nothing has been changed.'),
+          h('h2', {}, 'Saved data can’t be read right now'),
+          // Only state what is known: this read failed. It says nothing about
+          // whether an earlier change was saved (see the message above, if any).
+          h(
+            'p',
+            {},
+            'Chrome reported an error while reading extension storage, so your saved cases can’t be shown at the moment. This screen doesn’t mean an earlier change failed; any message above still applies. Try again to re-read saved data.',
+          ),
           h('pre', { class: 'detail' }, load.error),
           h('button', { type: 'button', on: { click: () => void reload() } }, 'Try again'),
         );
@@ -438,7 +444,11 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
       'section',
       { class: 'panel problem', 'data-testid': 'unreadable' },
       h('h2', {}, title),
-      h('p', {}, 'Nothing has been changed, reset or deleted, and new changes are blocked until this is resolved.'),
+      h(
+        'p',
+        {},
+        'This dashboard will not reset, repair or overwrite this data, and new changes are blocked until it is resolved. It is only erased if you choose to erase it below.',
+      ),
       h('pre', { class: 'detail' }, detail),
       h('label', { for: 'raw-data' }, 'Raw stored data (read-only — copy it if you need to keep it)'),
       h('textarea', { id: 'raw-data', readonly: true, rows: 8, value: raw }),
