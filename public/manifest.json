@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Refund Reconciler (local preview)",
+  "short_name": "Refund Reconciler",
+  "version": "0.1.0",
+  "description": "Track return/refund evidence per item and see what still needs review. Local-only preview; no automatic capture.",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Open Refund Reconciler" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"
+  }
+}
