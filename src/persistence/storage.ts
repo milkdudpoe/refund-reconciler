@@ -45,14 +45,14 @@ export async function loadStore(area: StorageAreaLike): Promise<LoadResult> {
   }
 }
 
-/** Writes the store and reads it back; resolves only once the new revision is durable. */
+/**
+ * Writes the store. Under the chrome.storage API contract, a resolved set()
+ * means the write was committed and a rejected one means it was not, so no
+ * extra read-back is done (a failed read-back would otherwise make a committed
+ * write look unsaved).
+ */
 export async function saveStore(area: StorageAreaLike, store: StoreData): Promise<void> {
   await area.set({ [STORE_KEY]: store });
-  const check = await area.get(STORE_KEY);
-  const saved = check[STORE_KEY] as { revision?: unknown } | undefined;
-  if (saved?.revision !== store.revision) {
-    throw new Error('Storage did not confirm the write.');
-  }
 }
 
 export async function eraseStore(area: StorageAreaLike): Promise<void> {

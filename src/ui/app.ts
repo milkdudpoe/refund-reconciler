@@ -9,7 +9,16 @@ import { LIMITS, isValidCalendarDate } from '../domain/validate';
 import { ERASE_CONFIRMATION, isResponse, type Request, type Response } from '../background/messages';
 import { STORE_KEY, loadStore, type LoadResult, type StorageAreaLike } from '../persistence/storage';
 import { h, replaceContent } from './dom';
-import { CASE_STATUS_LABEL, FLAG_LABEL, ITEM_STATUS_LABEL, KIND_LABEL, formatTimestamp, moneyOrUnknown } from './labels';
+import {
+  CASE_STATUS_LABEL,
+  FLAG_LABEL,
+  ITEM_STATUS_LABEL,
+  KIND_LABEL,
+  REVIEW_REASON_LABEL,
+  REVIEW_REASON_SHORT,
+  formatTimestamp,
+  moneyOrUnknown,
+} from './labels';
 
 type EvidenceKind = 'merchant_report' | 'receipt' | 'recharge';
 
@@ -85,9 +94,11 @@ export function chromeDeps(): AppDeps {
       try {
         const res: unknown = await chrome.runtime.sendMessage(req);
         if (isResponse(res)) return res;
-        return { ok: false, error: { code: 'storage_error', message: 'The extension did not return a valid response.' } };
+        return { ok: false, error: { code: 'outcome_unknown', message: 'The extension did not return a valid response.' } };
       } catch (err) {
-        return { ok: false, error: { code: 'storage_error', message: err instanceof Error ? err.message : String(err) } };
+        // The request may have reached the service worker and been saved before
+        // the reply was lost, so this is an unknown outcome, not a failure.
+        return { ok: false, error: { code: 'outcome_unknown', message: err instanceof Error ? err.message : String(err) } };
       }
     },
     newId: () => crypto.randomUUID(),
@@ -113,6 +124,8 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
 
   let loadSeq = 0;
   let deletingCaseId: string | null = null;
+  /** Operation id whose save could not be confirmed; resolved by re-reading storage. */
+  let uncertainOpId: string | null = null;
   async function reload(): Promise<void> {
     const seq = ++loadSeq;
     const result = await loadStore(deps.area);
@@ -127,7 +140,40 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
         if (caseId !== deletingCaseId) state.notice = { tone: 'info', text: 'That case was deleted in another view.' };
       }
     }
+    if (result.status === 'ok') closeCommittedDrafts(result.store);
     render();
+  }
+
+  function storeHasId(data: StoreData, id: string): boolean {
+    return data.cases.some((c) => c.id === id || c.entries.some((e) => e.id === id));
+  }
+
+  /**
+   * A form's draft carries the id its submission uses. If that id is already in
+   * saved data, the change was committed (perhaps by a submission whose reply
+   * was lost), so the form must not be offered for re-entry.
+   */
+  function closeCommittedDrafts(data: StoreData): void {
+    const entryIds = new Set(data.cases.flatMap((c) => c.entries.map((e) => e.id)));
+    let committedId: string | null = null;
+    if (state.entryDraft && entryIds.has(state.entryDraft.id)) {
+      committedId = state.entryDraft.id;
+      state.entryDraft = null;
+    }
+    if (state.voidDraft && entryIds.has(state.voidDraft.id)) {
+      committedId = state.voidDraft.id;
+      state.voidDraft = null;
+    }
+    const view = state.view;
+    if (view.name === 'create' && data.cases.some((c) => c.id === view.draft.caseId)) {
+      committedId = view.draft.caseId;
+      state.view = { name: 'case', caseId: committedId };
+    }
+    if (committedId !== null && committedId === uncertainOpId) {
+      // A change whose reply was lost has since appeared in saved data.
+      uncertainOpId = null;
+      setNotice('success', 'Saved. The extension’s reply was lost, but the change is now in your saved data, so it was not recorded twice.');
+    }
   }
 
   function setNotice(tone: 'success' | 'error' | 'info', text: string): void {
@@ -135,11 +181,42 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
     statusRegion.textContent = text;
   }
 
-  async function run(req: Request, successText: string): Promise<boolean> {
+  /**
+   * Sends one change and reports what is actually known about it.
+   * `opId` is the id the change writes (entry, void or case id). It is reused
+   * unchanged on retry, so a retry after an uncertain outcome is idempotent.
+   */
+  async function run(req: Request, successText: string, opId?: string): Promise<boolean> {
+    // A new submission gets its own answer; stop watching for an earlier lost reply.
+    uncertainOpId = null;
     state.busy = true;
     render();
     const res = await deps.send(req);
     state.busy = false;
+    if (!res.ok && res.error.code === 'outcome_unknown') {
+      // Never treat a lost reply as a failure: read storage directly and look
+      // for the operation's own id.
+      uncertainOpId = opId ?? null;
+      const check = await loadStore(deps.area);
+      if (!opId) {
+        setNotice('error', 'Could not confirm whether this change was saved. The page now shows what is in saved data; check it before trying again.');
+      } else if (check.status === 'ok' && storeHasId(check.store, opId)) {
+        uncertainOpId = null;
+        setNotice('success', 'Saved. The extension’s reply was lost, but the change is in your saved data, so it was not recorded twice.');
+      } else if (check.status === 'ok') {
+        setNotice(
+          'error',
+          'Could not confirm this change: it is not in your saved data right now. Your input is kept. Submitting again is safe because it reuses the same entry ID, so it cannot be recorded twice.',
+        );
+      } else {
+        setNotice(
+          'error',
+          'Could not confirm whether this change was saved, and saved data could not be re-read. Your input is kept. Submitting again is safe because it reuses the same entry ID, so it cannot be recorded twice.',
+        );
+      }
+      await reload();
+      return false;
+    }
     if (res.ok) {
       setNotice(
         'success',
@@ -149,6 +226,8 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
             ? 'No change needed.'
             : successText,
       );
+    } else if (res.error.code === 'write_rejected') {
+      setNotice('error', `${res.error.message} Your input is kept so you can try again.`);
     } else {
       setNotice('error', res.error.message);
     }
@@ -212,6 +291,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
     const ok = await run(
       { kind: 'mutate', command: { type: 'createCase', caseId: draft.caseId, orderRef: draft.orderRef.trim() || null, items } },
       'Case saved.',
+      draft.caseId,
     );
     if (ok) openCase(draft.caseId, true);
   }
@@ -268,7 +348,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
       reference: draft.kind === 'expectation' || draft.reference.trim() === '' ? null : draft.reference.trim(),
     };
     const command: Command = { type: 'recordEntry', caseId: caseRecord.id, entry };
-    const ok = await run({ kind: 'mutate', command }, draft.kind === 'expectation' ? 'Expected amount saved.' : 'Entry saved.');
+    const ok = await run({ kind: 'mutate', command }, draft.kind === 'expectation' ? 'Expected amount saved.' : 'Entry saved.', draft.id);
     if (ok) {
       state.entryDraft = null;
       render();
@@ -286,6 +366,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
     const ok = await run(
       { kind: 'mutate', command: { type: 'voidEntry', caseId: caseRecord.id, voidEntryId: draft.id, targetEntryId: draft.targetEntryId, reason: draft.reason.trim() } },
       'Entry voided. The original stays in the timeline.',
+      draft.id,
     );
     if (ok) {
       state.voidDraft = null;
@@ -397,7 +478,15 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
         h('span', { class: 'case-title' }, c.isDemo ? h('span', { class: 'badge badge-demo' }, 'Synthetic') : null, ' ', caseTitle(c)),
         h('span', { class: 'case-items' }, c.items.map((i) => i.label).join(' · ')),
         h('span', { class: `badge status-${s.status}` }, CASE_STATUS_LABEL[s.status]),
-        h('span', { class: 'case-amount' }, `Unresolved ${formatUsd(s.unresolvedCents)}`, s.unknownExpectationCount > 0 ? ` · ${s.unknownExpectationCount} unknown` : ''),
+        h(
+          'span',
+          { class: 'case-amount' },
+          `Unresolved ${formatUsd(s.unresolvedCents)}`,
+          s.unknownExpectationCount > 0 ? ` · ${s.unknownExpectationCount} unknown` : '',
+        ),
+        reviewCount(s) > 0
+          ? h('span', { class: 'case-review', 'data-testid': 'case-row-review' }, `${reviewCount(s)} item${reviewCount(s) === 1 ? '' : 's'} to review: ${reviewSummary(s)}`)
+          : null,
       ),
     );
   }
@@ -527,6 +616,15 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
     return form;
   }
 
+  function reviewCount(s: CaseSummary): number {
+    return s.items.filter((i) => i.reviewReasons.length > 0).length;
+  }
+
+  function reviewSummary(s: CaseSummary): string {
+    const reasons = new Set(s.items.flatMap((i) => i.reviewReasons));
+    return [...reasons].map((r) => REVIEW_REASON_SHORT[r]).join('; ');
+  }
+
   function renderSummary(s: CaseSummary): Node {
     return h(
       'dl',
@@ -551,6 +649,18 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
         h('h2', { id: 'case-heading', tabindex: -1 }, c.isDemo ? h('span', { class: 'badge badge-demo' }, 'Synthetic demo') : null, ' ', caseTitle(c)),
         h('p', { class: 'muted' }, `Amazon US · ${c.currency} · created ${formatTimestamp(c.createdAt)}`),
         renderSummary(s),
+        reviewCount(s) > 0
+          ? h(
+              'div',
+              { class: 'review', 'data-testid': 'case-review' },
+              h('h3', {}, 'Why this case needs review'),
+              h(
+                'ul',
+                {},
+                ...s.items.flatMap((it) => it.reviewReasons.map((r) => h('li', {}, `${it.item.label}: ${REVIEW_REASON_LABEL[r]}`))),
+              ),
+            )
+          : null,
         h(
           'p',
           { class: 'muted small' },
@@ -566,10 +676,22 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
   function renderItem(c: CaseRecord, it: ItemSummary): Node {
     const draft = state.entryDraft?.itemId === it.item.id ? state.entryDraft : null;
     const label = it.item.label;
+    // Flags already explained as review reasons are not repeated.
+    const infoFlags = it.flags.filter((f) => !(it.reviewReasons as readonly string[]).includes(f));
     return h(
       'li',
       { class: 'item', 'data-testid': 'item', 'data-item-id': it.item.id },
-      h('div', { class: 'row-between' }, h('h3', { class: 'item-label' }, label), h('span', { class: `badge item-${it.status}`, 'data-testid': 'item-status' }, ITEM_STATUS_LABEL[it.status])),
+      h(
+        'div',
+        { class: 'row-between' },
+        h('h3', { class: 'item-label' }, label),
+        h(
+          'span',
+          { class: 'badges' },
+          h('span', { class: `badge item-${it.status}`, 'data-testid': 'item-status' }, ITEM_STATUS_LABEL[it.status]),
+          it.reviewReasons.length > 0 ? h('span', { class: 'badge status-needs_review', 'data-testid': 'item-needs-review' }, 'Needs review') : null,
+        ),
+      ),
       h(
         'dl',
         { class: 'figures' },
@@ -585,7 +707,10 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
           h('dd', { 'data-testid': 'item-difference' }, it.differenceCents === null ? 'Unknown' : it.excessCents ? `${formatUsd(it.excessCents)} more than expected` : formatUsd(it.differenceCents)),
         ),
       ),
-      it.flags.length > 0 ? h('ul', { class: 'flags' }, ...it.flags.map((f) => h('li', {}, FLAG_LABEL[f]))) : null,
+      it.reviewReasons.length > 0
+        ? h('ul', { class: 'review-reasons', 'data-testid': 'item-review-reasons' }, ...it.reviewReasons.map((r) => h('li', {}, REVIEW_REASON_LABEL[r])))
+        : null,
+      infoFlags.length > 0 ? h('ul', { class: 'flags' }, ...infoFlags.map((f) => h('li', {}, FLAG_LABEL[f]))) : null,
       draft
         ? renderEntryForm(c, it, draft)
         : h(

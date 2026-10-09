@@ -28,6 +28,21 @@ export type ItemFlag =
   /** Receipts were confirmed while the expectation is unknown. */
   | 'receipts_without_expectation';
 
+/**
+ * Active conditions that require the user to review the item. They are kept
+ * separate from the financial status: an item can be financially balanced
+ * (status `settled`, difference 0) and still carry a contradiction to review.
+ * A merchant reporting MORE than confirmed is not here: that is an ordinary
+ * "issued, awaiting confirmation" state.
+ */
+export type ReviewReason =
+  /** Confirmed net receipts exceed the known expectation. */
+  | 'excess'
+  /** A recharge brought confirmed net receipts below the expectation. */
+  | 'reopened'
+  /** The latest merchant-issued snapshot is below what the user confirmed receiving. */
+  | 'merchant_reports_less_than_confirmed';
+
 export interface ItemSummary {
   readonly item: ItemRecord;
   readonly expectedCents: Cents | null;
@@ -43,12 +58,14 @@ export interface ItemSummary {
   readonly excessCents: Cents | null;
   readonly status: ItemStatus;
   readonly flags: readonly ItemFlag[];
+  /** Empty unless something about this item needs review. */
+  readonly reviewReasons: readonly ReviewReason[];
 }
 
 export type CaseStatus =
-  /** Every item's confirmed net receipts match its known expectation. */
+  /** Every item is settled and no item has an active review condition. */
   | 'settled'
-  /** At least one item has an excess, a recharge reopening, or a conflicting merchant report. */
+  /** At least one item has an active review condition. Takes precedence over settled. */
   | 'needs_review'
   /** Outstanding expected amounts or unknown expectations remain. */
   | 'open';
@@ -116,6 +133,11 @@ export function summarizeItem(caseRecord: CaseRecord, item: ItemRecord): ItemSum
   }
   if (expectedCents === null && receipts.length > 0) flags.push('receipts_without_expectation');
 
+  const reviewReasons: ReviewReason[] = [];
+  if (status === 'excess') reviewReasons.push('excess');
+  if (status === 'reopened') reviewReasons.push('reopened');
+  if (flags.includes('merchant_reports_less_than_confirmed')) reviewReasons.push('merchant_reports_less_than_confirmed');
+
   return {
     item,
     expectedCents,
@@ -128,10 +150,9 @@ export function summarizeItem(caseRecord: CaseRecord, item: ItemRecord): ItemSum
     excessCents,
     status,
     flags,
+    reviewReasons,
   };
 }
-
-const REVIEW_STATUSES: readonly ItemStatus[] = ['excess', 'reopened'];
 
 export function summarizeCase(caseRecord: CaseRecord): CaseSummary {
   const items = caseRecord.items.map((item) => summarizeItem(caseRecord, item));
@@ -147,14 +168,17 @@ export function summarizeCase(caseRecord: CaseRecord): CaseSummary {
   }
   const settledCount = items.filter((s) => s.status === 'settled').length;
   const unknownExpectationCount = items.filter((s) => s.status === 'expectation_unknown').length;
-  const needsReview = items.some(
-    (s) => REVIEW_STATUSES.includes(s.status) || s.flags.includes('merchant_reports_less_than_confirmed'),
-  );
+  const needsReview = items.some((s) => s.reviewReasons.length > 0);
 
-  // A case is settled only when every item is settled on its own; one item's
-  // excess never covers another item's shortfall.
-  const status: CaseStatus =
-    items.length > 0 && settledCount === items.length ? 'settled' : needsReview ? 'needs_review' : 'open';
+  // An active review condition always prevents a case-level all-clear, even
+  // when every item is financially balanced. Otherwise a case is settled only
+  // when every item is settled on its own; one item's excess never covers
+  // another item's shortfall.
+  const status: CaseStatus = needsReview
+    ? 'needs_review'
+    : items.length > 0 && settledCount === items.length
+      ? 'settled'
+      : 'open';
 
   return {
     status,

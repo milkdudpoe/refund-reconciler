@@ -15,8 +15,17 @@ export type ResponseErrorCode =
   | 'invalid_message'
   | 'storage_unreadable'
   | 'storage_unsupported'
+  /** Reading stored data failed before any write was attempted. Nothing changed. */
   | 'storage_error'
-  | 'save_failed';
+  /** The change could not be applied before writing. Nothing was written. */
+  | 'not_applied'
+  /** chrome.storage rejected the write, so it was not committed. */
+  | 'write_rejected'
+  /**
+   * Set only by the dashboard when no valid response arrived (for example the
+   * message channel failed). The write may or may not have been committed.
+   */
+  | 'outcome_unknown';
 
 export type Response =
   | { ok: true; outcome: ApplyOutcome; revision: number }

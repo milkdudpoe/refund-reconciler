@@ -177,3 +177,86 @@ describe('acceptance examples', () => {
     expect(item(h, 'c', 'a').status).toBe('settled');
   });
 });
+
+describe('balanced but contradictory evidence (review finding 1)', () => {
+  it('a merchant snapshot below confirmed receipts blocks a case-level all-clear without changing the balance', () => {
+    const h = new Harness();
+    h.createCase('c', [{ id: 'a', expected: 7000 }]);
+    h.record('c', { id: 'r1', kind: 'receipt', itemId: 'a', amountCents: 7000 });
+    h.record('c', { id: 'm1', kind: 'merchant_report', itemId: 'a', amountCents: 3500 });
+
+    const a = item(h, 'c', 'a');
+    // Financial facts are unchanged: confirmed net $70, difference $0, nothing owed.
+    expect(a.status).toBe('settled');
+    expect(a.netConfirmedCents).toBe(7000);
+    expect(a.differenceCents).toBe(0);
+    expect(a.unresolvedCents).toBe(0);
+    expect(a.confirmedReceivedCents).toBe(7000);
+    expect(a.reviewReasons).toEqual(['merchant_reports_less_than_confirmed']);
+
+    const summary = summarizeCase(h.case('c'));
+    expect(summary.status).toBe('needs_review');
+    expect(summary.unresolvedCents).toBe(0);
+    expect(summary.excessCents).toBe(0);
+    expect(summary.netConfirmedCents).toBe(7000);
+  });
+
+  it('multi-item: one conflicting item keeps the case in review; voiding the observation restores settled and keeps the audit trail', () => {
+    const h = new Harness();
+    h.createCase('c', [{ id: 'a', expected: 3500 }, { id: 'b', expected: 3500 }]);
+    h.record('c', { id: 'ra', kind: 'receipt', itemId: 'a', amountCents: 3500 });
+    h.record('c', { id: 'rb', kind: 'receipt', itemId: 'b', amountCents: 3500 });
+    h.record('c', { id: 'mb', kind: 'merchant_report', itemId: 'b', amountCents: 2000 });
+
+    expect(item(h, 'c', 'a').reviewReasons).toEqual([]);
+    expect(item(h, 'c', 'b').status).toBe('settled');
+    expect(item(h, 'c', 'b').reviewReasons).toEqual(['merchant_reports_less_than_confirmed']);
+    expect(summarizeCase(h.case('c')).status).toBe('needs_review');
+    expect(summarizeCase(h.case('c')).settledCount).toBe(2);
+
+    h.must({ type: 'voidEntry', caseId: 'c', voidEntryId: 'vb', targetEntryId: 'mb', reason: 'Snapshot was for a different item' });
+    expect(item(h, 'c', 'b').reviewReasons).toEqual([]);
+    expect(item(h, 'c', 'b').merchantReportedCents).toBeNull();
+    expect(summarizeCase(h.case('c')).status).toBe('settled');
+
+    const timeline = buildTimeline(h.case('c'));
+    expect(timeline.map((r) => r.entry.id)).toEqual(['exp-c-a', 'exp-c-b', 'ra', 'rb', 'mb', 'vb']);
+    expect(timeline.find((r) => r.entry.id === 'mb')?.voidedBy?.id).toBe('vb');
+    expect(h.case('c').entries.find((e) => e.id === 'mb')).toMatchObject({ kind: 'merchant_report', amountCents: 2000 });
+  });
+
+  it('a newer merchant snapshot that matches confirmed receipts clears the conflict', () => {
+    const h = new Harness();
+    h.createCase('c', [{ id: 'a', expected: 7000 }]);
+    h.record('c', { id: 'r1', kind: 'receipt', itemId: 'a', amountCents: 7000 });
+    h.record('c', { id: 'm1', kind: 'merchant_report', itemId: 'a', amountCents: 3500 });
+    h.record('c', { id: 'm2', kind: 'merchant_report', itemId: 'a', amountCents: 7000 });
+    expect(summarizeCase(h.case('c')).status).toBe('settled');
+  });
+
+  it('an issued refund awaiting confirmation is an ordinary state, not a review condition', () => {
+    const h = new Harness();
+    h.createCase('c', [{ id: 'a', expected: 7000 }, { id: 'b', expected: 7000 }]);
+    h.record('c', { id: 'ma', kind: 'merchant_report', itemId: 'a', amountCents: 7000 });
+    h.record('c', { id: 'rb', kind: 'receipt', itemId: 'b', amountCents: 3500 });
+    h.record('c', { id: 'mb', kind: 'merchant_report', itemId: 'b', amountCents: 7000 });
+
+    expect(item(h, 'c', 'a').status).toBe('issued_unconfirmed');
+    expect(item(h, 'c', 'b').status).toBe('partial');
+    expect(item(h, 'c', 'a').reviewReasons).toEqual([]);
+    expect(item(h, 'c', 'b').reviewReasons).toEqual([]);
+    expect(item(h, 'c', 'b').flags).toContain('merchant_reports_more_than_confirmed');
+    expect(summarizeCase(h.case('c')).status).toBe('open');
+  });
+
+  it('existing review conditions still carry explicit reasons', () => {
+    const h = new Harness();
+    h.createCase('c', [{ id: 'x', expected: 1000 }, { id: 'y', expected: 1000 }]);
+    h.record('c', { id: 'rx', kind: 'receipt', itemId: 'x', amountCents: 1500 });
+    h.record('c', { id: 'ry', kind: 'receipt', itemId: 'y', amountCents: 1000 });
+    h.record('c', { id: 'cy', kind: 'recharge', itemId: 'y', amountCents: 400 });
+    expect(item(h, 'c', 'x').reviewReasons).toEqual(['excess']);
+    expect(item(h, 'c', 'y').reviewReasons).toEqual(['reopened']);
+    expect(summarizeCase(h.case('c')).status).toBe('needs_review');
+  });
+});

@@ -65,12 +65,28 @@ Item status:
 Flags: merchant reports more / less than confirmed net; receipts recorded while
 the expectation is unknown.
 
-Case status:
+Review reasons (per item, kept separate from the financial status):
 
-- `settled` only if **every** item is settled on its own.
-- otherwise `needs_review` if any item is `excess`/`reopened` or the merchant
-  reports less than was confirmed;
-- otherwise `open`.
+- `excess` — confirmed net exceeds the known expectation;
+- `reopened` — a recharge brought confirmed net below the expectation;
+- `merchant_reports_less_than_confirmed` — the latest active merchant snapshot
+  is lower than confirmed net. The item can still be financially `settled`
+  (difference $0, nothing implied owed); the evidence contradicts itself and
+  needs a human check. Voiding the mistaken entry, or a newer matching
+  snapshot, clears it.
+
+A merchant reporting *more* than confirmed is **not** a review reason: an
+issued refund awaiting confirmation is an ordinary state (`issued_unconfirmed`
+or `partial`).
+
+Case status, in precedence order:
+
+1. `needs_review` if any item has a review reason — this always prevents an
+   all-clear, even when every item is balanced;
+2. `settled` if **every** item is settled on its own;
+3. otherwise `open`.
+
+The case list and case detail both show the review reasons.
 
 Case totals: `unresolved` = Σ positive item differences (known expectations
 only); `excess` = Σ item excesses, reported separately. One item's excess never
@@ -97,9 +113,24 @@ item as `reopened`, so the case leaves `settled`.
   erases.
 - Dashboard pages never write storage directly. They send validated commands to
   the service worker, which applies them one at a time to the latest stored
-  state, writes, reads back to confirm, and only then reports success. Pages
-  re-render on `chrome.storage.onChanged`, so two open dashboards see each
-  other's changes and cannot overwrite them.
+  state and writes. Pages re-render on `chrome.storage.onChanged`, so two open
+  dashboards see each other's changes and cannot overwrite them.
+- Save reporting follows the `chrome.storage.local.set` contract: a resolved
+  `set` is a committed write and is reported as saved; a rejected `set` is not
+  committed and is reported as *not saved* (`write_rejected`), with the form
+  input kept. There is no read-back after writing, so a failing read can never
+  make a committed write look unsaved. A read failure *before* writing is
+  reported as "no change was attempted".
+- If the dashboard gets no valid reply (`outcome_unknown`, e.g. the message
+  channel failed), it does not claim success or failure. It re-reads storage and
+  looks for the operation's own ID (entry, void or case ID):
+  - found → reported as saved and the form is closed, so a committed receipt is
+    never offered for re-entry;
+  - not found, or storage unreadable → the input is kept and the user is told a
+    retry is safe. A retry reuses the **same** ID, so it is idempotent and can
+    never add a second receipt. Nothing is rolled back, deleted or re-issued
+    under a new ID. If the change lands later, the open form closes and the
+    page says it was saved.
 
 ## Limitations
 

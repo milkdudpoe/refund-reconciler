@@ -22,18 +22,18 @@ export function createHandler(area: StorageAreaLike, now: () => string = () => n
         await eraseStore(area);
         return { ok: true, outcome: 'applied', revision: 0 };
       } catch (err) {
-        return { ok: false, error: { code: 'save_failed', message: describeError(err) } };
+        return { ok: false, error: { code: 'write_rejected', message: `Storage rejected the erase, so nothing was erased: ${describeError(err)}` } };
       }
     }
 
     const loaded = await loadStore(area);
     switch (loaded.status) {
       case 'storage_error':
-        return { ok: false, error: { code: 'storage_error', message: loaded.error } };
+        return { ok: false, error: { code: 'storage_error', message: `Saved data could not be read, so no change was attempted: ${loaded.error}` } };
       case 'corrupt':
-        return { ok: false, error: { code: 'storage_unreadable', message: 'Stored data could not be read, so nothing was changed.' } };
+        return { ok: false, error: { code: 'storage_unreadable', message: 'Stored data could not be read, so no change was attempted.' } };
       case 'unsupported_version':
-        return { ok: false, error: { code: 'storage_unsupported', message: 'Stored data uses an unsupported version, so nothing was changed.' } };
+        return { ok: false, error: { code: 'storage_unsupported', message: 'Stored data uses an unsupported version, so no change was attempted.' } };
       case 'ok':
         break;
     }
@@ -44,7 +44,8 @@ export function createHandler(area: StorageAreaLike, now: () => string = () => n
     try {
       await saveStore(area, result.store);
     } catch (err) {
-      return { ok: false, error: { code: 'save_failed', message: `Not saved: ${describeError(err)}` } };
+      // chrome.storage.local.set rejected: the write was not committed.
+      return { ok: false, error: { code: 'write_rejected', message: `Storage rejected the change, so it was not saved: ${describeError(err)}` } };
     }
     return { ok: true, outcome: 'applied', revision: result.store.revision };
   }
@@ -53,7 +54,11 @@ export function createHandler(area: StorageAreaLike, now: () => string = () => n
     handle(raw) {
       const run = queue.then(() => process(raw));
       queue = run.catch(() => undefined);
-      return run.catch((err: unknown): Response => ({ ok: false, error: { code: 'storage_error', message: describeError(err) } }));
+      // process() only throws before its write (e.g. an unsafe monetary sum), so nothing was written.
+      return run.catch((err: unknown): Response => ({
+        ok: false,
+        error: { code: 'not_applied', message: `The change could not be applied, so nothing was written: ${describeError(err)}` },
+      }));
     },
   };
 }

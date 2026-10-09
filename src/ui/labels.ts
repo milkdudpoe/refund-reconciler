@@ -1,5 +1,5 @@
 import { formatUsd } from '../domain/money';
-import type { CaseStatus, ItemFlag, ItemStatus } from '../domain/reconcile';
+import type { CaseStatus, ItemFlag, ItemStatus, ReviewReason } from '../domain/reconcile';
 import type { Entry } from '../domain/types';
 
 export const ITEM_STATUS_LABEL: Record<ItemStatus, string> = {
@@ -45,3 +45,16 @@ export function formatTimestamp(iso: string): string {
     minute: '2-digit',
   });
 }
+
+export const REVIEW_REASON_LABEL: Record<ReviewReason, string> = {
+  excess: 'More has been confirmed received than expected. It is kept for review and does not offset any other item.',
+  reopened: 'A recharge brought confirmed net receipts below the expected amount.',
+  merchant_reports_less_than_confirmed:
+    'The merchant’s latest issued total is lower than the amount you confirmed receiving. Your confirmed receipts are unchanged; check which record is right and void any mistaken entry.',
+};
+
+export const REVIEW_REASON_SHORT: Record<ReviewReason, string> = {
+  excess: 'more received than expected',
+  reopened: 'recharge recorded',
+  merchant_reports_less_than_confirmed: 'merchant report conflicts with confirmed receipts',
+};

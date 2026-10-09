@@ -152,3 +152,9 @@ dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tl-voided .tl-text { text-decoration: line-through; }
 .tl-meta, .tl-note { font-size: 0.82rem; color: var(--muted); overflow-wrap: anywhere; }
 .back { margin-bottom: 8px; }
+.badges { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.review { background: var(--bad-bg); border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
+.review h3 { font-size: 0.9rem; color: var(--bad); margin-bottom: 4px; }
+.review ul, .review-reasons { margin: 0; padding-left: 18px; font-size: 0.85rem; }
+.review-reasons li { color: var(--bad); }
+.case-review { grid-column: 1 / -1; font-size: 0.82rem; color: var(--bad); }

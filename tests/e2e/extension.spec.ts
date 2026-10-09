@@ -146,7 +146,8 @@ test('a failed save is reported, keeps the form, and changes nothing (acceptance
     await chrome.storage.local.set({ filler: 'x'.repeat(quota - 'filler'.length - 2 - 64) });
   });
   await createCase(page, { items: [{ label: 'Blender', amount: '80' }] });
-  await expect(page.getByTestId('notice')).toContainText(/Not saved/);
+  await expect(page.getByTestId('notice')).toContainText('Storage rejected the change, so it was not saved');
+  await expect(page.getByTestId('notice')).toContainText('Your input is kept');
   await expect(page.getByLabel('Item 1 description')).toHaveValue('Blender');
   const stored = await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY);
   expect(stored).toEqual({});
@@ -268,4 +269,107 @@ test('the dashboard is keyboard operable', async ({ session }) => {
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('notice')).toHaveText('Case saved.');
   await expect(page.getByRole('heading', { name: 'Order KB-1' })).toBeFocused();
+});
+
+test('balanced but conflicting evidence needs review in list and detail; voiding the observation restores settled (review finding 1)', async ({ session }) => {
+  const page = await session.openDashboard();
+  await createCase(page, { orderRef: 'CONFLICT-1', items: [{ label: 'Coat', amount: '70' }, { label: 'Hat', amount: '35' }] });
+  await recordForItem(page, 'Coat', 'Confirm money received', '70');
+  await recordForItem(page, 'Hat', 'Confirm money received', '35');
+  await expect(page.getByTestId('case-status')).toHaveText('Settled');
+
+  await recordForItem(page, 'Coat', 'Record merchant report', '35');
+  const coat = itemCard(page, 'Coat');
+  // The balance is unchanged; only the evidence conflicts.
+  await expect(page.getByTestId('case-status')).toHaveText('Needs review');
+  await expect(page.getByTestId('case-net')).toHaveText('$105.00');
+  await expect(page.getByTestId('case-unresolved')).toHaveText('$0.00');
+  await expect(coat.getByTestId('item-status')).toHaveText('Settled · confirmed received');
+  await expect(coat.getByTestId('item-difference')).toHaveText('$0.00');
+  await expect(coat.getByTestId('item-needs-review')).toBeVisible();
+  await expect(coat.getByTestId('item-review-reasons')).toContainText('lower than the amount you confirmed receiving');
+  await expect(itemCard(page, 'Hat').getByTestId('item-needs-review')).toHaveCount(0);
+  await expect(page.getByTestId('case-review')).toContainText('Coat: The merchant’s latest issued total is lower');
+
+  await page.getByRole('button', { name: '← All cases' }).click();
+  const row = page.getByTestId('case-row').filter({ hasText: 'CONFLICT-1' });
+  await expect(row).toContainText('Needs review');
+  await expect(row.getByTestId('case-row-review')).toHaveText('1 item to review: merchant report conflicts with confirmed receipts');
+
+  await row.click();
+  const reportRow = page.getByTestId('timeline-entry').filter({ hasText: 'Merchant reported $35.00 issued' });
+  await reportRow.getByRole('button', { name: /^Void/ }).click();
+  await page.getByLabel('Why is this entry mistaken?').fill('Snapshot read from the wrong order');
+  await page.getByRole('button', { name: 'Void entry' }).click();
+  await expect(page.getByTestId('case-status')).toHaveText('Settled');
+  await expect(page.getByTestId('case-review')).toHaveCount(0);
+  await expect(reportRow).toContainText('Voided');
+  await expect(page.getByTestId('timeline-entry').filter({ hasText: 'Reason: Snapshot read from the wrong order' })).toBeVisible();
+  await page.getByRole('button', { name: '← All cases' }).click();
+  await expect(page.getByTestId('case-row').filter({ hasText: 'CONFLICT-1' })).toContainText('Settled');
+});
+
+test('a committed receipt whose reply is lost is shown as saved, not as a draft to re-enter (review finding 2)', async ({ session }) => {
+  const page = await session.openDashboard();
+  await createCase(page, { items: [{ label: 'Speaker', amount: '70' }] });
+  // Fault injection inside the real extension page: the message really reaches
+  // the service worker (which writes chrome.storage.local), then the reply is lost.
+  await page.evaluate(() => {
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime) as (m: unknown) => Promise<unknown>;
+    (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: unknown) => {
+      await original(message);
+      throw new Error('Simulated lost reply');
+    };
+  });
+  await itemCard(page, 'Speaker').getByRole('button', { name: 'Confirm money received' }).click();
+  await page.getByTestId('entry-form').getByRole('textbox', { name: /USD/ }).fill('70');
+  await page.getByTestId('entry-form').getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByTestId('notice')).toContainText('Saved. The extension’s reply was lost');
+  await expect(page.getByTestId('entry-form')).toHaveCount(0);
+  await expect(page.getByTestId('timeline-entry').filter({ hasText: 'You confirmed $70.00 received' })).toHaveCount(1);
+  await expect(itemCard(page, 'Speaker').getByTestId('item-status')).toHaveText('Settled · confirmed received');
+
+  await page.reload();
+  await page.getByTestId('case-row').click();
+  await expect(page.getByTestId('timeline-entry').filter({ hasText: 'You confirmed $70.00 received' })).toHaveCount(1);
+  await expect(itemCard(page, 'Speaker').getByTestId('item-net')).toHaveText('$70.00');
+});
+
+test('an unconfirmed receipt keeps its input and a retry reuses the same ID, recording it once (review finding 2)', async ({ session }) => {
+  const page = await session.openDashboard();
+  await createCase(page, { items: [{ label: 'Monitor', amount: '70' }] });
+  // The message never reaches the service worker, and the reply is missing.
+  await page.evaluate(() => {
+    const w = window as unknown as { __realSend: unknown };
+    w.__realSend = chrome.runtime.sendMessage;
+    (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = () => Promise.reject(new Error('Simulated channel failure'));
+  });
+  await itemCard(page, 'Monitor').getByRole('button', { name: 'Confirm money received' }).click();
+  const form = page.getByTestId('entry-form');
+  await form.getByRole('textbox', { name: /USD/ }).fill('70');
+  await form.getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByTestId('notice')).toContainText('Could not confirm this change: it is not in your saved data right now');
+  await expect(page.getByTestId('notice')).toContainText('reuses the same entry ID');
+  await expect(page.getByTestId('notice')).not.toContainText('Not saved');
+  await expect(form.getByRole('textbox', { name: /USD/ })).toHaveValue('70');
+  await expect(page.getByTestId('timeline-entry').filter({ hasText: 'You confirmed' })).toHaveCount(0);
+
+  // Restore messaging and resubmit the kept draft; then resubmit the same ID directly to prove idempotency.
+  await page.evaluate(() => {
+    (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = (window as unknown as { __realSend: unknown }).__realSend;
+  });
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('notice')).toHaveText('Entry saved.');
+  const stored = await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY);
+  const entries = (stored[STORE_KEY] as { cases: { id: string; entries: { id: string; kind: string; itemId: string; amountCents: number; occurredOn: null; source: string; note: string; reference: null }[] }[] }).cases[0]!;
+  const receipt = entries.entries.find((e) => e.kind === 'receipt')!;
+  const again = await page.evaluate(
+    ([caseId, entry]) => chrome.runtime.sendMessage({ kind: 'mutate', command: { type: 'recordEntry', caseId, entry } }),
+    [entries.id, { id: receipt.id, kind: receipt.kind, itemId: receipt.itemId, amountCents: receipt.amountCents, occurredOn: receipt.occurredOn, source: receipt.source, note: receipt.note, reference: receipt.reference }] as const,
+  );
+  expect(again).toMatchObject({ ok: true, outcome: 'duplicate' });
+  await expect(page.getByTestId('timeline-entry').filter({ hasText: 'You confirmed $70.00 received' })).toHaveCount(1);
+  await expect(itemCard(page, 'Monitor').getByTestId('item-net')).toHaveText('$70.00');
 });
