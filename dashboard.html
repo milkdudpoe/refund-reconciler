@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Refund Reconciler</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <h1>Refund Reconciler</h1>
+      <p class="scope">
+        Local preview · Amazon US · USD · manual entry only. Data stays in this browser profile
+        (chrome.storage.local, not encrypted). This tool tracks evidence; it does not move money or
+        decide what you are legally owed.
+      </p>
+    </header>
+    <div id="status" class="visually-hidden" role="status" aria-live="polite"></div>
+    <main id="app"></main>
+    <script type="module" src="/src/ui/main.ts"></script>
+  </body>
+</html>
