@@ -95,8 +95,12 @@ them afterwards, and uses synthetic data.
    first, and the check prints that command if it is missing). The baseline
    then runs `npm ci` from its own lockfile (scripts disabled) and its own
    `vite build`.
-2. **0.5.0 in a fresh profile**, loaded from one stable temp folder with
-   Developer mode on. The check confirms the loaded version is 0.5.0, then
+2. **0.5.0 in a fresh profile**, loaded from one stable temp folder. The
+   check switches on **Developer mode** with that profile's own
+   `chrome://extensions` switch (only if it is off) and confirms it is on
+   after reloading that page; Chromium refuses to reload an unpacked
+   extension without it, and a value written into the profile's
+   `Preferences` file is not applied on Windows. The check confirms the loaded version is 0.5.0, then
    populates it: it writes a deliberately unreadable value to storage only to
    reach 0.5.0's **Erase stored data…** control (giving an erase marker),
    restores the synthetic rich ledger (`tests/shared/rich-ledger.ts`: two
@@ -132,6 +136,13 @@ and reloaded with `chrome.runtime.reload()`, which is not the same as Chrome's
 and the "restart" relaunches the browser with the same command-line folder.
 The manual [Check 3](#check-3-optional-update-in-place-in-chrome) covers the
 Chrome UI path. Nothing is added to the production package for this check.
+
+Every browser the check starts is closed after the test, also when it fails
+(including a failed launch or a reload that never finishes), before its temp
+folder is removed, so a failure is reported as itself rather than as a
+locked-file error. Set `KEEP_UPDATE_CHECK_FILES=1` to keep the temp folder
+for inspection. CI runs the check on Ubuntu and on Windows (`windows-latest`,
+CRLF checkout, together with the unit tests).
 
 **CI.** Every pull request and push to `main` runs the full checks, then
 `npm run test:package`, then fetches the 0.5.0 baseline commit and runs

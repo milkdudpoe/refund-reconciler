@@ -16,6 +16,10 @@
 // as a restore receipt. One further case is then created entirely through
 // 0.5.0's UI.
 //
+// Developer mode is switched on in the test's own temporary profile through
+// that profile's chrome://extensions switch, as a tester does before "Load
+// unpacked"; Chromium refuses to reload an unpacked extension without it.
+//
 // What this does not cover: Chrome's own "Load unpacked" registration and the
 // reload button in chrome://extensions (Playwright loads the folder with
 // --load-extension and reloads with chrome.runtime.reload()), and installed
@@ -46,6 +50,8 @@ type Raw = StoreData & Record<string, unknown>;
 
 let work = '';
 let baselineDist = '';
+/** Every browser session this file starts; all are closed before the work folder is removed. */
+const sessions = new Set<ExtensionSession>();
 
 test.beforeAll(async () => {
   test.setTimeout(300_000);
@@ -54,8 +60,43 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  if (work && !process.env.KEEP_UPDATE_CHECK_FILES) await rm(work, { recursive: true, force: true });
+  // Runs after a failed test too. Close every browser first (a running Chromium
+  // keeps its profile files locked on Windows); a close error never replaces the
+  // test's own failure, and the work folder is removed only after all closes settle.
+  await Promise.allSettled([...sessions].map((s) => s.close()));
+  sessions.clear();
+  if (work && !process.env.KEEP_UPDATE_CHECK_FILES) await rm(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
+
+/** A session registered for guaranteed teardown before it is launched (so a partly failed launch is closed too). */
+function trackedSession(userDataDir: string, extensionDir: string): ExtensionSession {
+  const session = new ExtensionSession(userDataDir, extensionDir);
+  sessions.add(session);
+  return session;
+}
+
+/**
+ * Turns on Developer mode in this test's own profile through its real
+ * chrome://extensions switch (idempotent), and checks the effective setting
+ * on a freshly loaded extensions page. Chromium reloads an unpacked extension
+ * from disk only with Developer mode on, as for a tester using "Load
+ * unpacked"; a value written into the Preferences file is not reliably
+ * applied (it is ignored on Windows).
+ */
+async function ensureDeveloperMode(session: ExtensionSession): Promise<void> {
+  const page = await session.context!.newPage();
+  try {
+    await page.goto('chrome://extensions');
+    const toggle = page.getByRole('button', { name: 'Developer mode' });
+    await expect(toggle).toHaveAttribute('aria-pressed', /^(true|false)$/);
+    if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Developer mode' })).toHaveAttribute('aria-pressed', 'true');
+  } finally {
+    await page.close();
+  }
+}
 
 function asStore(raw: unknown): StoreData {
   const p = parseStore(raw);
@@ -129,18 +170,14 @@ test('0.5.0 updated in place to the beta keeps the same installation and every r
   const downloads = join(work, 'downloads');
   await mkdir(downloads);
   await cp(baselineDist, installed, { recursive: true });
-  // Developer mode on, as for a tester using "Load unpacked": Chromium reloads an
-  // unpacked extension from disk only when it is enabled. This is a Chrome
-  // profile preference, not an extension permission or test hook.
-  await mkdir(join(profile, 'Default'), { recursive: true });
-  await writeFile(join(profile, 'Default', 'Preferences'), JSON.stringify({ extensions: { ui: { developer_mode: true } } }));
-  const session = new ExtensionSession(profile, installed);
+  const session = trackedSession(profile, installed);
 
   // ---- 1. Baseline 0.5.0 in a fresh profile ----
   let snapshot!: Raw;
   let baselineUi!: Record<string, unknown>;
   await test.step('load 0.5.0 and populate a rich synthetic ledger', async () => {
     await session.launch();
+    await ensureDeveloperMode(session);
     const page = await session.openDashboard();
     expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(BASELINE_VERSION);
     await expect(page.getByTestId('help')).toHaveCount(0); // the beta's guide does not exist yet
@@ -210,6 +247,8 @@ test('0.5.0 updated in place to the beta keeps the same installation and every r
 
     const before = workerOf(session);
     const next = session.context!.waitForEvent('serviceworker', { predicate: (w) => w !== before && w.url().startsWith(`chrome-extension://${extensionId}/`), timeout: 30_000 });
+    // Settled even if a step below fails first (it is still awaited and reported below).
+    next.catch(() => undefined);
     // Reload the unpacked extension from disk, as the reload button in chrome://extensions does.
     await before.evaluate(() => setTimeout(() => chrome.runtime.reload(), 50));
     const worker = await next;
@@ -263,6 +302,7 @@ test('0.5.0 updated in place to the beta keeps the same installation and every r
     await session.close();
     await session.launch();
     expect(session.extensionId).toBe(extensionId);
+    await ensureDeveloperMode(session); // still on after the restart
     const page = await session.openDashboard();
     expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(VERSION);
     expect(await storedRaw(page)).toEqual(snapshot);
@@ -280,27 +320,24 @@ test('0.5.0 updated in place to the beta keeps the same installation and every r
 
   // ---- 4. Recovery: the beta's backup restores into a separate, empty profile ----
   await test.step('the backup restores into a separate empty profile running the extracted beta ZIP', async () => {
-    const other = new ExtensionSession(join(work, 'recovery-profile'), join(work, 'beta-extracted'));
+    const other = trackedSession(join(work, 'recovery-profile'), join(work, 'beta-extracted'));
     await other.launch();
-    try {
-      const page = await other.openDashboard();
-      expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(VERSION);
-      await expect(page.getByTestId('empty-state')).toBeVisible();
-      await page.getByRole('button', { name: 'Restore from a JSON backup…' }).click();
-      await chooseBackup(page, backupPath);
-      await expectEligible(page);
-      await approveButton(page).click();
-      await expect(page.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');
-      const restored = (await storedRaw(page)) as Raw;
-      expect(restored.cases).toEqual(snapshot.cases);
-      expect(restored.revision).toBe(1);
-      expect(restored.ledgerEpoch).toBeUndefined(); // the source's marker never becomes this ledger's
-      expect(restored.lastRestore).toMatchObject({ restoredRevision: 1, caseCount: snapshot.cases.length, sourceRevision: snapshot.revision });
-      expect(restored.lastRestore!.operationId).not.toBe(snapshot.lastRestore!.operationId);
-      await page.locator('#restore-cancel').click();
-      expect(await uiState(page)).toEqual(baselineUi);
-    } finally {
-      await other.close();
-    }
+    const page = await other.openDashboard();
+    expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(VERSION);
+    await expect(page.getByTestId('empty-state')).toBeVisible();
+    await page.getByRole('button', { name: 'Restore from a JSON backup…' }).click();
+    await chooseBackup(page, backupPath);
+    await expectEligible(page);
+    await approveButton(page).click();
+    await expect(page.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');
+    const restored = (await storedRaw(page)) as Raw;
+    expect(restored.cases).toEqual(snapshot.cases);
+    expect(restored.revision).toBe(1);
+    expect(restored.ledgerEpoch).toBeUndefined(); // the source's marker never becomes this ledger's
+    expect(restored.lastRestore).toMatchObject({ restoredRevision: 1, caseCount: snapshot.cases.length, sourceRevision: snapshot.revision });
+    expect(restored.lastRestore!.operationId).not.toBe(snapshot.lastRestore!.operationId);
+    await page.locator('#restore-cancel').click();
+    expect(await uiState(page)).toEqual(baselineUi);
+    await other.close();
   });
 });

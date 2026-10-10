@@ -59,3 +59,36 @@ jobs:
           name: playwright-results
           path: test-results/
           retention-days: 7
+
+  # Windows: unit tests on a CRLF checkout and the full same-installation
+  # update check (0.5.0 built from source, updated in place to the beta ZIP).
+  # The Ubuntu job above runs the complete browser suite and uploads the artifact.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      # Git for Windows' default; set explicitly so the checkout really is CRLF.
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v4
+      - name: Confirm a CRLF checkout
+        shell: pwsh
+        run: |
+          $text = [IO.File]::ReadAllText('.github/workflows/ci.yml')
+          if (-not $text.Contains("`r`n")) { throw 'ci.yml was not checked out with CRLF line endings' }
+          Write-Output 'ci.yml has CRLF line endings'
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install chromium
+      - name: Fetch update-check baseline (Task 05, 0.5.0)
+        run: git fetch --no-tags --depth=1 origin b323930f7d9580f426e7e8fee39b4242143c4844
+      - run: npm run test:update
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results-windows
+          path: test-results/
+          retention-days: 7
