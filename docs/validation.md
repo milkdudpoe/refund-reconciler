@@ -9,11 +9,59 @@ or Chrome Web Store approval.
 
 | Check | Status | Source |
 | --- | --- | --- |
-| Automated suites, extracted-ZIP smoke test, same-installation updates 0.5.0 → 0.7.0 and 0.6.0 → 0.7.0 (bundled Chromium) | pass | [Task 09](#task-09-070-encrypted-ledger-2026-10-10) |
+| Automated suites, extracted-ZIP smoke test, same-installation updates 0.5.0 → 0.7.0 and 0.6.0 → 0.7.0 (bundled Chromium) | pass at the Task 09.1 head | [Task 09.1](#task-091-stale-replies-after-lock-or-erase-2026-10-10) |
 | Toolbar access on the public amazon.com home page (desktop Chrome), **0.7.0** | **not run**: the popup changed (it reads nothing until unlocked), so a new owner-operated check is needed | — |
 | Toolbar access, **0.6.0** (context only) | pass, owner-reported (not independently reproduced) | [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
 | Real Amazon refund wording (optional) | **untested** | — |
 | Update in place through the `chrome://extensions` UI (optional) | **untested** | — |
+
+## Task 09.1: stale replies after Lock or erase (2026-10-10)
+
+Independent review of the Task 09 head `3c9513b` reproduced two defects,
+against both the production build and the Ubuntu CI ZIP:
+
+1. **Popup:** an unlocked `read` reply delivered after a newer Lock (or erase)
+   replaced the locked state, so **Capture selected refund text** came back
+   while the worker reported `locked`. Fixed in `src/popup/popup.ts`: reads
+   are numbered when sent; a reply is applied only if it is newer than the
+   last applied one and was sent after the last change signal; every
+   locked-out state advances the privacy epoch even while idle; capture and
+   save-outcome recovery use the same guarded read, and a capture attempt only
+   changes the popup while it still owns the phase.
+2. **Dashboard:** a held `readLegacy` reply released after an external erase
+   started a plaintext download of the erased records. Fixed in
+   `src/ui/vault.ts` and `src/ui/app.ts`: the pre-migration backup is an
+   operation that the dashboard abandons on every state-change signal and
+   whenever a read shows a different state; after each asynchronous step it
+   must still be current, and a fresh guarded state check must still allow a
+   legacy backup immediately before the download starts. A message about a
+   backup is cleared with the state it describes. A download already started
+   cannot be recalled.
+
+The same review reported a full local browser run of **95 of 96** for the
+Task 09 head: `tests/e2e/help.spec.ts` ("using the guide keeps …") failed
+once because it snapshotted the restore panel before file validation had
+settled. That run was not a pass. The test now waits for the settled
+`preview` phase and `not_empty` destination before the snapshot; production
+restore behaviour is unchanged.
+
+Regressions added (`tests/e2e/vault-races.spec.ts`, 6 tests; real worker,
+replies held only after the worker answered): an idle popup's unlocked
+refresh released after Lock; the same ordering across erase; an older locked
+reply overtaken by a genuine unlock; a held capture check released after
+Lock (instrumented: no tab look-up, selection read or injection); a held
+legacy backup released after an external erase (no download start, no stale
+message, while a backup in the unchanged state exports the complete ledger);
+a held legacy backup released after migration finished elsewhere and the
+records locked. All six **failed on the unfixed `3c9513b` code** at the
+assertion right after the held reply was released, and pass with the fix.
+
+Local runs (same Linux container and bundled Chromium 141.0.7390.37 as
+below): the 6 new tests repeated 10 times (60 passed); the corrected help
+test repeated 20 times (20 passed); then one complete `npm run check`:
+typecheck, lint, **369** unit tests, **102** browser tests (96 + 6), the
+extracted-ZIP smoke test (1) and both update checks (2), all passed on the
+first run. CI for the corrected head is recorded in PR #9.
 
 ## Task 09: 0.7.0 encrypted ledger (2026-10-10)
 
@@ -30,7 +78,7 @@ or Chrome Web Store approval.
 | --- | --- | --- |
 | Typecheck, lint | pass | |
 | Unit tests (`npm test`) | **369 passed** (was 320) | +49: envelope/crypto (10), handler rewritten for the vault (19 instead of 10), migration fault injection (31), restore/capture handler tests ported to the vault; Windows skips the existing symlink test as before |
-| Browser suite (`npm run test:e2e`) | **96 passed** (was 87) | the 87 earlier tests adapted to set up/unlock through the real UI, plus 9 in `tests/e2e/vault.spec.ts` |
+| Browser suite (`npm run test:e2e`) | **96 passed** in this author's run (was 87); an independent full run had 95/96 (see Task 09.1) | the 87 earlier tests adapted to set up/unlock through the real UI, plus 9 in `tests/e2e/vault.spec.ts` |
 | Extracted-ZIP smoke test (`npm run test:package`) | 1 passed | now also sets up, locks and unlocks |
 | Same-installation updates (`npm run test:update`) | **2 passed** (was 1) | 0.5.0 (`b323930`) and 0.6.0 (`60e330b`), each built from its own source and lockfile |
 

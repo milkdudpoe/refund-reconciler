@@ -17,6 +17,8 @@ import { h } from './dom';
 type Tone = 'success' | 'error' | 'info';
 type Locked = Exclude<LedgerState, { status: 'ok' }>;
 
+const BACKUP_BUSY = 'Reading your plaintext records…';
+
 /** What the user types to confirm an erase. */
 export const ERASE_TYPED = 'ERASE';
 
@@ -35,6 +37,13 @@ export interface VaultScreens {
   renderErase(): Node;
   /** Forget any half-finished form (e.g. when the state changes underneath it). */
   reset(): void;
+  /**
+   * Called by the dashboard on every state-change signal (storage change,
+   * Lock, unlock, erase, migration) and whenever a read shows a different
+   * state. A plaintext backup still being prepared is then abandoned: its
+   * reply is discarded unused, and no download starts.
+   */
+  invalidateBackup(): void;
 }
 
 function passwordInput(id: string, autocomplete: string, describedBy: string): HTMLInputElement {
@@ -65,6 +74,10 @@ export function createVaultScreens(host: VaultHost): VaultScreens {
   let confirmErase = false;
   /** On the pending-migration screen: the user chose to start again with a new passphrase. */
   let restarting = false;
+  /** The plaintext backup being prepared, if any. Replaced (never reused) by invalidateBackup(). */
+  let backupOp: object | null = null;
+  /** Whether the visible message describes a plaintext backup (cleared with the state it describes). */
+  let feedbackFromBackup = false;
 
   function setShow(on: boolean): void {
     show = on;
@@ -79,6 +92,7 @@ export function createVaultScreens(host: VaultHost): VaultScreens {
   }
 
   function reset(): void {
+    invalidateBackup();
     clearCredentials();
     acknowledged = false;
     errors = {};
@@ -89,6 +103,7 @@ export function createVaultScreens(host: VaultHost): VaultScreens {
   }
 
   function say(tone: Tone, text: string): void {
+    feedbackFromBackup = false;
     feedback = { tone, text };
     host.announce(text);
   }
@@ -243,14 +258,54 @@ export function createVaultScreens(host: VaultHost): VaultScreens {
     if (!res.ok) unlockPass.focus();
   }
 
+  function invalidateBackup(): void {
+    // A message about a backup describes records that may no longer exist in this state.
+    if (feedbackFromBackup) {
+      feedback = null;
+      feedbackFromBackup = false;
+    }
+    if (!backupOp) return;
+    backupOp = null;
+    // Only this operation's own progress line is removed; a newer form or message is untouched.
+    if (busy === BACKUP_BUSY) busy = null;
+  }
+
+  function sayAboutBackup(tone: Tone, text: string): void {
+    say(tone, text);
+    feedbackFromBackup = true;
+  }
+
+  /**
+   * The explicit pre-migration plaintext backup. Every asynchronous step is
+   * checked against this operation still being current (a state change in any
+   * view abandons it), and the allowed state is confirmed again just before the
+   * download would start, so a reply that arrives after an erase, a finished
+   * migration or a Lock never starts a download of the old records. A download
+   * already requested cannot be recalled.
+   */
   async function downloadLegacyBackup(): Promise<void> {
-    if (busy) return;
-    busy = 'Reading your plaintext records…';
+    if (busy || backupOp) return;
+    const op = {};
+    backupOp = op;
+    const current = () => backupOp === op;
+    busy = BACKUP_BUSY;
     host.render();
     const res = await deps.readLegacy();
-    busy = null;
+    if (!current()) return; // abandoned: discard the records unused, say nothing
     if (!res.ok) {
-      say('error', `The plaintext backup could not be prepared: ${res.error.message} Nothing was downloaded.`);
+      backupOp = null;
+      busy = null;
+      sayAboutBackup('error', `The plaintext backup could not be prepared: ${res.error.message} Nothing was downloaded.`);
+      host.render();
+      return;
+    }
+    // The worker answers in order, so this read reflects at least the state the backup was read in.
+    const now = await deps.read();
+    if (!current()) return;
+    backupOp = null;
+    busy = null;
+    if (!legacyBackupAvailable(now)) {
+      sayAboutBackup('info', 'Your stored records changed before the download started, so no backup was downloaded. The current state is shown below.');
       host.render();
       return;
     }
@@ -259,11 +314,11 @@ export function createVaultScreens(host: VaultHost): VaultScreens {
     try {
       deps.requestDownload(serializeBackup(buildBackup(res.store, takenAt)), 'application/json;charset=utf-8', filename);
     } catch (err) {
-      say('error', `The download could not be started (${err instanceof Error ? err.message : String(err)}). No file was created.`);
+      sayAboutBackup('error', `The download could not be started (${err instanceof Error ? err.message : String(err)}). No file was created.`);
       host.render();
       return;
     }
-    say('info', `Download requested: ${filename}. It is an ordinary, unencrypted JSON file containing all ${res.store.cases.length === 1 ? '1 case' : `${res.store.cases.length} cases`}. Check your browser’s downloads list to confirm, and keep it somewhere safe.`);
+    sayAboutBackup('info', `Download requested: ${filename}. It is an ordinary, unencrypted JSON file containing all ${res.store.cases.length === 1 ? '1 case' : `${res.store.cases.length} cases`}. Check your browser’s downloads list to confirm, and keep it somewhere safe.`);
     host.render();
   }
 
@@ -447,5 +502,5 @@ export function createVaultScreens(host: VaultHost): VaultScreens {
     }
   }
 
-  return { render, renderErase, reset };
+  return { render, renderErase, reset, invalidateBackup };
 }

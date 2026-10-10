@@ -195,6 +195,8 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     if (seq !== loadSeq) return; // a newer load superseded this one
     if (isLockedOut(result)) dropPrivateData();
     const wasUnlocked = state.load.status === 'ok';
+    // A different state makes a plaintext backup still being prepared obsolete.
+    if (state.load.status !== result.status) vault.invalidateBackup();
     state.load = result;
     if (result.status === 'ok' && !wasUnlocked) vault.reset();
     if (state.view.name === 'case' && result.status === 'ok') {
@@ -1771,6 +1773,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
 
   deps.subscribe(() => {
     storageGen += 1;
+    vault.invalidateBackup();
     invalidateExportOnChange();
     restore.onStorageChange();
     void reload();

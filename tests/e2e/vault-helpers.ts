@@ -117,3 +117,60 @@ export async function eraseTyped(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Permanently erase' }).click();
   await expect(vaultScreen(page, 'vault-setup')).toBeVisible();
 }
+
+type GateWindow = Window & { __kindGates?: Record<string, { armed: boolean; held: boolean; delivered: boolean; release: () => void }>; __kindWrapped?: boolean };
+
+/**
+ * Holds the reply to this page's NEXT runtime request of `kind` (for example
+ * "read" or "readLegacy") AFTER the real service worker has processed it, until
+ * releaseReplyOfKind(). Other requests pass straight through. Test code only.
+ */
+export async function holdNextReplyOfKind(page: Page, kind: string): Promise<void> {
+  await page.evaluate((k) => {
+    const w = window as GateWindow;
+    w.__kindGates ??= {};
+    w.__kindGates[k] = { armed: true, held: false, delivered: false, release: () => undefined };
+    if (w.__kindWrapped) return;
+    w.__kindWrapped = true;
+    const rt = chrome.runtime as unknown as { sendMessage: (m: unknown) => Promise<unknown> };
+    const inner = rt.sendMessage.bind(chrome.runtime);
+    rt.sendMessage = async (m: unknown) => {
+      const gate = w.__kindGates![(m as { kind?: string } | null)?.kind ?? ''];
+      const reply = await inner(m);
+      if (gate?.armed) {
+        gate.armed = false;
+        await new Promise<void>((resolve) => {
+          gate.release = resolve;
+          gate.held = true;
+        });
+        gate.delivered = true;
+      }
+      return reply;
+    };
+  }, kind);
+}
+
+export async function waitForHeldReplyOfKind(page: Page, kind: string): Promise<void> {
+  await expect.poll(() => page.evaluate((k) => (window as GateWindow).__kindGates?.[k]?.held === true, kind)).toBe(true);
+}
+
+/** Releases the held reply, waits until the page has received it, then lets the page's own continuation run (one task turn). */
+export async function releaseReplyOfKind(page: Page, kind: string): Promise<void> {
+  await page.evaluate((k) => (window as GateWindow).__kindGates?.[k]?.release(), kind);
+  await expect.poll(() => page.evaluate((k) => (window as GateWindow).__kindGates?.[k]?.delivered === true, kind)).toBe(true);
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+}
+
+/** Counts every download this page starts (object URLs created and anchor clicks), synchronously in the page. */
+export async function instrumentDownloads(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __downloadStarts: number };
+    w.__downloadStarts = 0;
+    const realCreate = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (obj: Blob | MediaSource) => {
+      w.__downloadStarts += 1;
+      return realCreate(obj);
+    };
+  });
+}
+export const downloadStarts = (page: Page) => page.evaluate(() => (window as unknown as { __downloadStarts: number }).__downloadStarts);

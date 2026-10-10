@@ -211,6 +211,14 @@ Lock, unlock, setup, migration and erase.
 | `vault_unreadable`, `inconsistent`, plaintext `corrupt`/`unsupported_version` | Explanation and **Erase stored data…** | Open dashboard |
 | `storage_error`, `storage_unavailable` | Explanation and Try again | Open dashboard |
 
+Replies are never applied out of order. The popup numbers its reads and
+applies a reply only if it is newer than the last one applied and was sent
+after the last change signal; the dashboard's ledger reads are superseded the
+same way. So a reply that was already on its way when Lock or erase happened
+can never put the old state back. The pre-migration plaintext backup is
+abandoned on any state change, and the allowed state is checked again
+immediately before its download starts.
+
 On Lock or erase, every open view at once forgets decrypted records, open
 forms and drafts, search text, the export panel with its prepared text, the
 restore panel with the chosen file, and any capture preview. Work started
@@ -341,7 +349,9 @@ isolation from the extension's own pages.
   interrupted and committed-then-interrupted, with a recreated worker),
   `tests/unit/restore.test.ts` and `tests/unit/capture-ledger.test.ts`.
   Storage areas there are in-memory fakes (`tests/unit/vault-fakes.ts`).
-- Browser tests: `tests/e2e/vault.spec.ts` (setup, canary and key scan of the
+- Browser tests: `tests/e2e/vault-races.spec.ts` (stale replies after Lock,
+  erase, unlock and migration, in the popup and for the plaintext backup) and
+  `tests/e2e/vault.spec.ts` (setup, canary and key scan of the
   closed profile's files, multi-view Lock, stale work after Lock, worker
   stop/restart via the DevTools protocol, full browser restart, tampering,
   locked erase, migration and interrupted verification, legacy-backup

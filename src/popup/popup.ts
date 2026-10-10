@@ -113,7 +113,8 @@ interface Preview {
 
 type Phase =
   | { name: 'idle' }
-  | { name: 'reading' }
+  /** `run` identifies the capture attempt that owns this phase. */
+  | { name: 'reading'; run: object }
   | { name: 'failed'; message: string }
   | { name: 'preview'; preview: Preview }
   | { name: 'saved'; op: SubmittedOp };
@@ -129,8 +130,21 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
   /** Fixed for the life of this popup once resolved. */
   let source: { id: number | null; origin: string | null } | null = null;
   let sourceReady: Promise<void> | null = null;
-  /** Incremented whenever the ledger is seen not unlocked; work started before cannot show its result. */
+  /**
+   * Incremented whenever an accepted state is not unlocked (locked, erased,
+   * setup or migration pending, unreadable), even while idle: work started
+   * before cannot show its result or use what it read.
+   */
   let privacyEpoch = 0;
+  /**
+   * Read ordering. Each read is numbered when it is sent. A reply is applied
+   * only if it is newer than the last applied one and was sent after the last
+   * change signal (a Lock, erase, unlock or storage change), so an older reply
+   * can never replace a newer state.
+   */
+  let readsSent = 0;
+  let lastApplied = 0;
+  let staleBefore = 0;
 
   /** Looks up the tab's address once, and only while unlocked. */
   function acquireSourceTab(): Promise<void> {
@@ -141,21 +155,46 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
     return sourceReady;
   }
 
-  /** Sets the latest state; anything private is discarded unless the ledger is unlocked. */
+  /** Sets the latest accepted state; anything private is discarded unless the ledger is unlocked. */
   function applyLoad(next: LedgerState): void {
     load = next;
-    if (next.status !== 'ok' && next.status !== 'storage_error' && (phase.name !== 'idle' || notice !== null)) {
+    if (next.status !== 'ok' && next.status !== 'storage_error') {
       privacyEpoch += 1;
-      // The preview holds the selected text; a saved/failed phase names an item. Discard both.
-      phase = { name: 'idle' };
-      notice = null;
-      statusRegion.textContent = 'Your records are locked. Nothing from the page was kept.';
+      if (phase.name !== 'idle' || notice !== null) {
+        // The preview holds the selected text; a saved/failed phase names an item. Discard both.
+        phase = { name: 'idle' };
+        notice = null;
+        statusRegion.textContent = 'Your records are locked. Nothing from the page was kept.';
+      }
     }
     if (next.status === 'ok') void acquireSourceTab();
   }
 
+  /**
+   * Reads the state from the service worker and applies it, unless a newer
+   * read was applied or a change signal arrived since this one was sent.
+   * Returns null for such an obsolete reply, which is discarded unused.
+   */
+  async function freshRead(): Promise<LedgerState | null> {
+    const seq = ++readsSent;
+    const state = await deps.read();
+    if (seq < staleBefore || seq <= lastApplied) return null;
+    lastApplied = seq;
+    applyLoad(state);
+    return state;
+  }
+
+  /** A fresh state, reading again (a few times) if replies keep being overtaken. */
+  async function currentState(): Promise<LedgerState | null> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const s = await freshRead();
+      if (s) return s;
+    }
+    return null;
+  }
+
   async function reload(): Promise<void> {
-    applyLoad(await deps.read());
+    if (!(await freshRead())) return; // a newer state was (or will be) applied instead
     // While a save is in flight its own reply decides. Afterwards, the
     // operation's id appearing in saved data means an uncertain save committed.
     if (phase.name === 'preview') {
@@ -179,34 +218,33 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
   }
 
   async function capture(): Promise<void> {
+    if (phase.name === 'reading') return;
+    const run = {};
+    const owns = () => phase.name === 'reading' && phase.run === run;
+    /** Ends this attempt without using anything it read, unless a newer phase took over. */
+    const abandon = (message?: string) => {
+      if (!owns()) return;
+      phase = message ? { name: 'failed', message } : { name: 'idle' };
+      render();
+    };
     notice = null;
-    phase = { name: 'reading' };
+    phase = { name: 'reading', run };
     render();
     // Checked again at the moment Capture is pressed: nothing is read or injected unless unlocked now.
     const epoch = privacyEpoch;
-    const before = await deps.read();
-    applyLoad(before);
-    if (before.status === 'storage_error' && epoch === privacyEpoch) {
-      phase = { name: 'failed', message: 'Saved data can’t be read right now, so it can’t be checked that your records are unlocked. Nothing was read from the page.' };
-      render();
-      return;
-    }
-    if (before.status !== 'ok' || epoch !== privacyEpoch) {
-      phase = { name: 'idle' };
-      render();
-      return;
-    }
+    const before = await currentState();
+    if (!owns() || epoch !== privacyEpoch) return abandon();
+    if (!before) return abandon('Saved data kept changing, so it could not be checked that your records are unlocked. Nothing was read from the page. Try again.');
+    if (before.status === 'storage_error') return abandon('Saved data can’t be read right now, so it can’t be checked that your records are unlocked. Nothing was read from the page.');
+    if (before.status !== 'ok') return abandon();
     await acquireSourceTab();
+    if (!owns() || epoch !== privacyEpoch) return abandon();
     const result = await acquireSelection(deps.acquire, source?.id ?? null, source?.origin ?? null);
     // Fresh case list for the assignment step; a Lock meanwhile discards the selection unseen.
-    const after = await deps.read();
-    if (epoch !== privacyEpoch) return;
-    applyLoad(after);
-    if (after.status !== 'ok' && after.status !== 'storage_error') {
-      phase = { name: 'idle' };
-      render();
-      return;
-    }
+    const after = await currentState();
+    if (!owns() || epoch !== privacyEpoch) return abandon();
+    if (!after) return abandon('Saved data kept changing while the selection was read, so it was discarded. Nothing was saved. Try again.');
+    if (after.status !== 'ok' && after.status !== 'storage_error') return abandon();
     if (!result.ok) {
       phase = { name: 'failed', message: ACQUIRE_MESSAGE[result.problem] };
       render();
@@ -327,15 +365,15 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
     if (!res.ok && res.error.code === 'outcome_unknown') {
       // Never treat a lost reply as failure: look for this operation's own id.
       op.state = 'uncertain';
-      const check = await deps.read();
-      if (epoch !== privacyEpoch) return;
-      applyLoad(check);
-      if (check.status === 'ok' && storeHasEntry(check.store, p.opId)) {
+      const check = await currentState();
+      // Locked meanwhile, or a newer phase took over: the newer state already decided what is shown.
+      if (epoch !== privacyEpoch || phase.name !== 'preview' || phase.preview !== p) return;
+      if (check?.status === 'ok' && storeHasEntry(check.store, p.opId)) {
         markSaved(op, true);
       } else {
         setNotice(
           'error',
-          check.status === 'ok'
+          check?.status === 'ok'
             ? `Could not confirm this save: the report for “${op.itemLabel}” is not in your saved data right now. The approved assignment is kept and locked. Retrying is safe because it resends the same capture with the same ID, so it cannot be recorded twice.`
             : `Could not confirm whether the report for “${op.itemLabel}” was saved, and saved data could not be re-read. The approved assignment is kept and locked. Retrying is safe because it resends the same capture with the same ID, so it cannot be recorded twice.`,
         );
@@ -601,7 +639,11 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
     );
   }
 
-  deps.subscribe(() => void reload());
+  deps.subscribe(() => {
+    // Anything sent before this signal may describe an older state.
+    staleBefore = readsSent + 1;
+    void reload();
+  });
   render();
   void reload();
 }

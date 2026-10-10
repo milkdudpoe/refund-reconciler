@@ -167,6 +167,11 @@ test('using the guide keeps search, status, drafts, open export and restore pane
     await chooseBackup(page, await writeBackupFile(scratch.dir, 'b.json', envelopeOf(JSON.parse(JSON.stringify(mixedLedger().store)))));
     const panel = page.getByTestId('restore-panel');
     await expect(panel).toContainText('Selected file: b.json');
+    // Wait for the settled state before the snapshot: file validation and the destination check are
+    // asynchronous and may legitimately finish while the guide is used. This dashboard has cases, so
+    // the settled destination is "not empty".
+    await expect(panel).toHaveAttribute('data-phase', 'preview');
+    await expect(page.getByTestId('restore-destination')).toHaveAttribute('data-state', 'not_empty');
     const phase = await panel.getAttribute('data-phase');
     const panelText = await panel.textContent();
     await useHelp(page);
