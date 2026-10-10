@@ -72,6 +72,10 @@ interface ExportPanel {
   blockedReason: string;
   /** One immutable validated snapshot. The preview and every export use only this. */
   snapshot: { store: StoreData; takenAt: string } | null;
+  /** Storage-change generation when the snapshot's read started. */
+  snapshotGen: number;
+  /** A clipboard write in progress, frozen at the moment Copy was pressed. */
+  copying: { text: string; includeDetails: boolean } | null;
   includeDetails: boolean;
   /** The exact text shown in the preview and copied or downloaded. */
   text: string;
@@ -118,8 +122,15 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   let deletingCaseId: string | null = null;
   /** Operation id whose save could not be confirmed; resolved by re-reading storage. */
   let uncertainOpId: string | null = null;
+  /**
+   * Incremented on every storage change event, before the change-triggered
+   * read starts. A read that began at generation g reflects at least every
+   * change up to g, so it can be compared with reads from other generations.
+   */
+  let storageGen = 0;
   async function reload(): Promise<void> {
     const seq = ++loadSeq;
+    const gen = storageGen;
     const result = await loadStore(deps.area);
     if (seq !== loadSeq) return; // a newer load superseded this one
     state.load = result;
@@ -133,7 +144,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       }
     }
     if (result.status === 'ok') closeCommittedDrafts(result.store);
-    const becameStale = updateExportFreshness(result);
+    const becameStale = updateExportFreshness(result, gen);
     render();
     if (becameStale) {
       const active = document.activeElement;
@@ -392,6 +403,8 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       phase: 'loading',
       blockedReason: '',
       snapshot: null,
+      snapshotGen: 0,
+      copying: null,
       includeDetails: false,
       text: '',
       filename: '',
@@ -404,19 +417,37 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   }
 
   let exportSeq = 0;
-  /** Reads a fresh validated snapshot for the open panel. Never falls back to the page's copy. */
+  /** How many reads a snapshot may take while storage keeps changing underneath it. */
+  const SNAPSHOT_READ_ATTEMPTS = 3;
+  /**
+   * Reads a fresh validated snapshot for the open panel. Never falls back to
+   * the page's copy. If storage changes while a read is in flight, the result
+   * may predate that change, so it is discarded and read again; it is never
+   * shown as current.
+   */
   async function takeExportSnapshot(): Promise<void> {
     const panel = state.exportPanel;
-    if (!panel) return;
+    if (!panel || panel.copying) return;
     const seq = ++exportSeq;
     panel.phase = 'loading';
     panel.feedback = null;
     render();
-    const result = await loadStore(deps.area);
-    if (seq !== exportSeq || state.exportPanel !== panel) return;
+    let result: LoadResult;
+    let gen: number;
+    let superseded: boolean;
+    let attempt = 0;
+    do {
+      attempt += 1;
+      gen = storageGen;
+      result = await loadStore(deps.area);
+      if (seq !== exportSeq || state.exportPanel !== panel) return;
+      superseded = storageGen !== gen;
+    } while (superseded && attempt < SNAPSHOT_READ_ATTEMPTS);
     panel.snapshot = null;
     panel.text = '';
-    panel.freshness = 'current';
+    panel.snapshotGen = gen;
+    // Storage kept changing on every attempt: show what was read, but only as an earlier snapshot.
+    panel.freshness = superseded ? 'changed' : 'current';
     if (result.status !== 'ok') {
       panel.phase = 'blocked';
       panel.blockedReason =
@@ -457,11 +488,18 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     }
   }
 
-  /** Marks an open panel's snapshot as out of date when saved data changes. Returns true if it just became stale. */
-  function updateExportFreshness(result: LoadResult): boolean {
+  /**
+   * Marks an open panel's snapshot as out of date when saved data changes.
+   * `readGen` is the storage generation when that dashboard read started; a
+   * read older than the snapshot says nothing about it and is ignored. Once
+   * stale, a snapshot stays stale until the user refreshes it, so a late or
+   * out-of-order read can never roll it back to current. Returns true if it
+   * just became stale.
+   */
+  function updateExportFreshness(result: LoadResult, readGen: number): boolean {
     const panel = state.exportPanel;
     if (!panel || panel.phase !== 'ready' || !panel.snapshot) return false;
-    const before = panel.freshness;
+    if (panel.freshness !== 'current' || readGen < panel.snapshotGen) return false;
     if (result.status !== 'ok') {
       panel.freshness = 'unverified';
     } else if (panel.kind === 'summary') {
@@ -470,8 +508,8 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     } else {
       panel.freshness = JSON.stringify(result.store) === JSON.stringify(panel.snapshot.store) ? 'current' : 'changed';
     }
-    if (panel.freshness !== before && panel.freshness !== 'current') {
-      panel.feedback = null;
+    if (panel.freshness !== 'current') {
+      if (!panel.copying) panel.feedback = null;
       announce('Saved data changed. The export preview shows an earlier snapshot; refresh it before exporting.');
       return true;
     }
@@ -488,18 +526,42 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     render();
   }
 
+  /**
+   * Copies the preview as it is when Copy is pressed. Until the write settles,
+   * the preview cannot be replaced (details toggle and Refresh are disabled)
+   * and further copies are refused, so the completion message always
+   * describes the text that was actually written.
+   */
   async function copyExport(): Promise<void> {
     const panel = state.exportPanel;
-    if (!panel || !exportable(panel)) return;
-    const text = panel.text;
+    if (!panel || panel.copying || !exportable(panel)) return;
+    const op = { text: panel.text, includeDetails: panel.includeDetails };
+    panel.copying = op;
+    // Start the write inside the click so the browser still sees the user's gesture.
+    let write: Promise<void>;
     try {
-      await deps.copyText(text);
+      write = deps.copyText(op.text);
     } catch (err) {
-      if (state.exportPanel !== panel) return;
+      write = Promise.reject(err);
+    }
+    setExportFeedback(panel, 'info', 'Copying the summary text shown below…');
+    let error: unknown = null;
+    let failed = false;
+    try {
+      await write;
+    } catch (err) {
+      error = err;
+      failed = true;
+    }
+    // A closed or replaced panel, or a superseded operation, gets no message.
+    if (state.exportPanel !== panel || panel.copying !== op) return;
+    panel.copying = null;
+    const which = op.includeDetails ? 'evidence details included' : 'evidence details omitted';
+    if (failed) {
       setExportFeedback(
         panel,
         'error',
-        `The text was not copied: the browser refused clipboard access (${err instanceof Error ? err.message : String(err)}). The full text is selected in the preview below, so you can copy it with Ctrl+C or ⌘C.`,
+        `The text was not copied: the browser refused clipboard access (${error instanceof Error ? error.message : String(error)}). The full text is selected in the preview below, so you can copy it with Ctrl+C or ⌘C.`,
       );
       const area = document.getElementById('export-text');
       if (area instanceof HTMLTextAreaElement) {
@@ -508,8 +570,15 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       }
       return;
     }
-    if (state.exportPanel !== panel) return;
-    setExportFeedback(panel, 'success', 'Copied the summary text shown below to the clipboard.');
+    if (panel.freshness === 'current') {
+      setExportFeedback(panel, 'success', `Copied the summary text shown below (${which}) to the clipboard.`);
+    } else {
+      setExportFeedback(
+        panel,
+        'info',
+        `Copied the earlier snapshot shown below (${which}) to the clipboard. Saved data changed after it was read, so it may be out of date; refresh before relying on it.`,
+      );
+    }
   }
 
   function downloadExport(): void {
@@ -593,7 +662,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     const title = isSummary ? 'Case summary preview' : 'Download all data (JSON)';
     const closeBtn = h('button', { type: 'button', id: 'export-close', on: { click: closeExport } }, 'Close');
     const refreshBtn = (label: string) =>
-      h('button', { type: 'button', id: 'export-refresh', on: { click: () => void takeExportSnapshot() } }, label);
+      h('button', { type: 'button', id: 'export-refresh', disabled: panel.copying !== null, on: { click: () => void takeExportSnapshot() } }, label);
     const body: (Node | null)[] = [];
     switch (panel.phase) {
       case 'loading':
@@ -623,7 +692,19 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
             'div',
             { class: 'actions' },
             isSummary
-              ? h('button', { type: 'button', id: 'export-copy', class: 'primary', disabled: !exportable(panel), on: { click: () => void copyExport() } }, 'Copy text')
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    id: 'export-copy',
+                    class: 'primary',
+                    // While copying, stay focusable but refuse further presses.
+                    disabled: !exportable(panel),
+                    'aria-disabled': panel.copying ? 'true' : null,
+                    on: { click: () => void copyExport() },
+                  },
+                  'Copy text',
+                )
               : null,
             h(
               'button',
@@ -696,9 +777,10 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
           type: 'checkbox',
           checked: panel.includeDetails,
           'aria-describedby': 'export-details-hint',
-          disabled: panel.freshness !== 'current',
+          disabled: panel.freshness !== 'current' || panel.copying !== null,
           on: {
             change: (ev) => {
+              if (panel.copying) return;
               panel.includeDetails = (ev.target as HTMLInputElement).checked;
               panel.feedback = null;
               regenerateExport(panel);
@@ -1285,7 +1367,10 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     }
   }
 
-  deps.subscribe(() => void reload());
+  deps.subscribe(() => {
+    storageGen += 1;
+    void reload();
+  });
   if (opts.startInCreate) openCreate();
   render();
   void reload();

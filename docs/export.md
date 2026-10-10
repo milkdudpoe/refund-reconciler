@@ -97,11 +97,22 @@ the extension cannot import it yet.
 
 Opening either export performs a fresh, validated read of storage; the page's
 already-loaded copy is never used. The preview and every copy/download use
-that one immutable snapshot, so what you see is what is exported. If saved
-data changes while the panel is open (in this or another dashboard), the panel
-is marked as an earlier snapshot and copy/download are disabled until you
-choose **Refresh**. If the case was deleted, the panel says so, and a refresh
-reports that the case no longer exists.
+that one immutable snapshot, so what you see is what is exported.
+
+- **Changes during a read.** The dashboard counts storage change events. If a
+  change arrives while a snapshot read (initial or Refresh) is in flight, that
+  result may predate the change, so it is discarded and storage is read again
+  before anything is shown as ready. If storage keeps changing for three
+  consecutive reads, the last result is shown only as an earlier snapshot with
+  copy/download disabled until you refresh. A failed read stays blocked; an
+  older result is never turned into a current one.
+- **Changes after a read.** If saved data changes while the panel is open (in
+  this or another dashboard), the panel is marked as an earlier snapshot and
+  copy/download are disabled until you choose **Refresh**. If the case was
+  deleted, the panel says so, and a refresh reports that the case no longer
+  exists. Dashboard reads that started before the snapshot's own read are
+  ignored, and once marked stale a snapshot stays stale until an explicit
+  refresh, so late or out-of-order reads cannot roll it back to current.
 
 ## Errors
 
@@ -111,9 +122,18 @@ reports that the case no longer exists.
   overwritten. **Try again** re-reads storage. On the corrupt/unsupported
   screen the export actions are not offered at all; the raw-data view there is
   unchanged. A raw recovery export may come later.
-- **Clipboard refused:** "Copied" is shown only after the clipboard write
-  resolves. If it is refused, the panel says the text was not copied and
-  selects the full preview for manual copying. No permission is added.
+- **Copying:** pressing **Copy text** freezes that preview text and its
+  evidence-details choice. Until the clipboard write settles the panel shows
+  "Copying…", the details checkbox and Refresh are disabled, and further Copy
+  presses are refused, so the preview cannot change under a pending copy.
+  "Copied" is shown only after the write resolves and names whether evidence
+  details were included. If saved data changed meanwhile, the message says the
+  earlier snapshot was copied and the stale warning stays. If the panel was
+  closed or reopened, a late completion is ignored and the new panel is
+  unaffected. Nothing is written to the clipboard without a new click.
+- **Clipboard refused:** the panel says the text was not copied, re-enables
+  the controls and selects the full preview for manual copying; a later Copy
+  can succeed. No permission is added.
 - **Download:** a Blob/object-URL download link is clicked; the panel says
   "Download requested", not that the file was saved, because the browser
   decides that. Errors while creating the file or starting the download are
@@ -143,7 +163,11 @@ for the acceptance cases. Browser tests (`tests/e2e/export.spec.ts`) use the
 built extension in Playwright's Chromium: they capture real download events and
 read the downloaded files, read the real clipboard back by pasting, inject a
 clipboard rejection and storage read failures from test code only, and check
-that stored data and revision are unchanged.
+that stored data and revision are unchanged. `tests/e2e/export-races.spec.ts`
+covers interleavings with deterministic gates: a page's next
+`chrome.storage.local.get` result is held only after the real API has read it,
+while a second dashboard changes or deletes data through the real service
+worker; clipboard writes really happen and only their completion is held.
 
 ## Limitations
 

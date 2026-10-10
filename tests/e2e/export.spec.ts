@@ -2,79 +2,13 @@
 // dashboard, real chrome.storage.local, real clipboard and real browser
 // downloads. Failures are injected only from this test code.
 
-import { readFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
-import { STORE_KEY, createCase, expect, itemCard, recordForItem, test, type ExtensionSession } from './fixtures';
+import { createCase, expect, itemCard, recordForItem, test, type ExtensionSession } from './fixtures';
+import { BACKUP_FILE, SUMMARY_FILE, countDownloads, downloadVia, openSummary, overridePageReads, pasteClipboard, seed, storedRaw } from './export-helpers';
 import { CAPTURE_SOURCE, parseStore } from '../../src/domain/validate';
 import { analyzeExcerpt } from '../../src/capture/parse';
 import type { RecordEntryCommand } from '../../src/domain/types';
 import { Harness } from '../unit/helpers';
-
-const SUMMARY_FILE = /^refund-reconciler-case-summary-\d{4}-\d{2}-\d{2}T\d{6}Z\.txt$/;
-const BACKUP_FILE = /^refund-reconciler-backup-\d{4}-\d{2}-\d{2}T\d{6}Z\.json$/;
-
-async function storedRaw(page: Page): Promise<unknown> {
-  return (await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY];
-}
-
-async function seed(page: Page, value: unknown): Promise<void> {
-  await page.evaluate(([key, v]) => chrome.storage.local.set({ [key as string]: v }), [STORE_KEY, value] as const);
-}
-
-/** Clicks a button and returns the file the browser actually downloaded. */
-async function downloadVia(page: Page, buttonName: string): Promise<{ name: string; text: string }> {
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: buttonName, exact: true }).click()]);
-  const path = await dl.path();
-  return { name: dl.suggestedFilename(), text: await readFile(path, 'utf8') };
-}
-
-/** Counts download events on a page (to prove none happened). */
-function countDownloads(page: Page): { count: number } {
-  const counter = { count: 0 };
-  page.on('download', () => {
-    counter.count += 1;
-  });
-  return counter;
-}
-
-/** Reads the real clipboard by pasting into a scratch textarea added by the test. */
-async function pasteClipboard(page: Page): Promise<string> {
-  await page.evaluate(() => {
-    document.getElementById('paste-probe')?.remove();
-    const t = document.createElement('textarea');
-    t.id = 'paste-probe';
-    document.body.append(t);
-  });
-  await page.locator('#paste-probe').focus();
-  await page.keyboard.press('Control+V');
-  const value = await page.locator('#paste-probe').inputValue();
-  await page.evaluate(() => document.getElementById('paste-probe')?.remove());
-  return value;
-}
-
-/** Makes this page's own chrome.storage.local.get fail or return a fixed value (the service worker is unaffected). */
-async function overridePageReads(page: Page, mode: 'reject' | 'corrupt' | 'real'): Promise<void> {
-  await page.evaluate(
-    ([m, key]) => {
-      const area = chrome.storage.local as unknown as { get: unknown };
-      const w = window as unknown as { __realGet?: unknown };
-      w.__realGet ??= area.get;
-      area.get =
-        m === 'reject'
-          ? () => Promise.reject(new Error('Simulated read failure'))
-          : m === 'corrupt'
-            ? () => Promise.resolve({ [key as string]: { schemaVersion: 1, revision: 3, cases: [{ id: 'broken' }] } })
-            : w.__realGet;
-    },
-    [mode, STORE_KEY] as const,
-  );
-}
-
-async function openSummary(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Prepare case summary…' }).click();
-  await expect(page.getByRole('heading', { name: 'Case summary preview' })).toBeFocused();
-  await expect(page.getByTestId('export-text')).toHaveValue(/REFUND RECORD SUMMARY/);
-}
 
 test('acceptance 1 and 7: the previewed, copied and downloaded summary keep B’s $35 unresolved expectation; nothing is written', async ({ session }) => {
   const page = await session.openDashboard();
@@ -93,7 +27,7 @@ test('acceptance 1 and 7: the previewed, copied and downloaded summary keep B’
   await expect(page.getByTestId('export-snapshot')).toContainText('revision 2');
 
   await page.getByRole('button', { name: 'Copy text' }).click();
-  await expect(page.getByTestId('export-feedback')).toHaveText('Copied the summary text shown below to the clipboard.');
+  await expect(page.getByTestId('export-feedback')).toHaveText('Copied the summary text shown below (evidence details omitted) to the clipboard.');
   expect(await pasteClipboard(page)).toBe(preview);
 
   const file = await downloadVia(page, 'Download text');
@@ -191,7 +125,7 @@ test('acceptance 5: details are opt-in, the preview updates before export, and h
   expect(on).toContain('Reference: TXN-PRIVATE-77');
   expect(on).toContain('Note: <a href="javascript:alert(1)">private note</a>');
   await page.getByRole('button', { name: 'Copy text' }).click();
-  await expect(page.getByTestId('export-feedback')).toHaveText('Copied the summary text shown below to the clipboard.');
+  await expect(page.getByTestId('export-feedback')).toHaveText('Copied the summary text shown below (evidence details included) to the clipboard.');
   expect(await pasteClipboard(page)).toBe(on);
   const onFile = await downloadVia(page, 'Download text');
   expect(onFile.text).toBe(on);
