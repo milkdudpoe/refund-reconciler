@@ -3,9 +3,9 @@
 A local Chrome extension (Manifest V3) that helps you see which return/refund
 records are unresolved or contradictory, item by item.
 
-> **Status: Task 04 — manual entry, explicitly approved selected-text
-> capture, local exports and restore into an empty ledger. Not a validated
-> product.** You can enter
+> **Status: Task 05 — manual entry, explicitly approved selected-text
+> capture, local exports, restore into an empty ledger, and a read-only
+> dashboard overview and case finder. Not a validated product.** You can enter
 > evidence manually, or highlight a refund line on an Amazon US page and
 > approve a previewed merchant-report snapshot (see
 > [docs/capture.md](docs/capture.md)). You can copy or download a plain-text
@@ -60,6 +60,33 @@ report**. Nothing is stored before you save. The supported wording, the
 safeguards and the limitations are in [docs/capture.md](docs/capture.md).
 
 After rebuilding, press the reload icon on the extension's card.
+
+## See what needs attention and find a case
+
+Above **Your cases**, the overview totals **all of your own cases** (never
+synthetic demo cases, and never just the filtered view):
+
+- **Unresolved expected amounts** — the sum of each case's unresolved
+  expected amount, exactly as shown on the case. Items with an unknown
+  expected amount are not in it and are counted separately as **Items with
+  unknown amounts**. Merchant reports are not counted as money received, and
+  one item's excess never offsets another item's shortfall. If the sum is too
+  large to add exactly, it shows *Total unavailable* instead of a number.
+- **Cases needing attention** — every case that is not settled.
+- **Cases needing review** — cases with a review condition, including a case
+  that balances to $0.00 but where the merchant's latest report contradicts
+  your confirmed receipts.
+
+These figures come only from the evidence you saved; they do not mean money
+is owed or that any refund was verified.
+
+**Search by order reference or item description** (case-insensitive,
+literal text; notes, transaction references and captured excerpts are not
+searched) and the **Status** selector (All cases, Needs attention, Needs
+review, Settled) narrow the list together. Matching cases are listed most
+recently updated first. **Clear filters** shows everything again. Filters are
+kept only while the dashboard is open, never saved, and never change what
+exports contain. Details: [docs/product-scope-and-data-model.md](docs/product-scope-and-data-model.md#dashboard-overview-and-case-finder-task-05).
 
 ## Export a case summary or your data
 
@@ -159,7 +186,7 @@ is used.
 ## Project layout
 
 ```
-src/domain/       pure model, money parsing, derivations, ledger, restore decision, runtime validation
+src/domain/       pure model, money parsing, derivations, overview/finder, ledger, restore decision, runtime validation
 src/capture/      source checks, page collector, acquisition, deterministic excerpt parser
 src/export/       pure case-summary text, JSON backup envelope, size bound and payload digest
 src/persistence/  chrome.storage.local read/write (validated, never auto-reset)

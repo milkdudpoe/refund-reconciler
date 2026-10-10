@@ -185,3 +185,25 @@ textarea.export-text { white-space: pre; overflow: auto; min-height: 240px; resi
 .restore-cases, .restore-details { padding-left: 20px; margin: 4px 0 12px; }
 .restore-cases li, .restore-details li { overflow-wrap: anywhere; margin-bottom: 4px; }
 .restore-panel input[type='file'] { display: block; margin: 4px 0; }
+
+/* Dashboard overview and case finder */
+.overview { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.overview-figures dd { font-weight: 600; }
+.finder { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-start; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
+.finder input[type='search'], .finder select {
+  font: inherit;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+.finder #case-search-scope { display: block; margin-top: 2px; }
+.finder-clear { padding-top: 22px; }
+.results-count { margin: 4px 0 8px; font-weight: 600; }
+select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .finder-clear { padding-top: 0; }
+  .finder .field { min-width: 100%; }
+}
