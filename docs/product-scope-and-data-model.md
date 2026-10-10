@@ -161,8 +161,10 @@ item as `reopened`, so the case leaves `settled`.
   It has been tested on synthetic fixtures, not on live Amazon pages.
 - Items cannot be added to or removed from an existing case yet; order
   reference and item labels cannot be edited after creation.
-- No import/export or backup. Storage is limited to Chrome's 10 MB
-  `storage.local` quota (failed writes are reported, not hidden).
+- Export only: a plain-text case summary and a complete JSON data copy (see
+  [export.md](export.md)). There is no import or in-extension restore yet.
+  Storage is limited to Chrome's 10 MB `storage.local` quota (failed writes
+  are reported, not hidden).
 - Local data is not encrypted.
 - Expected-amount entries cannot be voided; record a new expected amount instead.
 - No toolbar badge or reminders.
@@ -182,5 +184,10 @@ Still to do before any paid positioning:
   tests use a test copy with fixture-only host access;
 - only then consider whole-page extraction and history, and test willingness
   to pay.
+
+Task 03 adds read-only exports from saved evidence (a shareable case summary
+and a portable JSON data copy; see [export.md](export.md)). They do not change
+the items above: live Amazon compatibility and the real toolbar-grant flow are
+still unvalidated, and exports do not establish willingness to pay.
 
 Until then this should not be presented as a validated or paid product.

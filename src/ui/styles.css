@@ -173,3 +173,9 @@ ul.problems { padding-left: 18px; margin: 4px 0; }
 .proposal { background: var(--info-bg); border-radius: 6px; padding: 8px; font-size: 0.9rem; }
 .assign select { width: 100%; }
 .tl-provenance details { margin-top: 2px; font-size: 0.85rem; }
+
+/* Export preview */
+.export-panel { border-color: var(--accent); }
+.export-panel .badge-demo { display: inline-block; margin: 0 0 8px; }
+textarea.export-text { white-space: pre; overflow: auto; min-height: 240px; resize: vertical; }
+.export-option { padding-top: 0; }

@@ -11,6 +11,36 @@ export interface AppDeps {
   subscribe: (onChange: () => void) => void;
 }
 
+/** Dashboard-only browser bindings for exports. Neither reads nor writes the ledger. */
+export interface DashboardDeps extends AppDeps {
+  /** Resolves only once the clipboard write has completed; rejects if it was refused. */
+  copyText: (text: string) => Promise<void>;
+  /** Asks the browser to download `text` as a file. Only initiates the download. */
+  requestDownload: (text: string, mimeType: string, filename: string) => void;
+}
+
+/** How long an object URL stays valid after a download is requested. */
+const OBJECT_URL_LIFETIME_MS = 60_000;
+
+function requestBlobDownload(text: string, mimeType: string, filename: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: mimeType }));
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    a.hidden = true;
+    document.body.append(a);
+    a.click();
+    a.remove();
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    throw err;
+  }
+  // The browser reads the blob asynchronously after the click; release it later.
+  setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_LIFETIME_MS);
+}
+
 export function chromeDeps(): AppDeps {
   return {
     area: {
@@ -35,5 +65,13 @@ export function chromeDeps(): AppDeps {
         if (areaName === 'local' && STORE_KEY in changes) onChange();
       });
     },
+  };
+}
+
+export function dashboardDeps(): DashboardDeps {
+  return {
+    ...chromeDeps(),
+    copyText: (text) => navigator.clipboard.writeText(text),
+    requestDownload: requestBlobDownload,
   };
 }

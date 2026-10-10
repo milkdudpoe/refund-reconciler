@@ -3,11 +3,15 @@
 A local Chrome extension (Manifest V3) that helps you see which return/refund
 records are unresolved or contradictory, item by item.
 
-> **Status: Task 02 — manual entry plus explicitly approved selected-text
-> capture. Not a validated product.** You can enter evidence manually, or
-> highlight a refund line on an Amazon US page and approve a previewed
-> merchant-report snapshot (see [docs/capture.md](docs/capture.md)). Capture
-> has been tested only against synthetic fixtures, not live Amazon pages.
+> **Status: Task 03 — manual entry, explicitly approved selected-text
+> capture, and local exports. Not a validated product.** You can enter
+> evidence manually, or highlight a refund line on an Amazon US page and
+> approve a previewed merchant-report snapshot (see
+> [docs/capture.md](docs/capture.md)). You can copy or download a plain-text
+> case summary to use when contacting support yourself, and download a JSON
+> copy of all saved data (see [docs/export.md](docs/export.md)). Capture
+> has been tested only against synthetic fixtures, not live Amazon pages, and
+> the real toolbar-grant flow has not been validated manually.
 > There is no automatic reconciliation, whole-page extraction or history
 > crawling, and no payment/commercial validation. The tool tracks evidence; it
 > does not move money, file disputes, or establish legal entitlement to a
@@ -54,6 +58,21 @@ safeguards and the limitations are in [docs/capture.md](docs/capture.md).
 
 After rebuilding, press the reload icon on the extension's card.
 
+## Export a case summary or your data
+
+- **Case summary:** open a case and choose **Prepare case summary…**. The
+  preview shows the exact plain text (items, amounts, review conditions,
+  explanations and the evidence chronology). Notes, transaction references and
+  captured excerpts are left out unless you tick **Include evidence details**.
+  Choose **Copy text** or **Download text** and share it yourself; nothing is
+  sent to Amazon.
+- **All data:** on the case list, **Your data → Download all data (JSON)…**
+  downloads every case (including demo cases), note and excerpt as an
+  unencrypted JSON file. Restoring it in the extension is not available yet.
+
+Exports never change saved data. Format, snapshot behaviour and error handling
+are in [docs/export.md](docs/export.md).
+
 ## Permissions and data
 
 | Permission | Why |
@@ -82,6 +101,11 @@ are never collected. Nothing from a capture is stored until you approve it. Data
 encrypted** by the extension; anyone with access to the profile can read it.
 It is not synced (`chrome.storage.sync` is not used).
 
+**Exports:** case summaries and JSON data copies are created only when you
+click Copy or Download. Downloaded files are ordinary unencrypted files that
+the extension cannot track or delete. No `downloads` or clipboard permission
+is used.
+
 **What is deleted:**
 - *Delete case…* → *Permanently delete* removes that case, its items and all
   its evidence from storage.
@@ -96,6 +120,7 @@ It is not synced (`chrome.storage.sync` is not used).
 ```
 src/domain/       pure model, money parsing, derivations, ledger, runtime validation
 src/capture/      source checks, page collector, acquisition, deterministic excerpt parser
+src/export/       pure case-summary text and JSON backup envelope generation
 src/persistence/  chrome.storage.local read/write (validated, never auto-reset)
 src/background/   service worker: message validation + serialised writes
 src/ui/           dashboard (plain TS + CSS, text-only rendering)
@@ -104,13 +129,14 @@ public/manifest.json
 tests/unit/       Vitest
 tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,
                   synthetic Amazon-like fixtures served in-browser, no network)
-docs/             product scope, data model, capture
+docs/             product scope, data model, capture, export
 ```
 
 See [docs/product-scope-and-data-model.md](docs/product-scope-and-data-model.md)
 for the derivation rules, limitations and next milestone, and
 [docs/capture.md](docs/capture.md) for the capture flow, parser patterns and
-what was or was not verified.
+what was or was not verified, and [docs/export.md](docs/export.md) for the
+summary and backup formats.
 
 Capture browser tests cannot click the real toolbar button, so they load a
 temporary copy of `dist/` with host access to the synthetic fixture hosts

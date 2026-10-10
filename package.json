@@ -1,8 +1,8 @@
 {
   "name": "refund-reconciler",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Local Chrome extension for reconciling return/refund records (Task 02: selected-text capture).",
+  "description": "Local Chrome extension for reconciling return/refund records (Task 03: selected-text capture plus local evidence exports).",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"

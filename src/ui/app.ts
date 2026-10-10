@@ -8,7 +8,9 @@ import type { CaptureProvenance, CaseRecord, Command, RecordEntryCommand, StoreD
 import { LIMITS, isValidCalendarDate } from '../domain/validate';
 import { ERASE_CONFIRMATION, type Request } from '../background/messages';
 import { loadStore, type LoadResult } from '../persistence/storage';
-import type { AppDeps } from './deps';
+import { buildCaseSummaryText } from '../export/summary';
+import { buildBackup, countBackup, exportFilename, serializeBackup } from '../export/backup';
+import type { DashboardDeps } from './deps';
 import { h, replaceContent } from './dom';
 import {
   CASE_STATUS_LABEL,
@@ -57,6 +59,27 @@ interface VoidDraft {
   error: string;
 }
 
+/** Whether the snapshot held by an open export panel still matches saved data. */
+type Freshness = 'current' | 'changed' | 'deleted' | 'unverified';
+
+interface ExportPanel {
+  kind: 'summary' | 'backup';
+  /** The case being summarised (summary only). */
+  caseId: string | null;
+  /** Control that opened the panel; focus returns to it on close. */
+  returnFocusId: string;
+  phase: 'loading' | 'blocked' | 'missing' | 'ready';
+  blockedReason: string;
+  /** One immutable validated snapshot. The preview and every export use only this. */
+  snapshot: { store: StoreData; takenAt: string } | null;
+  includeDetails: boolean;
+  /** The exact text shown in the preview and copied or downloaded. */
+  text: string;
+  filename: string;
+  freshness: Freshness;
+  feedback: { tone: 'success' | 'error' | 'info'; text: string } | null;
+}
+
 type View = { name: 'list' } | { name: 'create'; draft: CreateDraft } | { name: 'case'; caseId: string };
 
 interface State {
@@ -67,6 +90,7 @@ interface State {
   confirmDelete: boolean;
   confirmErase: boolean;
   busy: boolean;
+  exportPanel: ExportPanel | null;
   notice: { tone: 'success' | 'error' | 'info'; text: string } | null;
 }
 
@@ -77,7 +101,7 @@ const DEFAULT_SOURCE: Record<EntryDraft['kind'], string> = {
   recharge: 'Manual entry',
 };
 
-export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: AppDeps, opts: { startInCreate?: boolean } = {}): void {
+export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: DashboardDeps, opts: { startInCreate?: boolean } = {}): void {
   const state: State = {
     load: { status: 'loading' },
     view: { name: 'list' },
@@ -86,6 +110,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
     confirmDelete: false,
     confirmErase: false,
     busy: false,
+    exportPanel: null,
     notice: null,
   };
 
@@ -108,7 +133,14 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
       }
     }
     if (result.status === 'ok') closeCommittedDrafts(result.store);
+    const becameStale = updateExportFreshness(result);
     render();
+    if (becameStale) {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || active === document.body || (active instanceof HTMLButtonElement && active.disabled)) {
+        document.getElementById('export-refresh')?.focus();
+      }
+    }
   }
 
   function storeHasId(data: StoreData, id: string): boolean {
@@ -346,6 +378,167 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
     el?.focus();
   }
 
+  // ---- Exports (read-only: they never send a change or write storage) ----
+
+  function announce(text: string): void {
+    statusRegion.textContent = text;
+  }
+
+  function openExport(kind: ExportPanel['kind'], caseId: string | null, returnFocusId: string): void {
+    state.exportPanel = {
+      kind,
+      caseId,
+      returnFocusId,
+      phase: 'loading',
+      blockedReason: '',
+      snapshot: null,
+      includeDetails: false,
+      text: '',
+      filename: '',
+      freshness: 'current',
+      feedback: null,
+    };
+    render();
+    document.getElementById('export-heading')?.focus();
+    void takeExportSnapshot();
+  }
+
+  let exportSeq = 0;
+  /** Reads a fresh validated snapshot for the open panel. Never falls back to the page's copy. */
+  async function takeExportSnapshot(): Promise<void> {
+    const panel = state.exportPanel;
+    if (!panel) return;
+    const seq = ++exportSeq;
+    panel.phase = 'loading';
+    panel.feedback = null;
+    render();
+    const result = await loadStore(deps.area);
+    if (seq !== exportSeq || state.exportPanel !== panel) return;
+    panel.snapshot = null;
+    panel.text = '';
+    panel.freshness = 'current';
+    if (result.status !== 'ok') {
+      panel.phase = 'blocked';
+      panel.blockedReason =
+        result.status === 'storage_error'
+          ? `Chrome reported an error while reading extension storage: ${result.error}`
+          : result.status === 'unsupported_version'
+            ? 'Stored data uses an unsupported version.'
+            : 'Stored data could not be read (it failed validation).';
+      announce('Export unavailable: a valid snapshot of saved data cannot be read.');
+    } else if (panel.kind === 'summary' && !result.store.cases.some((c) => c.id === panel.caseId)) {
+      panel.phase = 'missing';
+      announce('This case no longer exists in saved data.');
+    } else {
+      panel.phase = 'ready';
+      panel.snapshot = { store: result.store, takenAt: new Date().toISOString() };
+      regenerateExport(panel);
+      announce(panel.kind === 'summary' ? 'Summary preview ready.' : 'Data export ready to download.');
+    }
+    render();
+    if (document.activeElement === document.body) document.getElementById('export-heading')?.focus();
+  }
+
+  function snapshotCase(panel: ExportPanel): CaseRecord | null {
+    return panel.snapshot?.store.cases.find((c) => c.id === panel.caseId) ?? null;
+  }
+
+  function regenerateExport(panel: ExportPanel): void {
+    const snap = panel.snapshot;
+    if (!snap) return;
+    if (panel.kind === 'summary') {
+      const c = snapshotCase(panel);
+      if (!c) return;
+      panel.text = buildCaseSummaryText(c, { generatedAt: snap.takenAt, revision: snap.store.revision, includeDetails: panel.includeDetails });
+      panel.filename = exportFilename('case-summary', snap.takenAt);
+    } else {
+      panel.text = serializeBackup(buildBackup(snap.store, snap.takenAt));
+      panel.filename = exportFilename('backup', snap.takenAt);
+    }
+  }
+
+  /** Marks an open panel's snapshot as out of date when saved data changes. Returns true if it just became stale. */
+  function updateExportFreshness(result: LoadResult): boolean {
+    const panel = state.exportPanel;
+    if (!panel || panel.phase !== 'ready' || !panel.snapshot) return false;
+    const before = panel.freshness;
+    if (result.status !== 'ok') {
+      panel.freshness = 'unverified';
+    } else if (panel.kind === 'summary') {
+      const now = result.store.cases.find((c) => c.id === panel.caseId);
+      panel.freshness = !now ? 'deleted' : JSON.stringify(now) === JSON.stringify(snapshotCase(panel)) ? 'current' : 'changed';
+    } else {
+      panel.freshness = JSON.stringify(result.store) === JSON.stringify(panel.snapshot.store) ? 'current' : 'changed';
+    }
+    if (panel.freshness !== before && panel.freshness !== 'current') {
+      panel.feedback = null;
+      announce('Saved data changed. The export preview shows an earlier snapshot; refresh it before exporting.');
+      return true;
+    }
+    return false;
+  }
+
+  function exportable(panel: ExportPanel): boolean {
+    return panel.phase === 'ready' && panel.freshness === 'current' && panel.text !== '';
+  }
+
+  function setExportFeedback(panel: ExportPanel, tone: 'success' | 'error' | 'info', text: string): void {
+    panel.feedback = { tone, text };
+    announce(text);
+    render();
+  }
+
+  async function copyExport(): Promise<void> {
+    const panel = state.exportPanel;
+    if (!panel || !exportable(panel)) return;
+    const text = panel.text;
+    try {
+      await deps.copyText(text);
+    } catch (err) {
+      if (state.exportPanel !== panel) return;
+      setExportFeedback(
+        panel,
+        'error',
+        `The text was not copied: the browser refused clipboard access (${err instanceof Error ? err.message : String(err)}). The full text is selected in the preview below, so you can copy it with Ctrl+C or ⌘C.`,
+      );
+      const area = document.getElementById('export-text');
+      if (area instanceof HTMLTextAreaElement) {
+        area.focus();
+        area.select();
+      }
+      return;
+    }
+    if (state.exportPanel !== panel) return;
+    setExportFeedback(panel, 'success', 'Copied the summary text shown below to the clipboard.');
+  }
+
+  function downloadExport(): void {
+    const panel = state.exportPanel;
+    if (!panel || !exportable(panel)) return;
+    const mime = panel.kind === 'summary' ? 'text/plain;charset=utf-8' : 'application/json;charset=utf-8';
+    try {
+      deps.requestDownload(panel.text, mime, panel.filename);
+    } catch (err) {
+      setExportFeedback(
+        panel,
+        'error',
+        `The download could not be started (${err instanceof Error ? err.message : String(err)}). No file was created and your saved data was not changed.`,
+      );
+      return;
+    }
+    setExportFeedback(panel, 'info', `Download requested: ${panel.filename}. Your browser saves the file; check its downloads list to confirm.`);
+  }
+
+  function closeExport(): void {
+    const panel = state.exportPanel;
+    if (!panel) return;
+    exportSeq++;
+    state.exportPanel = null;
+    render();
+    const target = document.getElementById(panel.returnFocusId) ?? document.getElementById('case-heading') ?? document.getElementById('list-heading');
+    target?.focus();
+  }
+
   // ---- Rendering ----
 
   function render(): void {
@@ -355,6 +548,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
         h('p', { class: `notice notice-${state.notice.tone}`, role: state.notice.tone === 'error' ? 'alert' : null, 'data-testid': 'notice' }, state.notice.text),
       );
     }
+    if (state.exportPanel) children.push(renderExportPanel(state.exportPanel));
     children.push(renderBody());
     replaceContent(root, children);
   }
@@ -394,6 +588,166 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
     return renderList(load.store);
   }
 
+  function renderExportPanel(panel: ExportPanel): Node {
+    const isSummary = panel.kind === 'summary';
+    const title = isSummary ? 'Case summary preview' : 'Download all data (JSON)';
+    const closeBtn = h('button', { type: 'button', id: 'export-close', on: { click: closeExport } }, 'Close');
+    const refreshBtn = (label: string) =>
+      h('button', { type: 'button', id: 'export-refresh', on: { click: () => void takeExportSnapshot() } }, label);
+    const body: (Node | null)[] = [];
+    switch (panel.phase) {
+      case 'loading':
+        body.push(h('p', { class: 'muted' }, 'Reading saved data…'), h('div', { class: 'actions' }, closeBtn));
+        break;
+      case 'blocked':
+        body.push(
+          h(
+            'div',
+            { class: 'notice notice-error', role: 'alert', 'data-testid': 'export-blocked' },
+            h('p', {}, 'Export unavailable: a valid snapshot of saved data cannot be read, so nothing can be exported. No file was created, and your saved data was not changed, reset or overwritten.'),
+            h('pre', { class: 'detail' }, panel.blockedReason),
+          ),
+          h('div', { class: 'actions' }, refreshBtn('Try again'), closeBtn),
+        );
+        break;
+      case 'missing':
+        body.push(
+          h('p', { class: 'notice notice-error', role: 'alert', 'data-testid': 'export-missing' }, 'This case no longer exists in saved data, so there is nothing to summarise. Nothing was copied or downloaded.'),
+          h('div', { class: 'actions' }, closeBtn),
+        );
+        break;
+      case 'ready':
+        body.push(...(isSummary ? renderSummaryExport(panel) : renderBackupExport(panel)));
+        body.push(
+          h(
+            'div',
+            { class: 'actions' },
+            isSummary
+              ? h('button', { type: 'button', id: 'export-copy', class: 'primary', disabled: !exportable(panel), on: { click: () => void copyExport() } }, 'Copy text')
+              : null,
+            h(
+              'button',
+              { type: 'button', id: 'export-download', class: isSummary ? null : 'primary', disabled: !exportable(panel), on: { click: downloadExport } },
+              isSummary ? 'Download text' : 'Download JSON',
+            ),
+            refreshBtn(isSummary ? 'Refresh preview' : 'Refresh snapshot'),
+            closeBtn,
+          ),
+          panel.feedback
+            ? h(
+                'p',
+                { class: `notice notice-${panel.feedback.tone}`, role: panel.feedback.tone === 'error' ? 'alert' : null, 'data-testid': 'export-feedback' },
+                panel.feedback.text,
+              )
+            : null,
+        );
+        break;
+    }
+    return h(
+      'section',
+      {
+        class: 'panel export-panel',
+        'aria-labelledby': 'export-heading',
+        'data-testid': 'export-panel',
+        on: { keydown: (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeExport(); } } },
+      },
+      h('h2', { id: 'export-heading', tabindex: -1 }, title),
+      ...body,
+    );
+  }
+
+  function staleWarning(panel: ExportPanel): Node | null {
+    const text: Record<Exclude<Freshness, 'current'>, string> = {
+      changed: panel.kind === 'summary'
+        ? 'Saved data for this case changed after this preview was made. The text below is an earlier snapshot. Copy and download are disabled until you refresh the preview.'
+        : 'Saved data changed after this snapshot was read. Copy and download are disabled until you refresh the snapshot.',
+      deleted: 'This case was deleted from saved data after this preview was made. The text below is an earlier snapshot of a case that no longer exists. Copy and download are disabled.',
+      unverified: 'Saved data could not be re-read after a change, so this snapshot cannot be confirmed as current. Copy and download are disabled until a refresh succeeds.',
+    };
+    return panel.freshness === 'current'
+      ? null
+      : h('p', { class: 'notice notice-error', role: 'alert', 'data-testid': 'export-stale' }, text[panel.freshness]);
+  }
+
+  function snapshotLine(panel: ExportPanel): Node | null {
+    const snap = panel.snapshot;
+    return snap
+      ? h('p', { class: 'muted small', 'data-testid': 'export-snapshot' }, `Snapshot of saved data read ${formatTimestamp(snap.takenAt)} (revision ${snap.store.revision}).`)
+      : null;
+  }
+
+  function renderSummaryExport(panel: ExportPanel): (Node | null)[] {
+    const c = snapshotCase(panel);
+    return [
+      h(
+        'p',
+        {},
+        'This is the exact text that Copy text and Download text use. It lists the retailer, order reference, each item’s figures and review conditions, an explanation of any difference, and the evidence chronology, including voided entries. You send or share it yourself; the extension does not contact Amazon or send anything.',
+      ),
+      h('p', { class: 'muted small' }, 'It is built from your own records only. It is not verified by Amazon or your bank and does not establish what you are owed.'),
+      c?.isDemo ? h('p', { class: 'badge badge-demo' }, 'Synthetic demo case') : null,
+      snapshotLine(panel),
+      staleWarning(panel),
+      h(
+        'div',
+        { class: 'field checkbox export-option' },
+        h('input', {
+          id: 'export-details',
+          type: 'checkbox',
+          checked: panel.includeDetails,
+          'aria-describedby': 'export-details-hint',
+          disabled: panel.freshness !== 'current',
+          on: {
+            change: (ev) => {
+              panel.includeDetails = (ev.target as HTMLInputElement).checked;
+              panel.feedback = null;
+              regenerateExport(panel);
+              render();
+              announce(panel.includeDetails ? 'Preview updated: evidence details included.' : 'Preview updated: evidence details omitted.');
+            },
+          },
+        }),
+        h('label', { for: 'export-details' }, 'Include evidence details (notes, transaction references and captured excerpts)'),
+      ),
+      h(
+        'p',
+        { class: 'muted small', id: 'export-details-hint' },
+        'Off by default, because these may contain private text. Amounts, discrepancies and review conditions are always included.',
+      ),
+      h('label', { for: 'export-text' }, 'Summary text (read-only)'),
+      h('textarea', { id: 'export-text', class: 'export-text', readonly: true, rows: 18, spellcheck: 'false', 'data-testid': 'export-text', value: panel.text }),
+    ];
+  }
+
+  function renderBackupExport(panel: ExportPanel): (Node | null)[] {
+    const snap = panel.snapshot;
+    if (!snap) return [];
+    const n = countBackup(snap.store);
+    return [
+      h(
+        'p',
+        {},
+        'The file contains every saved case — real and synthetic demo — with all items and entries: amounts, notes, transaction references, captured excerpts and their sources, voided entries and their voids, expected-amount history, IDs and timestamps.',
+      ),
+      h(
+        'p',
+        { class: 'muted small' },
+        'It is an ordinary, unencrypted JSON file: anyone who can open it can read it. It is a portable copy of your data; restoring from it inside the extension is not available yet.',
+      ),
+      snapshotLine(panel),
+      staleWarning(panel),
+      h(
+        'dl',
+        { class: 'summary', 'data-testid': 'export-counts' },
+        h('div', {}, h('dt', {}, 'Your cases'), h('dd', { 'data-testid': 'export-real-count' }, String(n.realCases))),
+        h('div', {}, h('dt', {}, 'Synthetic demo cases'), h('dd', { 'data-testid': 'export-demo-count' }, String(n.demoCases))),
+        h('div', {}, h('dt', {}, 'Items'), h('dd', {}, String(n.items))),
+        h('div', {}, h('dt', {}, 'Entries (incl. voids)'), h('dd', {}, `${n.entries} (${n.voids} void${n.voids === 1 ? '' : 's'})`)),
+        h('div', {}, h('dt', {}, 'Captured merchant reports'), h('dd', {}, String(n.capturedReports))),
+      ),
+    ];
+  }
+
   function renderUnreadable(load: Extract<LoadResult, { status: 'corrupt' | 'unsupported_version' }>): Node {
     const title =
       load.status === 'unsupported_version' ? 'Stored data uses an unsupported version' : 'Stored data could not be read';
@@ -417,6 +771,11 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
         'This dashboard will not reset, repair or overwrite this data, and new changes are blocked until it is resolved. It is only erased if you choose to erase it below.',
       ),
       h('pre', { class: 'detail' }, detail),
+      h(
+        'p',
+        { 'data-testid': 'export-unavailable' },
+        'Case summaries and the JSON data export are unavailable because a valid snapshot of saved data cannot be read. Nothing is exported in place of your data.',
+      ),
       h('label', { for: 'raw-data' }, 'Raw stored data (read-only — copy it if you need to keep it)'),
       h('textarea', { id: 'raw-data', readonly: true, rows: 8, value: raw }),
       state.confirmErase
@@ -495,6 +854,17 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
               ),
             )
           : h('ul', { class: 'case-list', 'data-testid': 'real-cases' }, ...real.map(caseRow)),
+      ),
+      h(
+        'section',
+        { class: 'panel', 'aria-labelledby': 'data-heading' },
+        h('h2', { id: 'data-heading' }, 'Your data'),
+        h(
+          'p',
+          { class: 'muted' },
+          'Download a complete JSON copy of everything saved here: all cases (including synthetic demo cases), notes, references and captured excerpts. It is an ordinary, unencrypted file. Restoring from it inside the extension is not available yet.',
+        ),
+        h('button', { type: 'button', id: 'open-backup', on: { click: () => openExport('backup', null, 'open-backup') } }, 'Download all data (JSON)…'),
       ),
       h(
         'section',
@@ -642,6 +1012,11 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
           'p',
           { class: 'muted small' },
           'The unresolved amount is what you expected but have not confirmed receiving. It is a prompt to review your records, not a guarantee that money is owed.',
+        ),
+        h(
+          'div',
+          { class: 'actions' },
+          h('button', { type: 'button', id: 'open-summary', on: { click: () => openExport('summary', c.id, 'open-summary') } }, 'Prepare case summary…'),
         ),
       ),
       h('section', { class: 'panel', 'aria-labelledby': 'items-heading' }, h('h2', { id: 'items-heading' }, 'Items'), h('ul', { class: 'items' }, ...s.items.map((it) => renderItem(c, it)))),
