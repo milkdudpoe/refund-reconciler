@@ -1,4 +1,4 @@
-# Product scope and data model (Task 01)
+# Product scope and data model (Tasks 01–02)
 
 ## Scope
 
@@ -7,12 +7,14 @@
   expected refunds are confirmed, partially confirmed, unconfirmed, reopened by a
   recharge, or exceeded — so the user knows what needs review.
 - **What it does not do:** move money, contact merchants, file disputes, read
-  email or bank data, scrape pages, or decide legal entitlement. Differences are
+  email or bank data, scrape or crawl pages, or decide legal entitlement. Differences are
   shown as *unresolved expected amounts* or *records needing review*, never as
   money guaranteed to be owed.
-- **Evidence in Task 01** is entered manually or comes from a synthetic demo the
-  user must opt into. The demo is stored with `isDemo: true`, labelled
-  "Synthetic", and listed separately.
+- **Evidence** is entered manually, captured from text the user selects on an
+  Amazon US page and explicitly approves (Task 02, merchant reports only; see
+  [capture.md](capture.md)), or comes from a synthetic demo the user must opt
+  into. The demo is stored with `isDemo: true`, labelled "Synthetic", listed
+  separately, and never receives captured evidence.
 
 ## Data model
 
@@ -27,13 +29,16 @@ CaseRecord { id, retailer: 'amazon_us', orderRef | null, currency: 'USD',
 ItemRecord { id, label, createdAt }
 Entry (append-only; common fields: id, itemId, recordedAt, occurredOn | null, source, note)
   expectation      amountCents | null   user-approved expected refund; null = unknown
-  merchant_report  amountCents, reference | null   merchant's reported issued total (snapshot)
+  merchant_report  amountCents, reference | null, capture?   merchant's reported issued total (snapshot);
+                   optional `capture` provenance when approved from selected page text
   receipt          amountCents > 0, reference | null   user confirms money received
   recharge         amountCents > 0, reference | null   user records money taken back
   void             targetEntryId, note = reason   marks an earlier report/receipt/recharge mistaken
 ```
 
 Entries are never edited or removed (except by deleting the whole case).
+The optional `capture` field (see [capture.md](capture.md#stored-provenance))
+was added without changing `schemaVersion`; Task 01 data reads unchanged.
 Item/case status is never stored; it is recomputed from entries every time.
 
 ## Derivation rules
@@ -104,6 +109,10 @@ item as `reopened`, so the case leaves `settled`.
   reference can be reused so a typo can be corrected.
 - Different IDs are always different evidence, even with equal amounts.
   Nothing is ever matched by amount alone.
+- A captured report's ID is its capture operation ID. Its provenance (excerpt,
+  source, time, parser version, approved amount) is part of the comparison, so
+  reusing the ID with different provenance is a conflict. Separate captures of
+  the same text are separate dated snapshots; there is no content-hash dedup.
 
 ## Persistence and concurrency
 
@@ -140,7 +149,10 @@ item as `reopened`, so the case leaves `settled`.
 
 ## Limitations
 
-- Manual entry only; correctness depends on what the user records.
+- Evidence is manual or user-approved selected text; correctness depends on
+  what the user records and selects. Capture reads only selected text on
+  `amazon.com` / `www.amazon.com` and supports only the documented patterns.
+  It has been tested on synthetic fixtures, not on live Amazon pages.
 - Items cannot be added to or removed from an existing case yet; order
   reference and item labels cannot be edited after creation.
 - No import/export or backup. Storage is limited to Chrome's 10 MB
@@ -151,10 +163,18 @@ item as `reopened`, so the case leaves `settled`.
 
 ## Next milestone: capture validation
 
-The product's eventual paid value depends on **automatic, user-approved capture
-of Amazon US order/return/refund status** feeding merchant-report observations
-(with stable observation IDs) into this engine. That is not built. The next task
-should prove, on real (user-consented) Amazon US pages, that per-item refund
-status can be captured reliably enough to detect partial refunds and later
-recharges — and only then test willingness to pay. Until then, this foundation
-should not be presented as a validated or paid product.
+Task 02 adds the first capture slice: user-selected text, previewed and
+explicitly approved, saved as a merchant-report snapshot with provenance and a
+stable operation ID. It is **not** automatic reconciliation.
+
+Still to do before any paid positioning:
+
+- validate, on real (user-consented) Amazon US pages, that per-item refund
+  status can be selected and parsed reliably, and update the parser patterns
+  from that evidence;
+- validate the toolbar-click flow manually in desktop Chrome, since automated
+  tests use a test copy with fixture-only host access;
+- only then consider whole-page extraction and history, and test willingness
+  to pay.
+
+Until then this should not be presented as a validated or paid product.

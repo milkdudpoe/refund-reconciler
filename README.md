@@ -3,11 +3,15 @@
 A local Chrome extension (Manifest V3) that helps you see which return/refund
 records are unresolved or contradictory, item by item.
 
-> **Status: Task 01 foundation — not a validated product.** Everything is
-> entered manually or comes from clearly labelled synthetic examples.
-> Automatic Amazon capture and any payment/commercial validation have **not**
-> been built yet. The tool tracks evidence; it does not move money, file
-> disputes, or establish legal entitlement to a refund.
+> **Status: Task 02 — manual entry plus explicitly approved selected-text
+> capture. Not a validated product.** You can enter evidence manually, or
+> highlight a refund line on an Amazon US page and approve a previewed
+> merchant-report snapshot (see [docs/capture.md](docs/capture.md)). Capture
+> has been tested only against synthetic fixtures, not live Amazon pages.
+> There is no automatic reconciliation, whole-page extraction or history
+> crawling, and no payment/commercial validation. The tool tracks evidence; it
+> does not move money, file disputes, or establish legal entitlement to a
+> refund.
 
 Scope: Amazon US orders, USD only.
 
@@ -36,7 +40,17 @@ npm run check       # all of the above
 2. Open `chrome://extensions`, switch on **Developer mode**.
 3. Click **Load unpacked** and choose the `dist/` folder.
 4. Click the Refund Reconciler toolbar button (pin it from the puzzle-piece
-   menu if needed). The dashboard opens in a new tab.
+   menu if needed). A small panel offers **Open dashboard** and **Capture
+   selected refund text**.
+
+## Capture a refund line from Amazon US
+
+Highlight the refund line for one item on an `https://www.amazon.com` page
+(for example `Refund issued: $35.00`), click the toolbar button, and choose
+**Capture selected refund text**. Check the preview, choose the case and item
+yourself, confirm the amount applies to that item, and choose **Save merchant
+report**. Nothing is stored before you save. The supported wording, the
+safeguards and the limitations are in [docs/capture.md](docs/capture.md).
 
 After rebuilding, press the reload icon on the extension's card.
 
@@ -45,16 +59,26 @@ After rebuilding, press the reload icon on the extension's card.
 | Permission | Why |
 | --- | --- |
 | `storage` | Saves your cases in `chrome.storage.local` in this browser profile. |
+| `activeTab` | Clicking the toolbar button grants temporary access to the current tab only; it ends when you leave the page. |
+| `scripting` | After you choose Capture, runs one bundled function in that tab to read the selected text and page URL. |
 
-No host permissions, content scripts, network requests, analytics, remote code
-or model calls. All JavaScript is bundled into `dist/`. The toolbar button uses
-`chrome.action`/`chrome.tabs.create`, which need no extra permission.
+No host permissions, no `tabs` permission, no declared content scripts, no
+background scanning, network requests, analytics, remote code or model calls.
+All JavaScript is bundled into `dist/`. Only `https://amazon.com` and
+`https://www.amazon.com` pages can be captured. Page code cannot access the
+ledger, because the service worker restricts `chrome.storage.local` to trusted
+extension contexts.
 
 **What is stored:** one key, `refundReconciler.store`, containing your cases:
 optional order reference, item descriptions, expected amounts, and every
 merchant report, receipt confirmation, recharge, void and expected-amount edit
 you enter (amounts, optional dates, references, sources, notes and the time
-each was recorded). Data stays in this browser profile and is **not
+each was recorded). For a captured merchant report it also stores the excerpt
+you approved (at most 4,000 characters), the page origin and a sanitised path
+(tracking segments, fragments and all query parameters except a valid order
+ID are dropped), the capture time, the parser version and the approved amount
+text. The page's HTML, cookies, screenshots and anything you did not select
+are never collected. Nothing from a capture is stored until you approve it. Data stays in this browser profile and is **not
 encrypted** by the extension; anyone with access to the profile can read it.
 It is not synced (`chrome.storage.sync` is not used).
 
@@ -71,17 +95,27 @@ It is not synced (`chrome.storage.sync` is not used).
 
 ```
 src/domain/       pure model, money parsing, derivations, ledger, runtime validation
+src/capture/      source checks, page collector, acquisition, deterministic excerpt parser
 src/persistence/  chrome.storage.local read/write (validated, never auto-reset)
 src/background/   service worker: message validation + serialised writes
 src/ui/           dashboard (plain TS + CSS, text-only rendering)
+src/popup/        toolbar popup: Open dashboard, capture preview and approval
 public/manifest.json
 tests/unit/       Vitest
-tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile)
-docs/             product scope and data model
+tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,
+                  synthetic Amazon-like fixtures served in-browser, no network)
+docs/             product scope, data model, capture
 ```
 
 See [docs/product-scope-and-data-model.md](docs/product-scope-and-data-model.md)
-for the derivation rules, limitations and next milestone.
+for the derivation rules, limitations and next milestone, and
+[docs/capture.md](docs/capture.md) for the capture flow, parser patterns and
+what was or was not verified.
+
+Capture browser tests cannot click the real toolbar button, so they load a
+temporary copy of `dist/` with host access to the synthetic fixture hosts
+only. The shipped `dist/` is checked separately and never gets those
+permissions (details in docs/capture.md).
 
 ## Known dev-tooling advisories
 

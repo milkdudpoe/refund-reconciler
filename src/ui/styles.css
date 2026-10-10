@@ -158,3 +158,18 @@ dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 .review ul, .review-reasons { margin: 0; padding-left: 18px; font-size: 0.85rem; }
 .review-reasons li { color: var(--bad); }
 .case-review { grid-column: 1 / -1; font-size: 0.82rem; color: var(--bad); }
+
+/* Toolbar popup and captured-text provenance */
+body.popup { width: 420px; max-width: 420px; padding: 12px; }
+body.popup h1 { font-size: 1.1rem; }
+body.popup h2 { font-size: 1rem; }
+body.popup h3 { font-size: 0.9rem; margin: 10px 0 4px; }
+pre.excerpt { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 0.85rem; margin: 4px 0; }
+dl.detected { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 8px 0; font-size: 0.9rem; }
+dl.detected > div { display: contents; }
+dl.detected dt { color: var(--muted); }
+dl.detected dd { margin: 0; overflow-wrap: anywhere; }
+ul.problems { padding-left: 18px; margin: 4px 0; }
+.proposal { background: var(--info-bg); border-radius: 6px; padding: 8px; font-size: 0.9rem; }
+.assign select { width: 100%; }
+.tl-provenance details { margin-top: 2px; font-size: 0.85rem; }

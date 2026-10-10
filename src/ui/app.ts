@@ -4,10 +4,11 @@
 
 import { centsToInput, formatUsd, moneyErrorMessage, parseMoney } from '../domain/money';
 import { buildTimeline, summarizeCase, type CaseSummary, type ItemSummary, type TimelineRow } from '../domain/reconcile';
-import type { CaseRecord, Command, RecordEntryCommand, StoreData } from '../domain/types';
+import type { CaptureProvenance, CaseRecord, Command, RecordEntryCommand, StoreData } from '../domain/types';
 import { LIMITS, isValidCalendarDate } from '../domain/validate';
-import { ERASE_CONFIRMATION, isResponse, type Request, type Response } from '../background/messages';
-import { STORE_KEY, loadStore, type LoadResult, type StorageAreaLike } from '../persistence/storage';
+import { ERASE_CONFIRMATION, type Request } from '../background/messages';
+import { loadStore, type LoadResult } from '../persistence/storage';
+import type { AppDeps } from './deps';
 import { h, replaceContent } from './dom';
 import {
   CASE_STATUS_LABEL,
@@ -76,41 +77,7 @@ const DEFAULT_SOURCE: Record<EntryDraft['kind'], string> = {
   recharge: 'Manual entry',
 };
 
-export interface AppDeps {
-  area: StorageAreaLike;
-  send: (req: Request) => Promise<Response>;
-  newId: () => string;
-  subscribe: (onChange: () => void) => void;
-}
-
-export function chromeDeps(): AppDeps {
-  return {
-    area: {
-      get: (key) => chrome.storage.local.get(key),
-      set: (items) => chrome.storage.local.set(items),
-      remove: (key) => chrome.storage.local.remove(key),
-    },
-    async send(req) {
-      try {
-        const res: unknown = await chrome.runtime.sendMessage(req);
-        if (isResponse(res)) return res;
-        return { ok: false, error: { code: 'outcome_unknown', message: 'The extension did not return a valid response.' } };
-      } catch (err) {
-        // The request may have reached the service worker and been saved before
-        // the reply was lost, so this is an unknown outcome, not a failure.
-        return { ok: false, error: { code: 'outcome_unknown', message: err instanceof Error ? err.message : String(err) } };
-      }
-    },
-    newId: () => crypto.randomUUID(),
-    subscribe(onChange) {
-      chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === 'local' && STORE_KEY in changes) onChange();
-      });
-    },
-  };
-}
-
-export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: AppDeps): void {
+export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: AppDeps, opts: { startInCreate?: boolean } = {}): void {
   const state: State = {
     load: { status: 'loading' },
     view: { name: 'list' },
@@ -524,7 +491,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
               h(
                 'p',
                 { class: 'muted' },
-                'Refund Reconciler only knows what you enter here. Nothing is captured from Amazon or your bank automatically, so an empty list says nothing about your refunds.',
+                'Refund Reconciler only knows what you enter here or approve from text you select on an Amazon US page. Nothing is captured from Amazon or your bank automatically, so an empty list says nothing about your refunds.',
               ),
             )
           : h('ul', { class: 'case-list', 'data-testid': 'real-cases' }, ...real.map(caseRow)),
@@ -830,7 +797,9 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
           ? `Expected refund set to ${moneyOrUnknown(e.amountCents)}`
           : `Expected refund changed from ${moneyOrUnknown(row.previousExpectation)} to ${moneyOrUnknown(e.amountCents)}`;
       case 'merchant_report':
-        return `Merchant reported ${formatUsd(e.amountCents)} issued (status snapshot)`;
+        return e.capture
+          ? `Merchant reported ${formatUsd(e.amountCents)} issued (status snapshot, captured from selected page text)`
+          : `Merchant reported ${formatUsd(e.amountCents)} issued (status snapshot)`;
       case 'receipt':
         return `You confirmed ${formatUsd(e.amountCents)} received`;
       case 'recharge':
@@ -866,6 +835,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
               e.occurredOn ? ` · Occurred ${e.occurredOn}` : '',
               'reference' in e && e.reference ? ` · Ref ${e.reference}` : '',
             ),
+            e.kind === 'merchant_report' && e.capture ? renderProvenance(e.capture) : null,
             target && 'amountCents' in target ? h('div', { class: 'tl-meta' }, `Voided: ${KIND_LABEL[target.kind]} of ${moneyOrUnknown(target.amountCents)} recorded ${formatTimestamp(target.recordedAt)}`) : null,
             e.note ? h('div', { class: 'tl-note' }, e.kind === 'void' ? `Reason: ${e.note}` : `Note: ${e.note}`) : null,
             row.voidedBy ? h('div', { class: 'tl-meta' }, `Voided ${formatTimestamp(row.voidedBy.recordedAt)}: ${row.voidedBy.note}`) : null,
@@ -876,6 +846,22 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
           );
         }),
       ),
+    );
+  }
+
+  function renderProvenance(p: CaptureProvenance): Node {
+    return h(
+      'div',
+      { class: 'tl-provenance', 'data-testid': 'provenance' },
+      h(
+        'div',
+        { class: 'tl-meta' },
+        `Captured ${formatTimestamp(p.capturedAt)} from ${p.sourceOrigin}${p.sourcePath ?? ''} · approved amount “${p.approvedAmountText}”`,
+        p.detectedOrderRef ? ` · order in text ${p.detectedOrderRef}` : '',
+        ` · parser ${p.parserVersion}`,
+      ),
+      h('div', { class: 'tl-meta' }, 'The merchant’s statement only — not confirmation that money arrived.'),
+      h('details', {}, h('summary', {}, 'Approved excerpt'), h('pre', { class: 'excerpt' }, p.excerpt)),
     );
   }
 
@@ -925,6 +911,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: App
   }
 
   deps.subscribe(() => void reload());
+  if (opts.startInCreate) openCreate();
   render();
   void reload();
 }

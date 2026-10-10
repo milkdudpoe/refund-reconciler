@@ -38,6 +38,34 @@ export interface MerchantReportEntry extends EntryBase {
   readonly kind: 'merchant_report';
   readonly amountCents: Cents;
   readonly reference: string | null;
+  /**
+   * Present only when the report came from user-approved selected page text.
+   * Absent on manual entries (including all Task 01 data). It explains where
+   * the merchant's statement was read; it is never proof that money arrived.
+   */
+  readonly capture?: CaptureProvenance;
+}
+
+export type CaptureOrigin = 'https://www.amazon.com' | 'https://amazon.com';
+
+/** Where and how a captured merchant report was read. Stored with the entry. */
+export interface CaptureProvenance {
+  /** Page origin the selection was read from (checked at extraction time). */
+  readonly sourceOrigin: CaptureOrigin;
+  /** Path with tracking segments, fragments and non-order query parameters removed; null if not kept. */
+  readonly sourcePath: string | null;
+  /** When the selection was read (ISO 8601, extension clock). */
+  readonly capturedAt: string;
+  /** The normalised excerpt the user saw and approved. */
+  readonly excerpt: string;
+  /** Version of the deterministic excerpt parser that proposed the amount. */
+  readonly parserVersion: string;
+  /** The literal amount text in the excerpt that the user approved, e.g. "$70.00". */
+  readonly approvedAmountText: string;
+  /** The single order reference found in the excerpt, if any. */
+  readonly detectedOrderRef: string | null;
+  /** The user confirmed the reported total applies to this one item. Always true when stored. */
+  readonly itemApplicabilityConfirmed: true;
 }
 
 /** The user explicitly confirms money arrived for this item. */
@@ -118,6 +146,8 @@ export interface RecordEntryCommand {
     readonly source: string;
     readonly note: string;
     readonly reference: string | null;
+    /** Only for merchant reports captured from selected page text. */
+    readonly capture?: CaptureProvenance;
   };
 }
 

@@ -3,9 +3,14 @@ import { createHandler } from './handler';
 
 const handler = createHandler(chromeLocalArea());
 
-chrome.action.onClicked.addListener(() => {
-  void chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+// Ledger storage is for this extension's own pages and service worker only.
+// The capture collector runs in pages and must never be able to read or write it.
+void chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).catch((err: unknown) => {
+  console.error('Could not restrict storage access level', err);
 });
+
+// The toolbar button opens popup.html (manifest "default_popup"), which offers
+// Capture and Open dashboard. Clicking it grants temporary activeTab access.
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   // Only accept messages from this extension's own pages.
