@@ -5,25 +5,8 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Page } from '@playwright/test';
 import { DIST, createCase, itemCard, recordForItem } from './fixtures';
-import { ORDER_A, ORDER_B, ORDER_PAGE, expect, openPopup, openSource, selectBlock, storedEntries, storedRaw, test } from './capture-fixtures';
-
-async function capture(popup: Page): Promise<void> {
-  await popup.getByRole('button', { name: 'Capture selected refund text' }).click();
-}
-
-async function assign(popup: Page, caseLabel: string | RegExp, itemLabel: string): Promise<void> {
-  const caseSelect = popup.getByLabel('Case', { exact: true });
-  const option = await caseSelect.locator('option').filter({ hasText: caseLabel }).first().getAttribute('value');
-  await caseSelect.selectOption(option!);
-  await popup.getByLabel('Item', { exact: true }).selectOption({ label: itemLabel });
-}
-
-async function approveAndSave(popup: Page): Promise<void> {
-  await popup.getByRole('checkbox', { name: /is the refund for this one item/ }).check();
-  await popup.getByRole('button', { name: 'Save merchant report' }).click();
-}
+import { ORDER_A, ORDER_B, ORDER_PAGE, approveAndSave, assign, capture, expect, openPopup, openSource, pageFor, selectBlock, storedEntries, storedRaw, test } from './capture-fixtures';
 
 test('production build: only storage, activeTab and scripting; no host access without a user grant', async ({ production }) => {
   const shipped = JSON.parse(await readFile(join(DIST, 'manifest.json'), 'utf8'));
@@ -103,7 +86,7 @@ test('$70 issued: previewed without writing, then saved once as an issued/unconf
       sourceOrigin: 'https://www.amazon.com',
       sourcePath: `/gp/your-account/order-details?orderID=${ORDER_A}`,
       excerpt: `Order # ${ORDER_A}\n\nSynthetic headphones\n\nRefund issued: $70.00`,
-      parserVersion: 'amazon-us-selection-1',
+      parserVersion: 'amazon-us-selection-2',
       approvedAmountText: '$70.00',
       detectedOrderRef: ORDER_A,
       itemApplicabilityConfirmed: true,
@@ -234,7 +217,8 @@ test('equal amounts stay separate; order mismatch and demo cases are blocked; no
   await dash.getByRole('button', { name: '← All cases' }).click();
   await createCase(dash, { orderRef: ORDER_B, items: [{ label: 'Other order item', amount: '35' }] });
 
-  const { page, windowId } = await openSource(granted);
+  // The page address and the selected text both name order B (they agree).
+  const { page, windowId } = await openSource(granted, pageFor(ORDER_B));
   await selectBlock(page, 'issued-35-order-b');
   const popup = await openPopup(granted, windowId);
   await capture(popup);
@@ -248,7 +232,8 @@ test('equal amounts stay separate; order mismatch and demo cases are blocked; no
   await expect(popup.getByRole('button', { name: 'Save merchant report' })).toBeDisabled();
   await popup.getByRole('button', { name: 'Cancel' }).click();
 
-  // An item-specific $35 line with no order number, assigned explicitly to item B.
+  // An item-specific $35 line with no order number, on order A's page, assigned explicitly to item B.
+  await page.goto(ORDER_PAGE);
   await selectBlock(page, 'issued-35');
   await capture(popup);
   await expect(popup.getByTestId('detected-date')).toHaveText('2026-10-03');

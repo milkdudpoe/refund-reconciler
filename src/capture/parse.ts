@@ -17,8 +17,14 @@
 
 import { parseMoney, type Cents } from '../domain/money';
 import { isValidCalendarDate } from '../domain/validate';
+import { orderContextOf, orderIdsInText, type OrderContext } from './order';
 
-export const PARSER_VERSION = 'amazon-us-selection-1';
+export const PARSER_VERSION = 'amazon-us-selection-2';
+/**
+ * Versions whose stored captures are still accepted as written. Stored entries
+ * are never re-parsed or recomputed; only new commands must match PARSER_VERSION.
+ */
+export const KNOWN_PARSER_VERSIONS: readonly string[] = ['amazon-us-selection-1', PARSER_VERSION];
 export const EXCERPT_MAX_CHARS = 4000;
 
 export type NotIssuedReason = 'recharge' | 'pending' | 'expected' | 'purchase_price' | 'return_received' | 'unlabelled';
@@ -47,7 +53,8 @@ export interface ExcerptAnalysis {
   readonly excerpt: string;
   /** The issued amount proposed for approval, or null if there is none. */
   readonly issued: { readonly cents: Cents; readonly amountText: string; readonly statement: string } | null;
-  readonly orderRef: { status: 'found'; value: string } | { status: 'none' } | { status: 'ambiguous'; values: readonly string[] };
+  /** Order ID(s) in the selected text only. The page URL is assessed separately. */
+  readonly orderRef: OrderContext;
   readonly date: DateResult;
   /** Dollar amounts seen but deliberately not treated as issued. */
   readonly notIssued: readonly { readonly amountText: string; readonly reason: NotIssuedReason }[];
@@ -75,9 +82,15 @@ export function normalizeExcerpt(raw: string): string {
 
 const FOREIGN_CURRENCY =
   /(?:\b(?:CA|C|A|AU|NZ|MX|HK|S|R|NT|CDN)\$)|[€£¥₹₩₽₺₱₪]|\b(?:EUR|GBP|CAD|AUD|JPY|MXN|INR|CNY|BRL|CHF|SEK|NZD|SGD|HKD)\b/;
-// A "$" amount. The sign group catches "$-70" / "-$70"; the digits group is
-// handed to the strict cent parser, so "$70.005" or "$7,0.00" are rejected.
-const DOLLAR_AMOUNT = /(?<![A-Za-z0-9])([-−+]\s?)?(?:US)?\$\s?([-−+]?)([0-9][0-9,.]*[0-9]|[0-9])(?![0-9])/g;
+// A "$" amount token. The body is taken greedily: digits plus any letters,
+// separators or symbols that could belong to the same number ("1e3", "70/00",
+// "70 000.00", "70.00.5"), continuing across a single space only when a digit
+// follows. Only trailing sentence punctuation is trimmed. The whole body must
+// then pass the strict cent parser, so a malformed token is rejected as a
+// whole instead of a valid-looking prefix being salvaged. The sign groups
+// catch "$-70" / "-$70".
+const DOLLAR_AMOUNT = /(?<![A-Za-z0-9$])([-−+]\s?)?(?:US)?\$\s?([-−+]?)([0-9](?:[0-9A-Za-z,./_'’:%#~^*+=-]| (?=[0-9]))*)/g;
+const TRAILING_PUNCTUATION = /[.,:;]+$/;
 
 const ISSUED_WORDING = (s: string) => /\brefunded\b/i.test(s) || (/\brefund\b/i.test(s) && /\bissued\b/i.test(s));
 const DISQUALIFIER =
@@ -92,8 +105,6 @@ const AGGREGATE_STATEMENT = new RegExp(`${AGGREGATE_REFUND.source}|\\b(?:order t
 const MONTH = '(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)';
 const DATE = new RegExp(`\\b${MONTH}\\.? (\\d{1,2}),? (\\d{4})\\b`, 'gi');
 const DATE_ONLY = new RegExp(`^(?:on )?${MONTH}\\.? \\d{1,2},? \\d{4}[.:]?$`, 'i');
-const AMOUNT_ONLY = /^(?:US)?\$\s?[0-9][0-9,.]*(?: USD)?[.]?$/;
-const ORDER_REF = /(?<![A-Za-z0-9-])(?:\d{3}|D\d{2})-\d{7}-\d{7}(?![0-9-])/g;
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
 interface Amount {
@@ -106,14 +117,23 @@ function amountsIn(segment: string): Amount[] {
   const out: Amount[] = [];
   for (const m of segment.matchAll(DOLLAR_AMOUNT)) {
     const signed = (m[1] ?? '') !== '' || (m[2] ?? '') !== '';
-    const digits = m[3] ?? '';
+    const body = m[3] ?? '';
+    const digits = body.replace(TRAILING_PUNCTUATION, '');
     const parsed = parseMoney(digits);
-    const text = m[0].trim();
+    const text = m[0].slice(0, m[0].length - (body.length - digits.length)).trim();
     if (signed || !parsed.ok) out.push({ text, cents: null, bad: 'malformed' });
     else if (parsed.cents === 0) out.push({ text, cents: 0, bad: 'zero' });
     else out.push({ text, cents: parsed.cents, bad: null });
   }
   return out;
+}
+
+/** A line holding exactly one dollar-amount token (optionally followed by "USD"). */
+function isAmountOnly(line: string): boolean {
+  const amounts = amountsIn(line);
+  if (amounts.length !== 1 || !amounts[0]) return false;
+  const rest = line.replace(amounts[0].text, '').trim();
+  return rest === '' || rest === '.' || /^USD\.?$/.test(rest);
 }
 
 /** Splits into statements: lines, then sentences; joins "label" lines with their value lines. */
@@ -131,7 +151,7 @@ function statements(text: string): string[] {
       let j = i + 1;
       const joined = [current];
       while (j < pieces.length && DATE_ONLY.test(pieces[j] ?? '')) joined.push(pieces[j++] ?? '');
-      if (j < pieces.length && AMOUNT_ONLY.test(pieces[j] ?? '')) {
+      if (j < pieces.length && isAmountOnly(pieces[j] ?? '')) {
         joined.push(pieces[j] ?? '');
         current = joined.join(' ');
         i = j;
@@ -177,10 +197,8 @@ export function analyzeExcerpt(raw: string): ExcerptAnalysis {
     return { ...base, excerpt: '', issued: null, orderRef: { status: 'none' }, date: { status: 'none' }, notIssued, problems: ['too_long'] };
   }
 
-  const refs = [...new Set([...excerpt.matchAll(ORDER_REF)].map((m) => m[0].toUpperCase()))];
-  const orderRef: ExcerptAnalysis['orderRef'] =
-    refs.length === 0 ? { status: 'none' } : refs.length === 1 ? { status: 'found', value: refs[0] ?? '' } : { status: 'ambiguous', values: refs };
-  if (refs.length > 1) problems.push('multiple_order_refs');
+  const orderRef = orderContextOf(orderIdsInText(excerpt));
+  if (orderRef.status === 'ambiguous') problems.push('multiple_order_refs');
   if (FOREIGN_CURRENCY.test(excerpt)) problems.push('unsupported_currency');
 
   const candidates: { statement: string; amount: Amount }[] = [];
@@ -226,22 +244,4 @@ export function analyzeExcerpt(raw: string): ExcerptAnalysis {
     notIssued,
     problems: [],
   };
-}
-
-/** Extracts a recognisable Amazon order ID from free text such as a case's order reference. */
-export function extractOrderId(text: string | null): string | null {
-  if (text === null) return null;
-  const ids = [...new Set([...text.matchAll(ORDER_REF)].map((m) => m[0].toUpperCase()))];
-  return ids.length === 1 ? (ids[0] ?? null) : null;
-}
-
-export type OrderCompatibility = 'match' | 'mismatch' | 'case_has_no_order' | 'excerpt_has_no_order' | 'not_comparable';
-
-/** Compares the excerpt's order ID with a case's order reference. Never matches by amount or label. */
-export function compareOrder(detected: string | null, caseOrderRef: string | null): OrderCompatibility {
-  if (detected === null) return 'excerpt_has_no_order';
-  if (caseOrderRef === null || caseOrderRef.trim() === '') return 'case_has_no_order';
-  const caseId = extractOrderId(caseOrderRef);
-  if (caseId === null) return 'not_comparable';
-  return caseId === detected.toUpperCase() ? 'match' : 'mismatch';
 }

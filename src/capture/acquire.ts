@@ -5,7 +5,8 @@
 
 import { collectSelection, type CollectorResult } from './collector';
 import { EXCERPT_MAX_CHARS } from './parse';
-import { checkSourceUrl, sanitizeSourcePath, type SourceProblem } from './source';
+import { analyzeSourceUrl, checkSourceUrl, type SourceProblem } from './source';
+import type { OrderContext } from './order';
 import type { CaptureOrigin } from '../domain/types';
 
 export type AcquireProblem =
@@ -19,7 +20,7 @@ export type AcquireProblem =
   | 'injection_failed';
 
 export type AcquireResult =
-  | { ok: true; text: string; sourceOrigin: CaptureOrigin; sourcePath: string | null }
+  | { ok: true; text: string; sourceOrigin: CaptureOrigin; sourcePath: string | null; sourceOrder: OrderContext }
   | { ok: false; problem: AcquireProblem; length?: number };
 
 export interface AcquireDeps {
@@ -104,8 +105,11 @@ export async function acquireSelection(deps: AcquireDeps, tabId: number | null, 
       return { ok: false, problem: raw.status };
     case 'too_long':
       return { ok: false, problem: 'too_long', length: raw.length };
-    case 'ok':
+    case 'ok': {
       if (raw.text.length > EXCERPT_MAX_CHARS) return { ok: false, problem: 'too_long', length: raw.text.length };
-      return { ok: true, text: raw.text, sourceOrigin: actual.origin, sourcePath: sanitizeSourcePath(raw.href) };
+      // The order context comes from the URL of the document that actually ran the collector.
+      const source = analyzeSourceUrl(raw.href);
+      return { ok: true, text: raw.text, sourceOrigin: actual.origin, sourcePath: source.path, sourceOrder: source.order };
+    }
   }
 }

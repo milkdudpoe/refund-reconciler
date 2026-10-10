@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { acquireSelection, type AcquireDeps } from '../../src/capture/acquire';
 import { EXCERPT_MAX_CHARS } from '../../src/capture/parse';
-import { checkSourceUrl, isValidSourcePath, sanitizeSourcePath } from '../../src/capture/source';
+import { analyzeSourceUrl, checkSourceUrl, isValidSourcePath, orderFromSourcePath, sanitizeSourcePath } from '../../src/capture/source';
 
 describe('checkSourceUrl', () => {
   it.each([
@@ -34,6 +34,36 @@ describe('checkSourceUrl', () => {
     ['https://www.amazon.com@evil.example/', 'unsupported_host'],
   ])('rejects %s', (url, problem) => {
     expect(checkSourceUrl(url)).toEqual({ ok: false, problem });
+  });
+});
+
+describe('order context in the source URL (finding 2)', () => {
+  const A = '112-1234567-7654321';
+  const B = '113-7654321-1234567';
+  const base = 'https://www.amazon.com/gp/your-account/order-details';
+
+  it('reads one unambiguous order ID from orderID/orderId or a path segment', () => {
+    expect(analyzeSourceUrl(`${base}?orderID=${A}`)).toEqual({ path: `/gp/your-account/order-details?orderID=${A}`, order: { status: 'found', value: A } });
+    expect(analyzeSourceUrl(`${base}?orderId=${A}&tag=x`).order).toEqual({ status: 'found', value: A });
+    expect(analyzeSourceUrl(`${base}?orderID=${A}&orderID=${A}`).order).toEqual({ status: 'found', value: A });
+    expect(analyzeSourceUrl(`https://www.amazon.com/your-orders/${A}/details`)).toEqual({ path: `/your-orders/${A}/details`, order: { status: 'found', value: A } });
+    expect(analyzeSourceUrl(`${base}?session-id=${A}`).order).toEqual({ status: 'none' });
+    expect(analyzeSourceUrl(`${base}?orderID=junk`)).toEqual({ path: '/gp/your-account/order-details', order: { status: 'none' } });
+    expect(analyzeSourceUrl(base).order).toEqual({ status: 'none' });
+  });
+
+  it('keeps conflicting order IDs ambiguous instead of taking the first, and stores none of them', () => {
+    for (const url of [`${base}?orderID=${A}&orderID=${B}`, `${base}?orderID=${A}&orderId=${B}`, `https://www.amazon.com/your-orders/${A}?orderID=${B}`]) {
+      const r = analyzeSourceUrl(url);
+      expect(r.order).toEqual({ status: 'ambiguous', values: expect.arrayContaining([A, B]) });
+      expect(r.path).not.toContain('?');
+    }
+  });
+
+  it('reads stored source paths, including Task 02 ones, as order context', () => {
+    expect(orderFromSourcePath(`/gp/your-account/order-details?orderID=${A}`)).toEqual({ status: 'found', value: A });
+    expect(orderFromSourcePath('/gp/your-account/order-details')).toEqual({ status: 'none' });
+    expect(orderFromSourcePath(null)).toEqual({ status: 'none' });
   });
 });
 
@@ -77,6 +107,7 @@ describe('acquireSelection', () => {
       text: 'Refund issued: $70.00',
       sourceOrigin: 'https://www.amazon.com',
       sourcePath: '/gp/css/order-details',
+      sourceOrder: { status: 'none' },
     });
   });
 

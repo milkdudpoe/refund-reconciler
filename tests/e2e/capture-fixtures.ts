@@ -33,7 +33,12 @@ export const FIXTURE_HOST_PERMISSIONS = [
 
 export const ORDER_A = '112-1234567-7654321';
 export const ORDER_B = '113-7654321-1234567';
-export const ORDER_PAGE = `https://www.amazon.com/gp/your-account/order-details/ref=ppx_yo_dt_b_synthetic?ie=UTF8&orderID=${ORDER_A}&session-id=000-SYNTHETIC#top`;
+/** A synthetic order-details URL naming `order` (or no order). */
+export function pageFor(order: string | null, extraQuery = ''): string {
+  const q = [`ie=UTF8`, order ? `orderID=${order}` : '', 'session-id=000-SYNTHETIC', extraQuery].filter((x) => x !== '').join('&');
+  return `https://www.amazon.com/gp/your-account/order-details/ref=ppx_yo_dt_b_synthetic?${q}#top`;
+}
+export const ORDER_PAGE = pageFor(ORDER_A);
 
 const LONG = 'Synthetic filler text. '.repeat(260);
 
@@ -47,6 +52,9 @@ const BLOCKS: Record<string, string> = {
   multiple: '<p>Synthetic kettle</p><p>Refund issued: $35.00</p><p>Synthetic mug</p><p>Refund issued: $35.00</p>',
   aggregate: '<p>Refund summary</p><p>Refund issued for 3 items: $105.00</p>',
   euro: '<p>Refund issued: €70.00</p>',
+  'malformed-exp': '<p>Refund issued: $1e3</p>',
+  'malformed-space': '<p>Refund issued: $70 000.00</p>',
+  'malformed-slash': '<p>Refund issued: $70/00</p>',
   hostile: '<p>Refund issued: $70.00</p><p>&lt;img src=x onerror="window.__pwned=1"&gt;&lt;b&gt;bold&lt;/b&gt;</p>',
   long: `<p>Refund issued: $70.00</p><p>${LONG}</p>`,
 };
@@ -181,4 +189,22 @@ interface StoredEntry {
 export async function storedEntries(session: ExtensionSession): Promise<StoredEntry[]> {
   const raw = (await storedRaw(session)) as { cases: { entries: StoredEntry[] }[] } | undefined;
   return raw?.cases.flatMap((c) => c.entries) ?? [];
+}
+
+// ---- Popup helpers ----
+
+export async function capture(popup: Page): Promise<void> {
+  await popup.getByRole('button', { name: 'Capture selected refund text' }).click();
+}
+
+export async function assign(popup: Page, caseLabel: string | RegExp, itemLabel: string): Promise<void> {
+  const caseSelect = popup.getByLabel('Case', { exact: true });
+  const option = await caseSelect.locator('option').filter({ hasText: caseLabel }).first().getAttribute('value');
+  await caseSelect.selectOption(option!);
+  await popup.getByLabel('Item', { exact: true }).selectOption({ label: itemLabel });
+}
+
+export async function approveAndSave(popup: Page): Promise<void> {
+  await popup.getByRole('checkbox', { name: /is the refund for this one item/ }).check();
+  await popup.getByRole('button', { name: 'Save merchant report' }).click();
 }

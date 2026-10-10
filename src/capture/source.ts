@@ -5,6 +5,7 @@
 // collector reports, so a navigation in between is caught.
 
 import type { CaptureOrigin } from '../domain/types';
+import { ORDER_ID_PATTERN, orderContextOf, type OrderContext } from './order';
 
 export const SUPPORTED_ORIGINS: readonly CaptureOrigin[] = ['https://www.amazon.com', 'https://amazon.com'];
 
@@ -45,29 +46,55 @@ export function checkSourceUrl(url: string | undefined | null): SourceCheck {
 }
 
 export const SOURCE_PATH_MAX = 300;
-const ORDER_ID_PATTERN = /^(?:\d{3}|D\d{2})-\d{7}-\d{7}$/;
 const SAFE_PATH = /^\/[A-Za-z0-9/_.~%-]*$/;
 
+const ORDER_QUERY_KEYS = ['orderID', 'orderId'];
+
+function orderIdsInPathSegments(path: string): string[] {
+  return path.split('/').filter((seg) => ORDER_ID_PATTERN.test(seg));
+}
+
+export interface SourceAnalysis {
+  /** Sanitised path to store as provenance, or null if not kept. */
+  readonly path: string | null;
+  /** Order context named by the URL itself (query orderID/orderId values and order-ID path segments). */
+  readonly order: OrderContext;
+}
+
 /**
- * Reduces a page URL to the minimum needed to explain a capture later: the
- * path without "ref=" tracking segments, plus an order ID query parameter if
- * it is a well-formed Amazon order ID. Fragments and every other query
- * parameter (tracking, session, authentication) are dropped. Returns null if
- * the remaining path is unusual or too long to keep safely.
+ * Reduces a page URL to the minimum needed to explain a capture later and
+ * reads its order context. The path keeps everything except "ref=" tracking
+ * segments; the query keeps only `orderID=<id>` when the URL names exactly one
+ * order. Every other query parameter (tracking, session, authentication) and
+ * the fragment are dropped. Several different order IDs are ambiguous: none is
+ * kept and the first is never chosen. Path is null if unusual or too long.
  */
-export function sanitizeSourcePath(url: string): string | null {
+export function analyzeSourceUrl(url: string): SourceAnalysis {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return null;
+    return { path: null, order: { status: 'none' } };
   }
   const segments = parsed.pathname.split('/').filter((s) => s !== '' && !/^ref=/i.test(s));
-  let path = `/${segments.join('/')}`;
-  if (!SAFE_PATH.test(path)) return null;
-  const orderId = parsed.searchParams.get('orderID') ?? parsed.searchParams.get('orderId');
-  if (orderId !== null && ORDER_ID_PATTERN.test(orderId)) path += `?orderID=${orderId}`;
-  return path.length <= SOURCE_PATH_MAX ? path : null;
+  const basePath = `/${segments.join('/')}`;
+  const queryIds = ORDER_QUERY_KEYS.flatMap((k) => parsed.searchParams.getAll(k)).filter((v) => ORDER_ID_PATTERN.test(v));
+  const order = orderContextOf([...orderIdsInPathSegments(basePath), ...queryIds]);
+  if (!SAFE_PATH.test(basePath)) return { path: null, order };
+  const path = order.status === 'found' && queryIds.length > 0 ? `${basePath}?orderID=${order.value}` : basePath;
+  return { path: path.length <= SOURCE_PATH_MAX ? path : null, order };
+}
+
+export function sanitizeSourcePath(url: string): string | null {
+  return analyzeSourceUrl(url).path;
+}
+
+/** Order context of stored provenance: the single order ID retained in its path, if any. */
+export function orderFromSourcePath(sourcePath: string | null): OrderContext {
+  if (sourcePath === null) return { status: 'none' };
+  const [path = '', query] = sourcePath.split('?');
+  const queryIds = query === undefined ? [] : [query.replace(/^orderID=/, '')].filter((v) => ORDER_ID_PATTERN.test(v));
+  return orderContextOf([...orderIdsInPathSegments(path), ...queryIds]);
 }
 
 /** Runtime check used when stored or messaged provenance is validated. */

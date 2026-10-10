@@ -113,6 +113,12 @@ item as `reopened`, so the case leaves `settled`.
   source, time, parser version, approved amount) is part of the comparison, so
   reusing the ID with different provenance is a conflict. Separate captures of
   the same text are separate dated snapshots; there is no content-hash dedup.
+- The popup freezes an approved capture (payload, case and item) when Save is
+  pressed. Retries and recovery after an uncertain reply reuse that exact
+  payload and ID, and the assignment is locked until the outcome is known.
+- Order compatibility for captures uses the order in the selected text and the
+  order in the source page address, through one rule shared by the popup and
+  the service worker (see [capture.md](capture.md#assignment-checks)).
 
 ## Persistence and concurrency
 

@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createHandler } from '../../src/background/handler';
-import { analyzeExcerpt } from '../../src/capture/parse';
+import { PARSER_VERSION, analyzeExcerpt } from '../../src/capture/parse';
 import { summarizeItem } from '../../src/domain/reconcile';
 import type { CaptureProvenance, RecordEntryCommand } from '../../src/domain/types';
 import { CAPTURE_SOURCE, parseCommand, parseStore } from '../../src/domain/validate';
@@ -40,6 +40,23 @@ const item = (h: Harness, caseId: string, itemId: string) => {
   const c = h.case(caseId);
   return summarizeItem(c, c.items.find((i) => i.id === itemId)!);
 };
+
+class FakeArea implements StorageAreaLike {
+  data = new Map<string, unknown>();
+  failSets = false;
+  setCalls = 0;
+  async get(key: string) {
+    return this.data.has(key) ? { [key]: structuredClone(this.data.get(key)) } : {};
+  }
+  async set(items: Record<string, unknown>) {
+    this.setCalls += 1;
+    if (this.failSets) throw new Error('QUOTA_BYTES quota exceeded');
+    for (const [k, v] of Object.entries(items)) this.data.set(k, structuredClone(v));
+  }
+  async remove(key: string) {
+    this.data.delete(key);
+  }
+}
 
 describe('captured merchant reports in the ledger', () => {
   it('$70 issued against $70 expected stays issued/unconfirmed and creates no receipt (acceptance 1, 4)', () => {
@@ -133,6 +150,119 @@ describe('captured merchant reports in the ledger', () => {
   });
 });
 
+describe('malformed amount tokens cannot reach storage (finding 1)', () => {
+  // Hand-built commands claiming the valid-looking prefix the old parser salvaged.
+  const forged = (excerpt: string, amountText: string, cents: number, parserVersion = PARSER_VERSION): RecordEntryCommand['entry'] => ({
+    id: 'cap-forged',
+    kind: 'merchant_report',
+    itemId: 'a',
+    amountCents: cents,
+    occurredOn: null,
+    source: CAPTURE_SOURCE,
+    note: '',
+    reference: null,
+    capture: {
+      sourceOrigin: 'https://www.amazon.com',
+      sourcePath: '/gp/your-account/order-details',
+      capturedAt: '2026-10-01T12:00:00.000Z',
+      excerpt,
+      parserVersion,
+      approvedAmountText: amountText,
+      detectedOrderRef: null,
+      itemApplicabilityConfirmed: true,
+    },
+  });
+
+  it.each([
+    ['Refund issued: $1e3', '$1', 100],
+    ['Refund issued: $70 000.00', '$70', 7000],
+    ['Refund issued: $70/00', '$70', 7000],
+  ])('%j is refused at the runtime/ledger boundary', async (excerpt, amountText, cents) => {
+    expect(analyzeExcerpt(excerpt).issued).toBeNull();
+    const command = { type: 'recordEntry', caseId: 'c', entry: forged(excerpt, amountText, cents) };
+    // Structurally valid, so the ledger's parser recheck is what refuses it.
+    const parsed = parseCommand(JSON.parse(JSON.stringify(command)));
+    expect(parsed.ok).toBe(true);
+    const h = new Harness();
+    h.createCase('c', [{ id: 'a', expected: 7000 }]);
+    expect(h.record('c', forged(excerpt, amountText, cents))).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    // An old parser version cannot be used to slip it through either.
+    expect(h.record('c', forged(excerpt, amountText, cents, 'amazon-us-selection-1'))).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    expect(h.case('c').entries.filter((e) => e.kind === 'merchant_report')).toHaveLength(0);
+
+    const area = new FakeArea();
+    const handler = createHandler(area);
+    await handler.handle({ kind: 'mutate', command: { type: 'createCase', caseId: 'c', orderRef: null, items: [{ itemId: 'a', label: 'K', expectedCents: 7000, expectationEntryId: 'e' }] } });
+    expect(await handler.handle({ kind: 'mutate', command })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    const loaded = await loadStore(area);
+    if (loaded.status !== 'ok') throw new Error(loaded.status);
+    expect(loaded.store.cases[0]!.entries.filter((e) => e.kind === 'merchant_report')).toHaveLength(0);
+  });
+
+  it('an already stored capture from the previous parser version stays readable and is never recomputed', () => {
+    const h = new Harness();
+    h.createCase('c', [{ id: 'a', expected: 7000 }]);
+    const raw = JSON.parse(JSON.stringify(h.store));
+    const old = forged('Refund issued: $1e3', '$1', 100, 'amazon-us-selection-1');
+    raw.cases[0].entries.push({ ...old, recordedAt: '2026-10-01T12:00:01.000Z' });
+    const parsed = parseStore(raw);
+    expect(parsed.status).toBe('ok');
+    if (parsed.status !== 'ok') return;
+    const stored = parsed.store.cases[0]!.entries[1]!;
+    expect(stored).toMatchObject({ amountCents: 100, capture: { parserVersion: 'amazon-us-selection-1', approvedAmountText: '$1' } });
+    h.store = parsed.store;
+    expect(item(h, 'c', 'a').merchantReportedCents).toBe(100);
+    // An identical retry of that stored operation is still a harmless duplicate.
+    expect(h.record('c', old)).toMatchObject({ ok: true, outcome: 'duplicate' });
+  });
+});
+
+describe('source-page order context at the write boundary (finding 2)', () => {
+  const A = '112-1234567-7654321';
+  const B = '113-7654321-1234567';
+  const withPath = (text: string, sourcePath: string | null, id = 'cap-1') => captured(id, 'a', text, { sourcePath });
+
+  it('refuses a URL-only order that differs from the case, accepts a matching or unknown one', () => {
+    const h = new Harness();
+    h.createCase('caseB', [{ id: 'a', expected: 7000 }], B);
+    expect(h.record('caseB', withPath('Refund issued: $70.00', `/gp/your-account/order-details?orderID=${A}`))).toMatchObject({ ok: false, error: { message: expect.stringContaining('different order') } });
+    expect(h.record('caseB', withPath('Refund issued: $70.00', `/your-orders/${A}/details`))).toMatchObject({ ok: false });
+    expect(h.record('caseB', withPath('Refund issued: $70.00', `/gp/your-account/order-details?orderID=${B}`, 'cap-2')).ok).toBe(true);
+    expect(h.record('caseB', withPath('Refund issued: $70.00', '/gp/your-account/order-details', 'cap-3')).ok).toBe(true);
+    expect(h.record('caseB', withPath('Refund issued: $70.00', null, 'cap-4')).ok).toBe(true);
+    expect(h.case('caseB').entries.filter((e) => e.kind === 'merchant_report').map((e) => e.id)).toEqual(['cap-2', 'cap-3', 'cap-4']);
+  });
+
+  it('refuses a URL order that contradicts the order in the selected text, whatever the case', () => {
+    const h = new Harness();
+    h.createCase('caseA', [{ id: 'a', expected: 7000 }], A);
+    h.createCase('none', [{ id: 'a2', expected: 7000 }]);
+    expect(h.record('caseA', withPath(`Order ${A}\nRefund issued: $70.00`, `/gp/x?orderID=${B}`))).toMatchObject({ ok: false, error: { message: expect.stringContaining('conflicting orders') } });
+    expect(h.record('none', { ...captured('cap-n', 'a2', `Order ${A}\nRefund issued: $70.00`), capture: { ...captured('cap-n', 'a2', `Order ${A}\nRefund issued: $70.00`).capture!, sourcePath: `/gp/x?orderID=${B}` } })).toMatchObject({ ok: false });
+    expect(h.record('caseA', withPath(`Order ${A}\nRefund issued: $70.00`, `/gp/x?orderID=${A}`, 'cap-ok')).ok).toBe(true);
+  });
+
+  it('existing captures and manual data are unaffected', () => {
+    const h = new Harness();
+    h.createCase('caseB', [{ id: 'a', expected: 7000 }], B);
+    h.record('caseB', { id: 'm', kind: 'merchant_report', itemId: 'a', amountCents: 7000 });
+    const raw = JSON.parse(JSON.stringify(h.store));
+    // A capture stored before this rule existed, whose path names another order, still reads as written.
+    raw.cases[0].entries.push({ ...withPath('Refund issued: $70.00', `/gp/x?orderID=${A}`, 'cap-old'), recordedAt: '2026-10-01T12:00:01.000Z' });
+    expect(parseStore(raw).status).toBe('ok');
+  });
+
+  it('a direct service-worker command with a URL-only mismatch is rejected and nothing is written', async () => {
+    const area = new FakeArea();
+    const handler = createHandler(area);
+    await handler.handle({ kind: 'mutate', command: { type: 'createCase', caseId: 'caseB', orderRef: B, items: [{ itemId: 'a', label: 'K', expectedCents: 7000, expectationEntryId: 'e' }] } });
+    const writes = area.setCalls;
+    const res = await handler.handle({ kind: 'mutate', command: { type: 'recordEntry', caseId: 'caseB', entry: withPath('Refund issued: $70.00', `/gp/your-account/order-details?orderID=${A}`) } });
+    expect(res).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    expect(area.setCalls).toBe(writes);
+  });
+});
+
 describe('provenance validation', () => {
   const base = () => captured('cap-1', 'a', 'Order 112-1234567-7654321\nRefund issued on Oct 3, 2026: $70.00');
 
@@ -200,23 +330,6 @@ describe('provenance validation', () => {
     expect(h.case('old').entries.slice(0, 3)).toEqual(legacy.cases[0]!.entries);
   });
 });
-
-class FakeArea implements StorageAreaLike {
-  data = new Map<string, unknown>();
-  failSets = false;
-  setCalls = 0;
-  async get(key: string) {
-    return this.data.has(key) ? { [key]: structuredClone(this.data.get(key)) } : {};
-  }
-  async set(items: Record<string, unknown>) {
-    this.setCalls += 1;
-    if (this.failSets) throw new Error('QUOTA_BYTES quota exceeded');
-    for (const [k, v] of Object.entries(items)) this.data.set(k, structuredClone(v));
-  }
-  async remove(key: string) {
-    this.data.delete(key);
-  }
-}
 
 describe('captured reports through the service-worker handler (acceptance 5)', () => {
   const create = { kind: 'mutate', command: { type: 'createCase', caseId: 'c', orderRef: null, items: [{ itemId: 'a', label: 'Kettle', expectedCents: 7000, expectationEntryId: 'e' }] } };

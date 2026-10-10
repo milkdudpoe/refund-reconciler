@@ -14,7 +14,9 @@ import {
   type VoidEntryCommand,
 } from './types';
 import { currentExpectation } from './reconcile';
-import { PARSER_VERSION, analyzeExcerpt, compareOrder } from '../capture/parse';
+import { PARSER_VERSION, analyzeExcerpt } from '../capture/parse';
+import { assessOrder, orderContextOf } from '../capture/order';
+import { orderFromSourcePath } from '../capture/source';
 
 const MANUAL_SOURCE = 'Manual entry';
 
@@ -85,8 +87,20 @@ function checkCapture(caseRecord: CaseRecord, input: RecordEntryCommand['entry']
   ) {
     return err('invalid', 'The captured excerpt does not support exactly this issued amount. Nothing was saved.');
   }
-  if (compareOrder(capture.detectedOrderRef, caseRecord.orderRef) === 'mismatch') {
-    return err('invalid', 'The captured text names a different order than this case. Nothing was saved.');
+  // Same rule as the popup: the excerpt's order and the source page's order
+  // (kept in sourcePath) must not contradict each other or the chosen case.
+  const order = assessOrder(
+    orderContextOf(capture.detectedOrderRef === null ? [] : [capture.detectedOrderRef]),
+    orderFromSourcePath(capture.sourcePath),
+    caseRecord.orderRef,
+  );
+  if (!order.ok) {
+    return err(
+      'invalid',
+      order.block === 'case_mismatch'
+        ? 'The captured page or text names a different order than this case. Nothing was saved.'
+        : 'The captured page and text name conflicting orders. Nothing was saved.',
+    );
   }
   return null;
 }
