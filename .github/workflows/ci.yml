@@ -11,7 +11,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,11 +28,13 @@ jobs:
       - run: npm run test:package
         env:
           BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-      # Same-installation update check (docs/beta.md): builds the previous
-      # production version, 0.5.0, from its own source at this immutable commit,
-      # which the shallow checkout does not contain.
+      # Same-installation update checks (docs/beta.md): build the earlier
+      # production versions, 0.5.0 and 0.6.0, from their own source at these
+      # immutable commits, which the shallow checkout does not contain.
       - name: Fetch update-check baseline (Task 05, 0.5.0)
         run: git fetch --no-tags --depth=1 origin b323930f7d9580f426e7e8fee39b4242143c4844
+      - name: Fetch update-check baseline (Task 07.1, 0.6.0)
+        run: git fetch --no-tags --depth=1 origin 60e330b12d195908a44ad341a73e34678a5a697d
       - run: npm run test:update
         env:
           BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -61,11 +63,11 @@ jobs:
           retention-days: 7
 
   # Windows: unit tests on a CRLF checkout and the full same-installation
-  # update check (0.5.0 built from source, updated in place to the beta ZIP).
+  # update checks (0.5.0 and 0.6.0 built from source, updated in place to the beta ZIP).
   # The Ubuntu job above runs the complete browser suite and uploads the artifact.
   windows:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       # Git for Windows' default; set explicitly so the checkout really is CRLF.
       - run: git config --global core.autocrlf true
@@ -85,6 +87,8 @@ jobs:
       - run: npx playwright install chromium
       - name: Fetch update-check baseline (Task 05, 0.5.0)
         run: git fetch --no-tags --depth=1 origin b323930f7d9580f426e7e8fee39b4242143c4844
+      - name: Fetch update-check baseline (Task 07.1, 0.6.0)
+        run: git fetch --no-tags --depth=1 origin 60e330b12d195908a44ad341a73e34678a5a697d
       - run: npm run test:update
       - uses: actions/upload-artifact@v4
         if: failure()

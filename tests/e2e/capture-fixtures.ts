@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BrowserContext, Page } from '@playwright/test';
 import { DIST, ExtensionSession, STORE_KEY, expect, test as base } from './fixtures';
+import { decryptedRaw } from './vault-helpers';
 
 /** Hosts the temporary test copy may access. All serve synthetic fixtures. */
 export const FIXTURE_HOST_PERMISSIONS = [
@@ -173,9 +174,9 @@ export async function openPopup(session: ExtensionSession, windowId: number): Pr
   return popup;
 }
 
+/** The stored ledger as stored, decrypted in the service worker by the test-side decoder (see vault-helpers.ts). */
 export async function storedRaw(session: ExtensionSession): Promise<unknown> {
-  const w = await worker(session);
-  return (await w.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY];
+  return decryptedRaw(await worker(session));
 }
 
 interface StoredEntry {

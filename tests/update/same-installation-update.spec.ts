@@ -1,20 +1,27 @@
-// Same-installation update check: the previous production version (0.5.0,
-// built from its own source at BASELINE_COMMIT) is loaded from one stable
-// temporary folder, given a rich synthetic ledger, and then updated in place
-// to the current beta by replacing that folder's files with the contents of
-// the real beta ZIP and reloading the extension. Run with `npm run test:update`.
+// Same-installation update checks: each earlier production version (0.5.0
+// and 0.6.0, built from their own source at pinned commits; see baseline.ts)
+// is loaded from one stable temporary folder, given a rich synthetic ledger
+// in plaintext, and then updated in place to the current version by replacing
+// that folder's files with the contents of the real beta ZIP and reloading the
+// extension. The current version must then migrate that ledger into its
+// encrypted vault without losing or changing anything. Run with
+// `npm run test:update`.
 //
 // Only temporary folders and profiles created here are used, and all data is
 // synthetic. Nothing is added to the production package: the beta ZIP is
-// extracted unchanged, and the baseline is built with its own production build.
+// extracted unchanged, and each baseline is built with its own production
+// build from its own lockfile.
 //
 // Data setup (disclosed): the rich ledger is constructed by test code
 // (tests/shared/rich-ledger.ts) and written to a backup file, then loaded into
-// 0.5.0 through 0.5.0's own "Restore from JSON…" UI. Before that, a corrupt
-// value is written directly to storage only to reach 0.5.0's "Erase stored
-// data…" control, so the ledger carries an erase marker (ledgerEpoch) as well
-// as a restore receipt. One further case is then created entirely through
-// 0.5.0's UI.
+// the baseline through the baseline's own "Restore from JSON…" UI. Before
+// that, a corrupt value is written directly to the baseline's plaintext key
+// only to reach the baseline's own "Erase stored data…" control, so the ledger
+// carries an erase marker (ledgerEpoch) as well as a restore receipt. One
+// further case is then created entirely through the baseline's UI. After the
+// update, the migration, unlock and restore happen through the current UI; a
+// read-only recorder in the service worker logs the order of its storage
+// calls (it changes nothing).
 //
 // Developer mode is switched on in the test's own temporary profile through
 // that profile's chrome://extensions switch, as a tester does before "Load
@@ -36,27 +43,29 @@ import type { StoreData } from '../../src/domain/types';
 import { parseStore } from '../../src/domain/validate';
 import { isRegularFileEntry, isSafeEntryName, readZip } from '../../scripts/beta/zip.ts';
 import { ExtensionSession, createCase, expect, itemCard, recordForItem } from '../e2e/fixtures';
-import { seed, storedRaw } from '../e2e/export-helpers';
-import { approveButton, chooseBackup, destination, envelopeOf, eraseViaUi, expectEligible, openRestore, saveBackupDownload, writeBackupFile } from '../e2e/restore-helpers';
+import { approveButton, chooseBackup, destination, envelopeOf, expectEligible, openRestore, saveBackupDownload, writeBackupFile } from '../e2e/restore-helpers';
+import { LEGACY_KEY, VAULT_KEY, decryptedRaw, migrateViaUi, setupViaUi, unlockViaUi, vaultScreen } from '../e2e/vault-helpers';
 import { HISTORICAL_REFUSED_EXCERPT, richLedger } from '../shared/rich-ledger';
-import { BASELINE_VERSION, buildBaseline, exportBaselineSource } from './baseline';
+import { BASELINE_050, BASELINE_060, buildBaseline, exportBaselineSource, type Baseline } from './baseline';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const VERSION = (JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')) as { version: string }).version;
 const ZIP = join(ROOT, 'artifacts', 'beta', `refund-reconciler-beta-${VERSION}.zip`);
 const CORRUPT = { schemaVersion: 1, revision: 1, cases: [{ id: 'c', amountCents: 1.5 }] };
+/** One passphrase per run, chosen in the current version's UI (synthetic, never printed). */
+const PHRASE = 'synthetic update passphrase 0001';
 
 type Raw = StoreData & Record<string, unknown>;
 
 let work = '';
-let baselineDist = '';
+const built = new Map<string, string>();
 /** Every browser session this file starts; all are closed before the work folder is removed. */
 const sessions = new Set<ExtensionSession>();
 
 test.beforeAll(async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(600_000);
   work = await mkdtemp(join(tmpdir(), 'refund-reconciler-update-'));
-  baselineDist = await buildBaseline(await exportBaselineSource(work));
+  for (const b of [BASELINE_050, BASELINE_060]) built.set(b.version, await buildBaseline(await exportBaselineSource(work, b), b));
 });
 
 test.afterAll(async () => {
@@ -102,6 +111,11 @@ function asStore(raw: unknown): StoreData {
   const p = parseStore(raw);
   if (p.status !== 'ok') throw new Error(`stored ledger is ${p.status}`);
   return p.store;
+}
+
+/** The baseline's plaintext ledger value, exactly as stored. */
+async function legacyRaw(page: Page): Promise<unknown> {
+  return (await page.evaluate((key) => chrome.storage.local.get(key), LEGACY_KEY))[LEGACY_KEY];
 }
 
 /** Extracts the real beta ZIP, entry by entry, into a new folder. */
@@ -163,41 +177,68 @@ async function downloadBackup(page: Page, dir: string): Promise<{ path: string; 
   return { path: saved.path, envelope: JSON.parse(await readFile(saved.path, 'utf8')) };
 }
 
-test('0.5.0 updated in place to the beta keeps the same installation and every record, and its backup restores elsewhere', async () => {
-  test.setTimeout(240_000);
-  const installed = join(work, 'installed-extension'); // the one stable folder Chrome loads, before and after the update
-  const profile = join(work, 'profile');
-  const downloads = join(work, 'downloads');
-  await mkdir(downloads);
-  await cp(baselineDist, installed, { recursive: true });
+/** Records (does not change) the order of the worker's chrome.storage.local calls. */
+async function recordWorkerStorage(w: Worker): Promise<void> {
+  await w.evaluate(() => {
+    const g = globalThis as unknown as { __ops: string[] };
+    g.__ops = [];
+    const area = chrome.storage.local as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    for (const fn of ['get', 'set', 'remove'] as const) {
+      const real = area[fn]!.bind(chrome.storage.local);
+      area[fn] = (...args: unknown[]) => {
+        const a = args[0];
+        const keys = fn === 'set' ? Object.keys(a as object) : Array.isArray(a) ? (a as string[]) : [String(a)];
+        g.__ops.push(`${fn}(${keys.map((k) => k.replace('refundReconciler.', '')).join(',')})`);
+        return real(...args);
+      };
+    }
+  });
+}
+
+/** The baseline's own erase, reached through a deliberately corrupt plaintext value (as in its own tests). */
+async function baselineEraseViaUi(page: Page): Promise<void> {
+  await page.evaluate(([k, v]) => chrome.storage.local.set({ [k as string]: v }), [LEGACY_KEY, CORRUPT] as const);
+  await expect(page.getByTestId('unreadable')).toBeVisible();
+  await page.getByRole('button', { name: 'Erase stored data…' }).click();
+  await page.getByRole('button', { name: 'Permanently erase' }).click();
+  await expect(page.getByTestId('empty-state')).toBeVisible();
+}
+
+async function updateCheck(baseline: Baseline): Promise<void> {
+  const base = join(work, baseline.version);
+  const installed = join(base, 'installed-extension'); // the one stable folder Chrome loads, before and after the update
+  const profile = join(base, 'profile');
+  const downloads = join(base, 'downloads');
+  await mkdir(downloads, { recursive: true });
+  await cp(built.get(baseline.version)!, installed, { recursive: true });
   const session = trackedSession(profile, installed);
 
-  // ---- 1. Baseline 0.5.0 in a fresh profile ----
+  // ---- 1. The baseline in a fresh profile ----
   let snapshot!: Raw;
   let baselineUi!: Record<string, unknown>;
-  await test.step('load 0.5.0 and populate a rich synthetic ledger', async () => {
+  let baselineBackup = '';
+  await test.step(`load ${baseline.version} and populate a rich synthetic plaintext ledger`, async () => {
     await session.launch();
     await ensureDeveloperMode(session);
     const page = await session.openDashboard();
-    expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(BASELINE_VERSION);
-    await expect(page.getByTestId('help')).toHaveCount(0); // the beta's guide does not exist yet
-    expect(await storedRaw(page)).toBeUndefined();
+    expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(baseline.version);
+    if (baseline.version === '0.5.0') await expect(page.getByTestId('help')).toHaveCount(0); // the guide came in 0.6.0
+    else await expect(page.getByTestId('help')).toHaveCount(1);
+    await expect(vaultScreen(page, 'vault-setup')).toHaveCount(0); // no vault before 0.7.0
+    expect(await legacyRaw(page)).toBeUndefined();
 
-    // Erase marker through 0.5.0's own UI (reached via a deliberately corrupt value).
-    await eraseViaUi(page, (p) => seed(p, CORRUPT));
-    const epoch = ((await storedRaw(page)) as Raw).ledgerEpoch;
+    await baselineEraseViaUi(page);
+    const epoch = ((await legacyRaw(page)) as Raw).ledgerEpoch;
     expect(epoch).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
 
-    // Rich ledger through 0.5.0's own restore UI.
     const rich = richLedger();
     await openRestore(page);
-    await chooseBackup(page, await writeBackupFile(work, 'rich-synthetic.json', envelopeOf(rich)));
+    await chooseBackup(page, await writeBackupFile(base, 'rich-synthetic.json', envelopeOf(rich)));
     await expectEligible(page);
     await approveButton(page).click();
     await expect(page.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');
     await page.locator('#restore-cancel').click();
 
-    // One more case entirely through 0.5.0's UI: partial receipt, merchant report, recharge and its void, unknown item.
     await createCase(page, { orderRef: '113-0000000-0000507', items: [{ label: 'Synthetic kettle', amount: '60.00' }, { label: 'Synthetic mug', unknown: true }] });
     await expect(page.locator('#case-heading')).toContainText('113-0000000-0000507');
     await recordForItem(page, 'Synthetic kettle', 'Record merchant report', '60.00', { reference: 'RMA-UPD-1' });
@@ -211,8 +252,7 @@ test('0.5.0 updated in place to the beta keeps the same installation and every r
     await expect(itemCard(page, 'Synthetic mug').getByTestId('item-expected')).toHaveText('Unknown');
     await page.getByRole('button', { name: '← All cases' }).click();
 
-    // Read back and validate what 0.5.0 stored.
-    snapshot = (await storedRaw(page)) as Raw;
+    snapshot = (await legacyRaw(page)) as Raw;
     const store = asStore(snapshot);
     expect(snapshot.ledgerEpoch).toBe(epoch);
     expect(snapshot.lastRestore).toMatchObject({ restoredRevision: 1, caseCount: rich.cases.length, sourceRevision: rich.revision });
@@ -225,9 +265,10 @@ test('0.5.0 updated in place to the beta keeps the same installation and every r
     const captures = store.cases.flatMap((c) => c.entries).filter((e) => e.kind === 'merchant_report' && e.capture);
     expect(captures.map((e) => e.kind === 'merchant_report' && e.capture?.parserVersion).sort()).toEqual(['amazon-us-selection-1', 'amazon-us-selection-1', PARSER_VERSION].sort());
 
-    // 0.5.0's own JSON export contains exactly what it stored.
+    // The baseline's own JSON export: a real backup of the earlier version, used for recovery below.
     const exported = await downloadBackup(page, downloads);
     expect(exported.envelope.store).toEqual(snapshot);
+    baselineBackup = exported.path;
     baselineUi = await uiState(page);
     expect((baselineUi.rows as string[]).length).toBe(5);
     await page.close();
@@ -239,7 +280,7 @@ test('0.5.0 updated in place to the beta keeps the same installation and every r
     const zip = await readFile(ZIP).catch(() => {
       throw new Error(`${ZIP} is missing; run \`npm run package:beta\` first.`);
     });
-    const extracted = join(work, 'beta-extracted');
+    const extracted = join(base, 'beta-extracted');
     const zipFiles = await extractZip(zip, extracted);
     for (const name of await readdir(installed)) await rm(join(installed, name), { recursive: true, force: true });
     await cp(extracted, installed, { recursive: true });
@@ -257,87 +298,129 @@ test('0.5.0 updated in place to the beta keeps the same installation and every r
     expect(await worker.evaluate(() => chrome.runtime.getManifest().version)).toBe(VERSION);
   });
 
-  // ---- 3. Inspect the updated installation ----
-  await test.step('the beta reads the same ledger unchanged and calculates the same case states', async () => {
-    const page = await session.openDashboard();
+  // ---- 3. The updated installation: migration first, nothing changed until then ----
+  await test.step('the current version asks to protect the existing records and changes nothing until then', async () => {
+    const page = await session.openDashboard({ unlock: false });
     const loaded = await page.evaluate(() => ({ id: chrome.runtime.id, manifest: chrome.runtime.getManifest() }));
     expect(loaded.id).toBe(extensionId);
     expect(loaded.manifest.version).toBe(VERSION);
+    expect(loaded.manifest.permissions).toEqual(['storage', 'activeTab', 'scripting']);
     expect(loaded.manifest.host_permissions ?? []).toEqual([]);
-    expect(await storedRaw(page)).toEqual(snapshot);
+    await expect(vaultScreen(page, 'vault-migrate')).toContainText(`saved ${snapshot.cases.length} cases in this browser without encryption`);
+    await expect(page.getByRole('button', { name: 'Create case' })).toHaveCount(0);
+    expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual({ [LEGACY_KEY]: snapshot });
+
+    // The explicit pre-migration plaintext backup is complete and changes nothing.
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download plaintext backup (JSON)' }).click()]);
+    const path = join(downloads, `pre-migration-${dl.suggestedFilename()}`);
+    await dl.saveAs(path);
+    const pre = JSON.parse(await readFile(path, 'utf8'));
+    expect(pre).toMatchObject({ format: 'refund-reconciler-backup', formatVersion: 1 });
+    expect(pre.store).toEqual(snapshot);
+    expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual({ [LEGACY_KEY]: snapshot });
 
     // Historical captures stay as stored; the current parser would refuse one of them.
     expect(analyzeExcerpt(HISTORICAL_REFUSED_EXCERPT).issued).toBeNull();
-    const hist = asStore(await storedRaw(page)).cases.flatMap((c) => c.entries).find((e) => e.id === 'cap-hist');
+
+    await recordWorkerStorage(workerOf(session));
+    await migrateViaUi(page, PHRASE);
+    const ops = await workerOf(session).evaluate(() => (globalThis as unknown as { __ops: string[] }).__ops);
+    const migration = ops.slice(ops.findIndex((o) => o === 'set(migration)'));
+    // Marker, candidate, read-back for verification, verified marker, then and only then removal of the plaintext.
+    expect(migration.slice(0, 6)).toEqual(['set(migration)', 'set(vault)', 'get(store,vault,migration)', 'set(migration)', 'remove(store)', 'remove(migration)']);
+    expect(Object.keys(await page.evaluate(() => chrome.storage.local.get(null)))).toEqual([VAULT_KEY]);
+    // Exactly the same ledger, field for field: ids, timestamps, notes, voids, demo flags, captures, revision, receipt and marker.
+    expect(await decryptedRaw(page)).toEqual(snapshot);
+    expect(JSON.stringify(await page.evaluate(() => chrome.storage.local.get(null)))).not.toMatch(/Synthetic kettle|STMT-UPD-1|partial so far/);
+    const hist = asStore(await decryptedRaw(page)).cases.flatMap((c) => c.entries).find((e) => e.id === 'cap-hist');
     expect(hist).toMatchObject({ amountCents: 3500, capture: { parserVersion: 'amazon-us-selection-1', excerpt: HISTORICAL_REFUSED_EXCERPT } });
 
-    // Opening the new guide (and its sections) writes nothing.
-    await page.getByText('How to use Refund Reconciler').click();
-    await expect(page.getByTestId('help')).toHaveAttribute('open');
-    for (const s of await page.getByTestId('help').locator('details > summary').all()) await s.click();
-    await page.getByText('How to use Refund Reconciler').click();
-    expect(await storedRaw(page)).toEqual(snapshot);
-
-    // Same calculated states as 0.5.0 showed, from the beta's own UI and domain code.
+    // Same calculated states as the baseline showed, from the current UI and domain code.
     expect(await uiState(page)).toEqual(baselineUi);
     const store = asStore(snapshot);
-    expect(asStore(await storedRaw(page)).cases.map(summarizeCase)).toEqual(store.cases.map(summarizeCase));
-    expect(buildOverview(realCaseViews(asStore(await storedRaw(page)).cases))).toEqual(buildOverview(realCaseViews(store.cases)));
-    expect(await storedRaw(page)).toEqual(snapshot);
+    expect(asStore(await decryptedRaw(page)).cases.map(summarizeCase)).toEqual(store.cases.map(summarizeCase));
+    expect(buildOverview(realCaseViews(asStore(await decryptedRaw(page)).cases))).toEqual(buildOverview(realCaseViews(store.cases)));
+    // Opening the guide writes nothing.
+    await page.getByText('How to use Refund Reconciler').click();
+    for (const s of await page.getByTestId('help').locator('details > summary').all()) await s.click();
+    await page.getByText('How to use Refund Reconciler').click();
+    expect(await decryptedRaw(page)).toEqual(snapshot);
     await page.close();
   });
 
-  let backupPath = '';
-  await test.step('the beta’s Download JSON contains every record', async () => {
-    const page = await session.openDashboard();
-    const { path, envelope } = await downloadBackup(page, downloads);
-    backupPath = path;
-    expect(envelope).toMatchObject({ format: 'refund-reconciler-backup', formatVersion: 1 });
-    expect(envelope.store).toEqual(snapshot);
-    expect(await storedRaw(page)).toEqual(snapshot);
-    await page.close();
-  });
-
-  await test.step('after a full browser restart: same installation, same version, same data', async () => {
+  await test.step('after a full browser restart: same installation, locked until the passphrase, same data; new writes are encrypted', async () => {
     await session.close();
     await session.launch();
     expect(session.extensionId).toBe(extensionId);
     await ensureDeveloperMode(session); // still on after the restart
-    const page = await session.openDashboard();
+    const page = await session.openDashboard({ unlock: false });
     expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(VERSION);
-    expect(await storedRaw(page)).toEqual(snapshot);
+    await expect(vaultScreen(page, 'vault-locked')).toBeVisible();
+    await expect(page.getByTestId('case-row')).toHaveCount(0);
+    await unlockViaUi(page, PHRASE);
+    expect(await decryptedRaw(page)).toEqual(snapshot);
     expect(await uiState(page)).toEqual(baselineUi);
 
-    // Restoring the backup into this populated installation is refused and changes nothing.
+    // The current version's own backup is the same plaintext format-1 ledger.
+    const { envelope } = await downloadBackup(page, downloads);
+    expect(envelope).toMatchObject({ format: 'refund-reconciler-backup', formatVersion: 1 });
+    expect(envelope.store).toEqual(snapshot);
+
+    // Restoring into this populated installation is refused and changes nothing.
     await openRestore(page);
-    await chooseBackup(page, backupPath);
+    await chooseBackup(page, baselineBackup);
     await expect(destination(page)).toHaveAttribute('data-state', 'not_empty');
     await expect(approveButton(page)).toBeDisabled();
     await page.locator('#restore-cancel').click();
-    expect(await storedRaw(page)).toEqual(snapshot);
+    expect(await decryptedRaw(page)).toEqual(snapshot);
+
+    // A new write continues the same history, encrypted.
+    await page.getByTestId('case-row').filter({ hasText: '113-0000000-0000507' }).click();
+    await recordForItem(page, 'Synthetic kettle', 'Confirm money received', '5.00', { note: 'after the update' });
+    const after = asStore(await decryptedRaw(page));
+    expect(after.revision).toBe(snapshot.revision + 1);
+    expect(after.ledgerEpoch).toBe(snapshot.ledgerEpoch);
+    expect(after.lastRestore).toEqual(snapshot.lastRestore);
+    expect(JSON.stringify(await page.evaluate(() => chrome.storage.local.get(null)))).not.toMatch(/Synthetic mug|after the update/);
     await session.close();
   });
 
-  // ---- 4. Recovery: the beta's backup restores into a separate, empty profile ----
-  await test.step('the backup restores into a separate empty profile running the extracted beta ZIP', async () => {
-    const other = trackedSession(join(work, 'recovery-profile'), join(work, 'beta-extracted'));
+  // ---- 4. Recovery: the baseline's own backup restores into a separate, empty, encrypted installation ----
+  await test.step(`the ${baseline.version} backup restores into a separate empty profile running the extracted beta ZIP`, async () => {
+    const other = trackedSession(join(base, 'recovery-profile'), join(base, 'beta-extracted'));
     await other.launch();
-    const page = await other.openDashboard();
+    const page = await other.openDashboard({ unlock: false });
     expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(VERSION);
+    await expect(page.getByRole('button', { name: 'Restore from a JSON backup…' })).toHaveCount(0); // only after setup
+    await setupViaUi(page, 'synthetic recovery passphrase 02');
     await expect(page.getByTestId('empty-state')).toBeVisible();
+    const fresh = (await decryptedRaw(page)) as Raw;
     await page.getByRole('button', { name: 'Restore from a JSON backup…' }).click();
-    await chooseBackup(page, backupPath);
+    await chooseBackup(page, baselineBackup);
     await expectEligible(page);
     await approveButton(page).click();
     await expect(page.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');
-    const restored = (await storedRaw(page)) as Raw;
+    const restored = (await decryptedRaw(page)) as Raw;
     expect(restored.cases).toEqual(snapshot.cases);
     expect(restored.revision).toBe(1);
-    expect(restored.ledgerEpoch).toBeUndefined(); // the source's marker never becomes this ledger's
+    // The destination keeps its own marker; the source's never becomes this ledger's.
+    expect(restored.ledgerEpoch).toBe(fresh.ledgerEpoch);
+    expect(restored.ledgerEpoch).not.toBe(snapshot.ledgerEpoch);
     expect(restored.lastRestore).toMatchObject({ restoredRevision: 1, caseCount: snapshot.cases.length, sourceRevision: snapshot.revision });
     expect(restored.lastRestore!.operationId).not.toBe(snapshot.lastRestore!.operationId);
+    expect(Object.keys(await page.evaluate(() => chrome.storage.local.get(null)))).toEqual([VAULT_KEY]);
     await page.locator('#restore-cancel').click();
     expect(await uiState(page)).toEqual(baselineUi);
     await other.close();
   });
+}
+
+test('0.5.0 updated in place keeps the same installation, migrates every record into the vault, and its backup restores elsewhere', async () => {
+  test.setTimeout(300_000);
+  await updateCheck(BASELINE_050);
+});
+
+test('0.6.0 updated in place keeps the same installation, migrates every record into the vault, and its backup restores elsewhere', async () => {
+  test.setTimeout(300_000);
+  await updateCheck(BASELINE_060);
 });

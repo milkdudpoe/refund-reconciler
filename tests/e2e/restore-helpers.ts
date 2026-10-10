@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page, Worker } from '@playwright/test';
 import { ExtensionSession, expect } from './fixtures';
+import { eraseTyped, setupViaUi } from './vault-helpers';
 
 export async function scratchDir(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), 'refund-reconciler-restore-'));
@@ -95,6 +96,9 @@ function queueSendBehaviour(page: Page, mode: 'hold' | 'holdReply' | 'lose' | 'd
       w.__sendModes = [];
       w.__sentMessages = [];
       rt.sendMessage = async (msg: unknown) => {
+        // Reads are not changes: they pass straight through and never consume a queued behaviour.
+        const kind = (msg as { kind?: unknown } | null)?.kind;
+        if (kind === 'read' || kind === 'readLegacy') return real(msg);
         const op = (msg as { operationId?: string }).operationId;
         if (op) {
           w.__sentOps!.push(op);
@@ -145,19 +149,40 @@ export async function sentRequests(page: Page): Promise<Record<string, unknown>[
   return page.evaluate(() => ((window as SendWindow).__sentMessages ?? []) as Record<string, unknown>[]);
 }
 
-/** Erase leaves only an empty ledger with an opaque marker: no cases, receipt or other data. */
+/** A newly protected, never-changed ledger: no cases, revision 0, only its own random marker (nothing was written to it). */
+export function expectFreshLedger(raw: unknown): void {
+  expect(raw).toEqual({ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) });
+}
+
+/** Erase (then a new setup) leaves only an empty ledger with an opaque marker: no cases, receipt or other data. */
 export function expectErased(raw: unknown): string {
   expect(raw).toEqual({ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) });
   return (raw as { ledgerEpoch: string }).ledgerEpoch;
 }
 
-/** Erases through the dashboard's real confirmation UI. That UI is offered for unreadable data, so corrupt data is seeded first. */
+/**
+ * Erases through the dashboard's real typed confirmation, then sets up a new
+ * passphrase through the real UI, leaving an empty unlocked ledger. Erase is
+ * offered for unreadable data (and while locked), so corrupt data is seeded first.
+ */
 export async function eraseViaUi(page: Page, seedCorrupt: (page: Page) => Promise<void>): Promise<void> {
   await seedCorrupt(page);
-  await expect(page.getByTestId('unreadable')).toBeVisible();
-  await page.getByRole('button', { name: 'Erase stored data…' }).click();
-  await page.getByRole('button', { name: 'Permanently erase' }).click();
+  await expect(page.getByTestId('unreadable').or(page.getByTestId('vault-unreadable'))).toBeVisible();
+  await eraseTyped(page);
+  await setupViaUi(page);
   await expect(page.getByTestId('empty-state')).toBeVisible();
+}
+
+/**
+ * Returns this profile to a newly protected, empty ledger: an explicit erase
+ * through the worker's real protocol, then "Protect your records" through the
+ * real UI.
+ */
+export async function resetToFreshLedger(session: ExtensionSession): Promise<void> {
+  const page = await session.openDashboard();
+  expect(await sendRaw(page, { kind: 'eraseAll', confirm: 'ERASE ALL REFUND RECONCILER DATA' })).toMatchObject({ ok: true, outcome: 'erased' });
+  await setupViaUi(page);
+  await page.close();
 }
 
 export async function waitForHeldSend(page: Page): Promise<void> {

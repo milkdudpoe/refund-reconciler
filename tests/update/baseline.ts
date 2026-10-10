@@ -1,6 +1,6 @@
-// Builds the previous production version (the merged Task 05 extension,
-// manifest 0.5.0) from its actual source at an immutable commit, for the
-// same-installation update check (`npm run test:update`).
+// Builds earlier production versions from their actual source at immutable
+// commits, for the same-installation update check (`npm run test:update`):
+// 0.5.0 (merged Task 05) and 0.6.0 (Task 07.1, the last plaintext version).
 //
 // Everything is written inside one directory the caller created for this
 // check. The repository is only read: `git archive` exports the commit's tree
@@ -14,10 +14,21 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { isSafeEntryName, readZip } from '../../scripts/beta/zip.ts';
 
+export interface Baseline {
+  readonly commit: string;
+  readonly version: string;
+  readonly label: string;
+}
+
 /** b323930: merge of PR #5 (Task 05), the last production version before the beta. */
-export const BASELINE_COMMIT = 'b323930f7d9580f426e7e8fee39b4242143c4844';
-export const BASELINE_VERSION = '0.5.0';
-export const FETCH_HINT = `git fetch --no-tags --depth=1 origin ${BASELINE_COMMIT}`;
+export const BASELINE_050: Baseline = { commit: 'b323930f7d9580f426e7e8fee39b4242143c4844', version: '0.5.0', label: 'Task 05' };
+/** 60e330b: Task 07.1 head (merged in PR #7), the last version that stored the ledger in plaintext. */
+export const BASELINE_060: Baseline = { commit: '60e330b12d195908a44ad341a73e34678a5a697d', version: '0.6.0', label: 'Task 07.1' };
+export const BASELINES: readonly Baseline[] = [BASELINE_050, BASELINE_060];
+
+export function fetchHint(b: Baseline): string {
+  return `git fetch --no-tags --depth=1 origin ${b.commit}`;
+}
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
@@ -29,20 +40,21 @@ function run(cmd: string, args: string[], cwd: string, opts: { capture?: boolean
 }
 
 /**
- * Exports the baseline commit's tree into `<work>/baseline-src`. Line endings
- * are pinned to the committed (LF) bytes regardless of local autocrlf settings.
+ * Exports the baseline commit's tree into `<work>/baseline-<version>-src`. Line
+ * endings are pinned to the committed (LF) bytes regardless of local autocrlf
+ * settings.
  */
-export async function exportBaselineSource(work: string): Promise<string> {
-  const present = spawnSync('git', ['cat-file', '-e', `${BASELINE_COMMIT}^{commit}`], { cwd: ROOT });
+export async function exportBaselineSource(work: string, b: Baseline): Promise<string> {
+  const present = spawnSync('git', ['cat-file', '-e', `${b.commit}^{commit}`], { cwd: ROOT });
   if (present.status !== 0) {
-    throw new Error(`Baseline commit ${BASELINE_COMMIT} is not in the local repository. Fetch it first:\n  ${FETCH_HINT}`);
+    throw new Error(`Baseline commit ${b.commit} (${b.version}) is not in the local repository. Fetch it first:\n  ${fetchHint(b)}`);
   }
   // Only regular files: no symlinks or submodules in the exported tree.
-  const modes = run('git', ['ls-tree', '-r', '--format=%(objectmode)', BASELINE_COMMIT], ROOT, { capture: true }).toString().trim().split('\n');
+  const modes = run('git', ['ls-tree', '-r', '--format=%(objectmode)', b.commit], ROOT, { capture: true }).toString().trim().split('\n');
   if (modes.some((m) => m !== '100644' && m !== '100755')) throw new Error(`Baseline tree has non-regular entries: ${[...new Set(modes)].join(', ')}`);
 
-  const archive = run('git', ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'archive', '--format=zip', BASELINE_COMMIT], ROOT, { capture: true });
-  const src = join(work, 'baseline-src');
+  const archive = run('git', ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'archive', '--format=zip', b.commit], ROOT, { capture: true });
+  const src = join(work, `baseline-${b.version}-src`);
   let files = 0;
   for (const entry of readZip(archive)) {
     if (entry.isDirectory) continue;
@@ -62,11 +74,11 @@ export async function exportBaselineSource(work: string): Promise<string> {
  * lockfile, lifecycle scripts disabled) and runs its own production build.
  * Returns the built extension folder.
  */
-export async function buildBaseline(src: string): Promise<string> {
+export async function buildBaseline(src: string, b: Baseline): Promise<string> {
   const pkg = JSON.parse(await readFile(join(src, 'package.json'), 'utf8')) as { version: string };
   const manifest = JSON.parse(await readFile(join(src, 'public', 'manifest.json'), 'utf8')) as { version: string };
-  if (pkg.version !== BASELINE_VERSION || manifest.version !== BASELINE_VERSION) {
-    throw new Error(`Baseline source is ${pkg.version}/${manifest.version}, expected ${BASELINE_VERSION}`);
+  if (pkg.version !== b.version || manifest.version !== b.version) {
+    throw new Error(`Baseline source is ${pkg.version}/${manifest.version}, expected ${b.version}`);
   }
   // Run npm through the same Node/npm that runs this check (works on Windows without a shell).
   const npmCli = process.env.npm_execpath;
@@ -76,6 +88,6 @@ export async function buildBaseline(src: string): Promise<string> {
   const dist = join(src, 'dist');
   if (!existsSync(join(dist, 'manifest.json'))) throw new Error('Baseline build produced no dist/manifest.json');
   const built = JSON.parse(await readFile(join(dist, 'manifest.json'), 'utf8')) as { version: string };
-  if (built.version !== BASELINE_VERSION) throw new Error(`Baseline build is ${built.version}, expected ${BASELINE_VERSION}`);
+  if (built.version !== b.version) throw new Error(`Baseline build is ${built.version}, expected ${b.version}`);
   return dist;
 }

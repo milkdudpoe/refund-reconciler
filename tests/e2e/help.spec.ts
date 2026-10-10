@@ -28,7 +28,12 @@ async function recordWrites(p: Page): Promise<void> {
         return real(...args);
       };
     };
-    wrap(rt, 'sendMessage', 'sendMessage');
+    // Reads of saved data also go through sendMessage; only other messages are changes.
+    const send = (rt.sendMessage as (m: unknown) => unknown).bind(rt);
+    rt.sendMessage = (m: unknown) => {
+      if ((m as { kind?: string } | null)?.kind !== 'read') w.__writes.push('sendMessage');
+      return send(m);
+    };
     for (const k of ['set', 'remove', 'clear'] as const) wrap(area, k, `storage.${k}`);
   });
 }
@@ -41,9 +46,9 @@ async function useHelp(p: Page): Promise<void> {
   await p.keyboard.press('Enter');
   await expect(help(p)).toHaveAttribute('open', '');
   await help(p).getByText('Where your data is kept').click();
-  await expect(help(p).getByText('Backups and summaries are ordinary, unencrypted files.')).toBeVisible();
+  await expect(help(p).getByText('Backups, summaries and text you copy are ordinary, unencrypted files or text.')).toBeVisible();
   await help(p).getByText('Where your data is kept').click();
-  await expect(help(p).getByText('Backups and summaries are ordinary, unencrypted files.')).toBeHidden();
+  await expect(help(p).getByText('Backups, summaries and text you copy are ordinary, unencrypted files or text.')).toBeHidden();
   await helpSummary(p).focus();
   await p.keyboard.press('Enter');
   await expect(help(p)).not.toHaveAttribute('open');
@@ -51,6 +56,9 @@ async function useHelp(p: Page): Promise<void> {
 
 test('the guide starts closed, works by keyboard and at narrow width, explains the workflow and writes nothing', async ({ session }) => {
   const page = await session.openDashboard();
+  // A fresh load after "Protect your records", so keyboard navigation starts from the top of the page.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Your cases' })).toBeVisible();
   await page.setViewportSize({ width: 360, height: 720 });
   await recordWrites(page);
   await expect(help(page)).toBeVisible();
@@ -81,7 +89,9 @@ test('the guide starts closed, works by keyboard and at narrow width, explains t
   await page.keyboard.press('Tab');
   await expect(help(page).getByText('About capturing selected text')).toBeFocused();
   await page.keyboard.press('Space');
-  await expect(help(page)).toContainText('tested only with synthetic example pages');
+  await expect(help(page)).toContainText('tested only on synthetic examples, not on real Amazon refund pages');
+  await expect(help(page)).toContainText('Capture works only while your records are unlocked');
+  await expect(help(page)).toContainText('While your records are locked, the toolbar popup reads nothing from the page');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await helpSummary(page).focus();
@@ -90,7 +100,7 @@ test('the guide starts closed, works by keyboard and at narrow width, explains t
 
   // Nothing was sent or written, the demo was not loaded, and a reload does not reopen the guide.
   expect(await writes(page)).toEqual([]);
-  expect(await storedRaw(page)).toBeUndefined();
+  expect(await storedRaw(page)).toEqual({ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: expect.any(String) });
   await expect(page.getByTestId('demo-cases')).toHaveCount(0);
   await page.reload();
   await expect(help(page)).not.toHaveAttribute('open');
@@ -157,6 +167,11 @@ test('using the guide keeps search, status, drafts, open export and restore pane
     await chooseBackup(page, await writeBackupFile(scratch.dir, 'b.json', envelopeOf(JSON.parse(JSON.stringify(mixedLedger().store)))));
     const panel = page.getByTestId('restore-panel');
     await expect(panel).toContainText('Selected file: b.json');
+    // Wait for the settled state before the snapshot: file validation and the destination check are
+    // asynchronous and may legitimately finish while the guide is used. This dashboard has cases, so
+    // the settled destination is "not empty".
+    await expect(panel).toHaveAttribute('data-phase', 'preview');
+    await expect(page.getByTestId('restore-destination')).toHaveAttribute('data-state', 'not_empty');
     const phase = await panel.getAttribute('data-phase');
     const panelText = await panel.textContent();
     await useHelp(page);

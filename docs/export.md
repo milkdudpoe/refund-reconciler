@@ -111,8 +111,13 @@ Task 03 builds (without `lastRestore`) are accepted unchanged.
 
 ## Snapshots
 
-Opening either export performs a fresh, validated read of storage; the page's
-already-loaded copy is never used. The preview and every copy/download use
+Opening either export performs a fresh, validated read of saved data through
+the service worker (which decrypts it; from 0.7.0 pages never read storage
+themselves), and the page validates the reply again; the page's
+already-loaded copy is never used. Exports are available only while the
+records are unlocked, and **Copy text** and **Download** re-check with the
+worker **when pressed** that the records are still unlocked and the snapshot
+still current (within the click's user activation). The preview and every copy/download use
 that one immutable snapshot, so what you see is what is exported.
 
 - **Changes during a read.** The dashboard counts storage change events. If a
@@ -144,6 +149,11 @@ that one immutable snapshot, so what you see is what is exported.
 
 ## Errors
 
+- **Locked (0.7.0):** Lock now or an erase in any view closes the export
+  panel in every view at once and drops its prepared text. A copy or
+  download whose action-time check is still running is not started. A
+  download already requested and text already on the clipboard cannot be
+  recalled.
 - **Storage read failure, corrupt or unsupported data:** the export is
   blocked with an explanation that a valid snapshot cannot be read. No empty
   ledger is substituted, no file is produced and nothing is reset or
@@ -180,8 +190,12 @@ opened it.
 ## Privacy
 
 Both exports are produced only after an explicit click; nothing is copied or
-downloaded when a panel opens. Downloaded files are ordinary, unencrypted files
-in your downloads folder, outside the extension's control. The JSON file always
+downloaded when a panel opens. Downloaded files and copied text are ordinary,
+**unencrypted** plaintext in your downloads folder or clipboard, outside the
+extension's control, even though the saved ledger is encrypted (0.7.0). A
+JSON backup never contains the passphrase, a key or vault metadata. The one
+export available before unlocking is the explicit **Download plaintext backup
+(JSON)** of an earlier version's records before migration ([vault.md](vault.md)). The JSON file always
 includes notes, references and captured excerpts; the summary includes them
 only if you opt in.
 
@@ -193,8 +207,9 @@ built extension in Playwright's Chromium: they capture real download events and
 read the downloaded files, read the real clipboard back by pasting, inject a
 clipboard rejection and storage read failures from test code only, and check
 that stored data and revision are unchanged. `tests/e2e/export-races.spec.ts`
-covers interleavings with deterministic gates: a page's next
-`chrome.storage.local.get` result is held only after the real API has read it,
+covers interleavings with deterministic gates: a page's next read reply (its
+`read` request to the service worker) is held only after the worker has
+answered it,
 while a second dashboard changes or deletes data through the real service
 worker; clipboard writes really happen and only their completion is held.
 Observing a held change-triggered read proves the page has already processed

@@ -234,7 +234,10 @@ and makes no claim that the user's refunds are settled.
   no cases; there is no merge or partial import (see [restore.md](restore.md)).
   Storage is limited to Chrome's 10 MB `storage.local` quota (failed writes
   are reported, not hidden).
-- Local data is not encrypted.
+- From 0.7.0 the saved ledger is encrypted with a passphrase-protected key
+  ([vault.md](vault.md)). There is no recovery service and no passphrase
+  change; exports, summaries and copied text stay unencrypted, and plaintext
+  left by earlier versions may remain in Chrome's own files.
 - Expected-amount entries cannot be voided; record a new expected amount instead.
 - No toolbar badge or reminders.
 - The finder searches only order references and item descriptions, with
@@ -296,5 +299,17 @@ Real Amazon refund wording and updating through Chrome's extensions UI remain
 untested. The assessment finds open publication blockers (unencrypted stored
 financial evidence; in-product notice and consent before capture), so the
 drafts are not a release or store approval.
+
+Task 09 (0.7.0) encrypts the local ledger: a passphrase set on **Protect your
+records** (PBKDF2-HMAC-SHA-256, 600,000 iterations) wraps a random
+AES-256-GCM data key; every read and write of saved data goes through the
+service worker; **Lock now**, unlock, a locked-state erase and a verified
+migration of 0.5.0/0.6.0 plaintext records were added. The plaintext ledger
+schema (1) and backup format (1) are unchanged; the vault envelope has its
+own format version ([vault.md](vault.md)). This resolves the at-rest
+encryption question on the conservative reading; the in-product disclosure
+and consent step, publisher inputs, store images and a new owner-operated
+toolbar check of the changed 0.7.0 popup are still open
+([store/readiness.md](store/readiness.md)).
 
 Until then this should not be presented as a validated or paid product.

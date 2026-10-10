@@ -29,10 +29,10 @@
   <li><strong>Publisher:</strong> <mark class="pending">[PENDING: publisher or developer name]</mark></li>
   <li><strong>Contact:</strong> <mark class="pending">[PENDING: contact email or support URL controlled by the publisher]</mark></li>
   <li><strong>Effective date:</strong> <mark class="pending">[PENDING: set on publication]</mark></li>
-  <li><strong>Applies to:</strong> Refund Reconciler (local preview) Chrome extension, version 0.6.0</li>
+  <li><strong>Applies to:</strong> Refund Reconciler (local preview) Chrome extension, version 0.7.0</li>
 </ul>
 <h2>Summary</h2>
-<p>Refund Reconciler is a Chrome extension for keeping track of refunds for items you returned. It handles information you enter, and text you choose to capture from Amazon US pages, <strong>only inside your own Chrome profile on your device</strong>. The extension does not send this information to the publisher or to anyone else. The publisher does not receive, see, sell or share it. Stored records are <strong>not encrypted</strong> in this version.</p>
+<p>Refund Reconciler is a Chrome extension for keeping track of refunds for items you returned. It handles information you enter, and text you choose to capture from Amazon US pages, <strong>only inside your own Chrome profile on your device</strong>. The extension does not send this information to the publisher or to anyone else. The publisher does not receive, see, sell or share it. Stored records are <strong>encrypted</strong> with a key protected by a passphrase you choose; files and text you export are not.</p>
 <h2>What information the extension handles</h2>
 <p><strong>Information you type in.</strong> For each case you create:</p>
 <ul>
@@ -46,7 +46,7 @@
 <p>This is financial information about your purchases and refunds. The extension does not ask for your name, address, email, account login, card numbers or bank details. Free-text fields (order reference, item description, reference, source, note, void reason) accept anything you type, so do not enter information you do not want stored.</p>
 <p><strong>Information from a web page, only when you capture.</strong> The capture feature works only on <code>https://amazon.com</code> and <code>https://www.amazon.com</code>:</p>
 <ul>
-  <li>When you click the Refund Reconciler toolbar button, Chrome temporarily lets the extension see the address of the tab you are on. The extension uses it only to check whether the page is supported. It is not saved.</li>
+  <li>When you click the Refund Reconciler toolbar button <strong>while your records are unlocked</strong>, Chrome temporarily lets the extension see the address of the tab you are on. The extension uses it only to check whether the page is supported. It is not saved at that point. While your records are locked, or before you have set a passphrase, the toolbar panel does not look at the tab at all; it only offers to open the dashboard.</li>
   <li>When you then choose <strong>Capture selected refund text</strong>, the extension reads the text you highlighted (up to 4,000 characters) and the page's address. It does not read the rest of the page, form fields, passwords, cookies or other tabs, and it takes no screenshots.</li>
   <li>The extension shows you a preview. <strong>Nothing is saved unless you approve it.</strong> If you approve, it saves the highlighted text, the page's address (shortened: tracking parts and all query parameters except a single order number are removed), the capture time, the amount text you approved and any order number found, together with the merchant report.</li>
   <li>If you discard or close a preview <strong>before</strong> choosing <strong>Save merchant report</strong>, nothing is saved.</li>
@@ -59,8 +59,12 @@
 <h2>Where it is stored and how it is protected</h2>
 <ul>
   <li>Records are stored in Chrome's extension storage (<code>chrome.storage.local</code>) in your Chrome profile on your device. They are not synced to other devices by the extension.</li>
+  <li><strong>The stored records are encrypted.</strong> Before any record is saved, you choose a passphrase. The extension derives a key from it on your device (PBKDF2-HMAC-SHA-256) and uses it to protect a random AES-256-GCM key that encrypts the stored records. Your passphrase is never stored or sent anywhere.</li>
+  <li>While your records are <strong>unlocked</strong>, the key is kept in Chrome's memory-only session storage so the extension can work. You need the passphrase again after Chrome restarts, after the extension is reloaded or updated, and after you choose <strong>Lock now</strong>.</li>
+  <li><strong>There is no recovery service.</strong> The publisher cannot reset or recover a forgotten passphrase. Without it, the stored records can only be erased; a backup file you saved earlier can then be restored.</li>
+  <li>Encryption does <strong>not</strong> protect your records while they are unlocked in your browser, against malware or anyone using your device or account, or if your passphrase is easy to guess. Protect your device and your operating-system account.</li>
+  <li>If you used a version before 0.7.0, your records were stored without encryption. When you update, they are encrypted only after you choose a passphrase, and older unencrypted copies may remain in Chrome's own files on your device; the extension cannot remove them.</li>
   <li>Web pages and the capture code that runs in a page cannot read the stored records; only the extension's own pages can.</li>
-  <li><strong>The stored records are not encrypted by the extension.</strong> Anyone or any software that can read your Chrome profile or your device's files could read them. Protect your device and your operating-system account.</li>
 </ul>
 <h2>Sharing and transmission</h2>
 <ul>
@@ -73,18 +77,18 @@
 <ul>
   <li><strong>Delete case…</strong> permanently removes a case and all its records.</li>
   <li><strong>Remove synthetic demo</strong> removes the demo records.</li>
-  <li>If stored data cannot be read, the dashboard offers <strong>Erase stored data…</strong>, which erases everything.</li>
+  <li>If your records are locked (for example because you forgot the passphrase) or stored data cannot be read, the dashboard offers <strong>Erase stored data…</strong>, which erases everything after you type <code>ERASE</code>.</li>
   <li><strong>Removing the extension</strong> from Chrome deletes all of its stored records. Download a backup first if you want to keep them.</li>
   <li>Losing or resetting the Chrome profile also loses the records. The publisher cannot recover them.</li>
   <li>Deleting records in the extension does not delete files you exported.</li>
-  <li>The extension does not securely wipe the underlying storage files on disk.</li>
+  <li>The extension does not securely wipe the underlying storage files on disk, including any unencrypted copies left by versions before 0.7.0.</li>
 </ul>
 <h2>Your choices</h2>
 <p>Using the extension is optional, and so is every field marked optional. Capture is optional and runs only when you ask; you can enter merchant reports manually instead. You can view everything stored in the dashboard, export it, and delete it as described above.</p>
 <h2>Chrome Web Store User Data Policy</h2>
 <p>The use of information received by Refund Reconciler adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.</p>
 <h2>Changes to this policy</h2>
-<p>If a future version handles data differently, for example by adding encryption, network features or new data types, this policy will be updated before that version is released, and the extension will show the change prominently. The effective date above shows when this version took effect.</p>
+<p>If a future version handles data differently, for example by adding network features or new data types, this policy will be updated before that version is released, and the extension will show the change prominently. The effective date above shows when this version took effect.</p>
 <h2>Contact</h2>
 <p>Questions about this policy: <mark class="pending">[PENDING: contact email or support URL controlled by the publisher]</mark>.</p>
 </main>

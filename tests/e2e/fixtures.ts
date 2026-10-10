@@ -7,8 +7,10 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test as base, chromium, expect, type BrowserContext, type Page } from '@playwright/test';
+import { TEST_PHRASE, anyScreen, setupViaUi, unlockViaUi } from './vault-helpers';
 
 export const DIST = resolve(import.meta.dirname, '../../dist');
+/** The plaintext key used by versions before 0.7.0 (read only for migration). */
 export const STORE_KEY = 'refundReconciler.store';
 
 export class ExtensionSession {
@@ -48,11 +50,20 @@ export class ExtensionSession {
     return `chrome-extension://${this.extensionId}/dashboard.html`;
   }
 
-  async openDashboard(): Promise<Page> {
+  /**
+   * Opens a dashboard. By default it also completes "Protect your records"
+   * (fresh profile) or unlocks (after a browser restart) through the real UI
+   * with the synthetic TEST_PHRASE, as a user would. `{ unlock: false }`
+   * returns whatever screen the extension shows.
+   */
+  async openDashboard(opts: { unlock?: boolean } = {}): Promise<Page> {
     if (!this.context) throw new Error('not launched');
     const page = await this.context.newPage();
     await page.goto(this.dashboardUrl);
-    await expect(page.getByRole('heading', { name: 'Your cases' }).or(page.getByTestId('unreadable'))).toBeVisible();
+    await expect(anyScreen(page)).toBeVisible();
+    if (opts.unlock === false) return page;
+    if (await page.getByTestId('vault-setup').isVisible()) await setupViaUi(page, TEST_PHRASE);
+    else if (await page.getByTestId('vault-locked').isVisible()) await unlockViaUi(page, TEST_PHRASE);
     return page;
   }
 }

@@ -6,6 +6,7 @@
 import type { Page } from '@playwright/test';
 import { createCase, expect, itemCard, recordForItem, test, type ExtensionSession } from './fixtures';
 import { holdNextRead, overridePageReads, releaseHeldRead, seed, storedRaw, waitForHeldRead } from './export-helpers';
+import { eraseTyped, setupViaUi } from './vault-helpers';
 import {
   approveButton,
   chooseBackup,
@@ -13,6 +14,8 @@ import {
   dropNextSend,
   envelopeOf,
   expectErased,
+  expectFreshLedger,
+  resetToFreshLedger,
   expectEligible,
   failWorkerReads,
   holdNextSend,
@@ -100,7 +103,8 @@ test('acceptance 1, 2 and 11: a real exported file restores into a second empty 
     await expect(restorePanel(page)).toContainText('Restoring is not verification that any money was received');
     await expect(restorePanel(page)).toContainText('not signed by Amazon');
     await expectEligible(page);
-    expect(await storedRaw(page)).toBeUndefined();
+    const destBefore = (await storedRaw(page)) as { ledgerEpoch: string };
+    expectFreshLedger(destBefore);
 
     await approveButton(page).click();
     await expect(page.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');
@@ -112,7 +116,9 @@ test('acceptance 1, 2 and 11: a real exported file restores into a second empty 
     expect(stored.cases).toEqual(source.cases);
     expect(stored.revision).toBe(1);
     expect(stored.lastRestore).toMatchObject({ restoredRevision: 1, caseCount: 4, sourceRevision: source.revision });
-    expect(Object.keys(stored).sort()).toEqual(['cases', 'lastRestore', 'revision', 'schemaVersion']);
+    // The destination keeps its own marker (every protected ledger has one); the source's is never imported.
+    expect(Object.keys(stored).sort()).toEqual(['cases', 'lastRestore', 'ledgerEpoch', 'revision', 'schemaVersion']);
+    expect((stored as { ledgerEpoch?: string }).ledgerEpoch).toBe(destBefore.ledgerEpoch);
 
     // Calculated state matches the source, including the historical capture the current parser refuses.
     expect(analyzeExcerpt(HISTORICAL_REFUSED_EXCERPT).issued).toBeNull();
@@ -187,7 +193,7 @@ test('acceptance 3: preview, cancel and file replacement write nothing; hostile 
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(restorePanel(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Restore from JSON…' })).toBeFocused();
-  expect(await storedRaw(page)).toBeUndefined();
+  expectFreshLedger(await storedRaw(page));
 
   // Escape also closes without writing.
   await openRestore(page);
@@ -195,17 +201,17 @@ test('acceptance 3: preview, cancel and file replacement write nothing; hostile 
   await expectEligible(page);
   await page.keyboard.press('Escape');
   await expect(restorePanel(page)).toHaveCount(0);
-  expect(await storedRaw(page)).toBeUndefined();
+  expectFreshLedger(await storedRaw(page));
 
   // A valid backup with no cases is an informative no-op.
   await openRestore(page);
   await chooseBackup(page, await writeBackupFile(scratch.dir, 'empty.json', envelopeOf({ schemaVersion: 1, revision: 6, cases: [] })));
   await expect(page.getByTestId('restore-empty-backup')).toContainText('nothing to restore');
   await expect(approveButton(page)).toHaveCount(0);
-  expect(await storedRaw(page)).toBeUndefined();
+  expectFreshLedger(await storedRaw(page));
   // Also at the worker: nothing written, revision unchanged.
   expect(await sendRaw(page, { kind: 'restore', operationId: 'empty-op', expected: { revision: 0, stored: false, epoch: null }, backup: envelopeOf({ schemaVersion: 1, revision: 6, cases: [] }) })).toEqual({ ok: true, outcome: 'unchanged', revision: 0 });
-  expect(await storedRaw(page)).toBeUndefined();
+  expectFreshLedger(await storedRaw(page));
 });
 
 test('acceptance 4: invalid files give useful errors and no write; forged worker messages are validated too', async ({ session }) => {
@@ -242,7 +248,7 @@ test('acceptance 4: invalid files give useful errors and no write; forged worker
   const big = await writeBackupFile(scratch.dir, 'huge.json', new Uint8Array(25 * 1024 * 1024 + 1).fill(0x20));
   await chooseBackup(page, big);
   await expect(page.getByTestId('restore-invalid')).toContainText('the largest backup this dashboard reads is 25.0 MiB');
-  expect(await storedRaw(page)).toBeUndefined();
+  expectFreshLedger(await storedRaw(page));
 
   // Forged messages straight to the real service worker are validated there.
   const forged: unknown[] = [
@@ -257,7 +263,7 @@ test('acceptance 4: invalid files give useful errors and no write; forged worker
   for (const msg of forged) {
     expect(await sendRaw(page, msg)).toMatchObject({ ok: false, error: { code: 'invalid_message' } });
   }
-  expect(await storedRaw(page)).toBeUndefined();
+  expectFreshLedger(await storedRaw(page));
 });
 
 test('acceptance 5: existing cases (even demo-only) block restore; corrupt, unsupported and unreadable storage are never overwritten', async ({ session }) => {
@@ -291,7 +297,7 @@ test('acceptance 5: existing cases (even demo-only) block restore; corrupt, unsu
     await expect(destination(page)).toHaveAttribute('data-state', 'blocked');
     await expect(destination(page)).toContainText('never treats unreadable data as empty');
     await expect(approveButton(page)).toBeDisabled();
-    await expect(page.getByTestId('unreadable')).toBeVisible();
+    await expect(page.getByTestId('vault-unreadable')).toBeVisible();
     for (const stored of [true, false]) {
       const res = await sendRaw(page, { kind: 'restore', operationId: 'over-bad', expected: { revision: 0, stored, epoch: null }, backup: envelopeOf(richLedger()) });
       expect(res.ok).toBe(false);
@@ -301,10 +307,11 @@ test('acceptance 5: existing cases (even demo-only) block restore; corrupt, unsu
   }
 
   // Failed reads: the dashboard's fresh check and the worker's own read both block.
-  await page.evaluate((key) => chrome.storage.local.remove(key), 'refundReconciler.store');
+  const emptyLedger = { schemaVersion: 1, revision: 0, cases: [] };
+  await seed(page, emptyLedger);
   await expectEligible(page);
   await overridePageReads(page, 'reject');
-  await page.evaluate((key) => chrome.storage.local.set({ [key]: { schemaVersion: 1, revision: 0, cases: [] } }), 'refundReconciler.store');
+  await seed(page, emptyLedger); // a storage change that this page then fails to read
   await expect(destination(page)).toHaveAttribute('data-state', 'blocked');
   await expect(destination(page)).toContainText('Simulated read failure');
   await expect(approveButton(page)).toBeDisabled();
@@ -455,14 +462,14 @@ test('acceptance 8: a lost reply with readable storage reports completion from t
   await a.close();
 
   // Not committed (the request never reached the worker), reply lost: uncertain with the same safe retry.
-  await (await session.openDashboard()).evaluate((key) => chrome.storage.local.remove(key), 'refundReconciler.store');
+  await resetToFreshLedger(session);
   a = await previewRich(session);
   await dropNextSend(a);
   await approveButton(a).click();
   await expect(restorePanel(a)).toHaveAttribute('data-phase', 'uncertain');
   await expect(a.getByTestId('restore-feedback')).toContainText('not in your saved data right now');
   await expect(a.getByTestId('restore-feedback')).toContainText('same operation id');
-  expect(await storedRaw(a)).toBeUndefined();
+  expectFreshLedger(await storedRaw(a));
   await a.getByRole('button', { name: 'Check and retry restore' }).click();
   await expect(a.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');
   const ops = await sentOperationIds(a);
@@ -479,7 +486,7 @@ test('acceptance 9: a rejected write keeps the preview and changes nothing; a la
   await expect(a.getByTestId('restore-feedback')).toContainText('Your saved data was not changed');
   await expect(a.getByTestId('restore-file-name')).toContainText('rich.json');
   await expect(a.getByTestId('restore-real-count')).toHaveText('2');
-  expect(await storedRaw(a)).toBeUndefined();
+  expectFreshLedger(await storedRaw(a));
 
   await expectEligible(a);
   await approveButton(a).click();
@@ -531,15 +538,16 @@ test('acceptance 10: after deletion or erase, a delayed retry cannot resurrect r
   await expect(restorePanel(a)).toHaveAttribute('data-phase', 'uncertain');
   const [secondOp] = await sentOperationIds(a);
   expect(((await storedRaw(b)) as Raw).lastRestore?.operationId).toBe(secondOp);
+  await overridePageReads(a, 'real');
   await seed(b, { schemaVersion: 1, revision: 1, cases: [{ id: 'broken' }] });
-  await b.getByRole('button', { name: 'Erase stored data…' }).click();
-  await b.getByRole('button', { name: 'Permanently erase' }).click();
+  await eraseTyped(b);
+  // 0.7.0: an erase clears every open view at once, so A's uncertain approval is discarded, never resent.
+  await expect(restorePanel(a)).toHaveCount(0);
+  await setupViaUi(b);
   await expect(b.getByTestId('empty-state')).toBeVisible();
   const erasedEpoch = expectErased(await storedRaw(b));
-
-  await overridePageReads(a, 'real');
-  await a.getByRole('button', { name: 'Check and retry restore' }).click();
-  await expect(a.getByTestId('restore-feedback')).toContainText('this approval was withdrawn and nothing was resent');
+  await expect(a.getByTestId('empty-state')).toBeVisible();
+  await expect(restorePanel(a)).toHaveCount(0);
   expect(await sentOperationIds(a)).toEqual([secondOp]);
   expect(expectErased(await storedRaw(a))).toBe(erasedEpoch);
   // The old approval, replayed at the worker, no longer matches the erased destination.
@@ -550,6 +558,8 @@ test('acceptance 10: after deletion or erase, a delayed retry cannot resurrect r
   expect(expectErased(await storedRaw(a))).toBe(erasedEpoch);
 
   // A new restore is a new explicit approval against the fresh (erased) destination, with a new id.
+  await openRestore(a);
+  await chooseBackup(a, await richFile('again.json'));
   await expectEligible(a);
   await approveButton(a).click();
   await expect(a.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');

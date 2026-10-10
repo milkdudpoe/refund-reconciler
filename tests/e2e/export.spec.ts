@@ -361,7 +361,7 @@ test('acceptance 10: corrupt, unsupported and failed-read storage never produce 
     await page.close();
     page = await session.openDashboard();
     const noDownloads = countDownloads(page);
-    await expect(page.getByTestId('unreadable')).toBeVisible();
+    await expect(page.getByTestId('vault-unreadable')).toBeVisible();
     await expect(page.getByTestId('export-unavailable')).toContainText('a valid snapshot of saved data cannot be read');
     await expect(page.getByRole('button', { name: 'Download all data (JSON)…' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Prepare case summary…' })).toHaveCount(0);

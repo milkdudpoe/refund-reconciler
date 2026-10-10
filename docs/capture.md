@@ -13,8 +13,11 @@ compatibility testing are later work.
 
 1. On an `https://www.amazon.com/…` or `https://amazon.com/…` page, highlight
    the refund line for **one item**, for example `Refund issued: $35.00`.
-2. Click the Refund Reconciler toolbar button. The popup offers
-   **Capture selected refund text** and **Open dashboard**.
+2. Click the Refund Reconciler toolbar button. If your records are
+   **unlocked** (0.7.0, see [vault.md](vault.md)), the popup offers
+   **Capture selected refund text** and **Open dashboard**. If they are
+   locked, or setup or migration is pending, it only offers to open the
+   dashboard (**Open dashboard to unlock**) and reads nothing from the page.
 3. Choose **Capture**. The popup shows a preview, marked *not saved yet*. It
    lists the excerpt, source page, detected issued amount, order number and
    date, the amounts it did **not** treat as issued, and why a proposal could
@@ -50,15 +53,22 @@ deduplicated by amount or content hash.
 
 | Permission | Why |
 | --- | --- |
-| `storage` | Saves cases in `chrome.storage.local` (unchanged from Task 01). |
+| `storage` | Saves the encrypted ledger in `chrome.storage.local` and, while unlocked, the key in memory-only `chrome.storage.session` (0.7.0). |
 | `activeTab` | Clicking the toolbar button gives temporary access to the tab you are on. Access ends when you navigate away or close the tab. |
 | `scripting` | Lets the popup run the bundled selection reader in that tab after you choose Capture. |
 
 There are no host permissions, no `tabs` permission, no `<all_urls>`, no
 content scripts declared in the manifest, and no background scanning.
 
-- **Grant path.** Only the toolbar button grants access. The popup records
-  the active tab's id once, when it opens, and every step targets that tab id.
+- **Grant path.** Only the toolbar button grants access. When the popup
+  opens, it first asks the service worker whether the records are unlocked.
+  Only if they are does it look up the active tab (its id, and its address,
+  which is visible because of the click, reduced in memory to a supported
+  origin or nothing). It does this once, and every step targets that tab id.
+  While locked or while setup/migration is pending it queries no tab, reads
+  no selection and injects nothing. The unlock state is checked again when
+  Capture is pressed and after the selection is read; a Lock or erase in
+  another view discards any preview at once.
   It therefore never reads the dashboard or another tab. Opening the dashboard
   does not grant access to anything.
 - **Allowed pages.** HTTPS only, and the parsed hostname must be exactly
@@ -81,10 +91,12 @@ content scripts declared in the manifest, and no background scanning.
     returned or parsed. You are asked to select less.
 - **Untrusted input.** The page result is shape-checked. All page-derived text
   is rendered with text nodes only, never as markup.
-- **Ledger isolation.** The service worker calls
-  `chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })`,
-  so code running in web pages, including our own collector, cannot read or
-  write the ledger. The service worker also ignores messages from
+- **Ledger isolation.** The service worker restricts both
+  `chrome.storage.local` and `chrome.storage.session` with
+  `setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })` before handling any
+  request (and refuses to work if it cannot), so code running in web pages,
+  including our own collector, cannot read or write the ledger or the
+  unlocked key. The ledger itself is encrypted (0.7.0). The service worker also ignores messages from
   non-extension pages. Every change still goes through its serialised queue.
 - **No network.** No requests, no telemetry, no external model calls, and no
   logging of excerpts or account data.
@@ -279,8 +291,11 @@ Verified by automated tests in this repository:
   - the real collector, run through `chrome.scripting.executeScript` against
     **synthetic** HTML fixtures served at `https://www.amazon.com/…` by
     in-browser routing, with no network;
-  - the real popup, the service-worker message boundary and
-    `chrome.storage.local`;
+  - the real popup, the service-worker message boundary and the encrypted
+    vault in `chrome.storage.local` (each test first completes **Protect your
+    records** through the real dashboard; stored data is inspected with the
+    test-side decoder in `tests/e2e/vault-helpers.ts`, and page-level read or
+    reply faults wrap only the page's own runtime messages);
   - all Task 02 acceptance outcomes;
   - that page-context code is refused ledger storage access;
   - the Task 02.1 regressions:

@@ -2,12 +2,12 @@
 // SYNTHETIC test fixtures.
 
 import { describe, expect, it } from 'vitest';
-import { createHandler } from '../../src/background/handler';
 import { PARSER_VERSION, analyzeExcerpt } from '../../src/capture/parse';
 import { summarizeItem } from '../../src/domain/reconcile';
 import type { CaptureProvenance, RecordEntryCommand } from '../../src/domain/types';
 import { CAPTURE_SOURCE, parseCommand, parseStore } from '../../src/domain/validate';
-import { STORE_KEY, loadStore, type StorageAreaLike } from '../../src/persistence/storage';
+import { VAULT_KEY } from '../../src/persistence/storage';
+import { makeWorld, setUp, storedStore, type World } from './vault-fakes';
 import { Harness } from './helpers';
 
 function captured(id: string, itemId: string, text: string, over: Partial<CaptureProvenance> = {}): RecordEntryCommand['entry'] {
@@ -41,22 +41,7 @@ const item = (h: Harness, caseId: string, itemId: string) => {
   return summarizeItem(c, c.items.find((i) => i.id === itemId)!);
 };
 
-class FakeArea implements StorageAreaLike {
-  data = new Map<string, unknown>();
-  failSets = false;
-  setCalls = 0;
-  async get(key: string) {
-    return this.data.has(key) ? { [key]: structuredClone(this.data.get(key)) } : {};
-  }
-  async set(items: Record<string, unknown>) {
-    this.setCalls += 1;
-    if (this.failSets) throw new Error('QUOTA_BYTES quota exceeded');
-    for (const [k, v] of Object.entries(items)) this.data.set(k, structuredClone(v));
-  }
-  async remove(key: string) {
-    this.data.delete(key);
-  }
-}
+const vaultWrites = (w: World) => w.log.filter((o) => o.type === 'set' && o.keys.includes(VAULT_KEY)).length;
 
 describe('captured merchant reports in the ledger', () => {
   it('$70 issued against $70 expected stays issued/unconfirmed and creates no receipt (acceptance 1, 4)', () => {
@@ -190,13 +175,12 @@ describe('malformed amount tokens cannot reach storage (finding 1)', () => {
     expect(h.record('c', forged(excerpt, amountText, cents, 'amazon-us-selection-1'))).toMatchObject({ ok: false, error: { code: 'invalid' } });
     expect(h.case('c').entries.filter((e) => e.kind === 'merchant_report')).toHaveLength(0);
 
-    const area = new FakeArea();
-    const handler = createHandler(area);
-    await handler.handle({ kind: 'mutate', command: { type: 'createCase', caseId: 'c', orderRef: null, items: [{ itemId: 'a', label: 'K', expectedCents: 7000, expectationEntryId: 'e' }] } });
-    expect(await handler.handle({ kind: 'mutate', command })).toMatchObject({ ok: false, error: { code: 'invalid' } });
-    const loaded = await loadStore(area);
-    if (loaded.status !== 'ok') throw new Error(loaded.status);
-    expect(loaded.store.cases[0]!.entries.filter((e) => e.kind === 'merchant_report')).toHaveLength(0);
+    const w = makeWorld();
+    await setUp(w);
+    await w.send({ kind: 'mutate', command: { type: 'createCase', caseId: 'c', orderRef: null, items: [{ itemId: 'a', label: 'K', expectedCents: 7000, expectationEntryId: 'e' }] } });
+    expect(await w.send({ kind: 'mutate', command })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    const stored = await storedStore(w);
+    expect(stored.cases[0].entries.filter((e: { kind: string }) => e.kind === 'merchant_report')).toHaveLength(0);
   });
 
   it('an already stored capture from the previous parser version stays readable and is never recomputed', () => {
@@ -253,13 +237,13 @@ describe('source-page order context at the write boundary (finding 2)', () => {
   });
 
   it('a direct service-worker command with a URL-only mismatch is rejected and nothing is written', async () => {
-    const area = new FakeArea();
-    const handler = createHandler(area);
-    await handler.handle({ kind: 'mutate', command: { type: 'createCase', caseId: 'caseB', orderRef: B, items: [{ itemId: 'a', label: 'K', expectedCents: 7000, expectationEntryId: 'e' }] } });
-    const writes = area.setCalls;
-    const res = await handler.handle({ kind: 'mutate', command: { type: 'recordEntry', caseId: 'caseB', entry: withPath('Refund issued: $70.00', `/gp/your-account/order-details?orderID=${A}`) } });
+    const w = makeWorld();
+    await setUp(w);
+    await w.send({ kind: 'mutate', command: { type: 'createCase', caseId: 'caseB', orderRef: B, items: [{ itemId: 'a', label: 'K', expectedCents: 7000, expectationEntryId: 'e' }] } });
+    const writes = vaultWrites(w);
+    const res = await w.send({ kind: 'mutate', command: { type: 'recordEntry', caseId: 'caseB', entry: withPath('Refund issued: $70.00', `/gp/your-account/order-details?orderID=${A}`) } });
     expect(res).toMatchObject({ ok: false, error: { code: 'invalid' } });
-    expect(area.setCalls).toBe(writes);
+    expect(vaultWrites(w)).toBe(writes);
   });
 });
 
@@ -334,24 +318,20 @@ describe('provenance validation', () => {
 describe('captured reports through the service-worker handler (acceptance 5)', () => {
   const create = { kind: 'mutate', command: { type: 'createCase', caseId: 'c', orderRef: null, items: [{ itemId: 'a', label: 'Kettle', expectedCents: 7000, expectationEntryId: 'e' }] } };
   const save = { kind: 'mutate', command: { type: 'recordEntry', caseId: 'c', entry: captured('cap-1', 'a', 'Refund issued: $70.00') } };
-  const reports = async (area: FakeArea) => {
-    const loaded = await loadStore(area);
-    if (loaded.status !== 'ok') throw new Error(loaded.status);
-    return loaded.store.cases[0]!.entries.filter((e) => e.kind === 'merchant_report');
-  };
+  const reports = async (w: World) => (await storedStore(w)).cases[0].entries.filter((e: { kind: string }) => e.kind === 'merchant_report');
 
   it('a rejected write saves nothing and a retry with the same capture id saves once', async () => {
-    const area = new FakeArea();
-    const handler = createHandler(area);
-    await handler.handle(create);
-    const before = structuredClone(area.data.get(STORE_KEY));
-    area.failSets = true;
-    expect(await handler.handle(save)).toMatchObject({ ok: false, error: { code: 'write_rejected' } });
-    expect(area.data.get(STORE_KEY)).toEqual(before);
-    area.failSets = false;
-    const results = await Promise.all([handler.handle(save), handler.handle(save), handler.handle(save)]);
+    const w = makeWorld();
+    await setUp(w);
+    await w.send(create);
+    const before = structuredClone(w.local.data.get(VAULT_KEY));
+    w.local.fault = (o) => (o.type === 'set' ? 'reject' : undefined);
+    expect(await w.send(save)).toMatchObject({ ok: false, error: { code: 'write_rejected' } });
+    expect(w.local.data.get(VAULT_KEY)).toEqual(before);
+    w.local.fault = null;
+    const results = await Promise.all([w.send(save), w.send(save), w.send(save)]);
     expect(results.map((r) => r.ok && r.outcome)).toEqual(['applied', 'duplicate', 'duplicate']);
-    const stored = await reports(area);
+    const stored = await reports(w);
     expect(stored).toHaveLength(1);
     expect(stored[0]).toMatchObject({ id: 'cap-1', capture: { approvedAmountText: '$70.00' } });
   });

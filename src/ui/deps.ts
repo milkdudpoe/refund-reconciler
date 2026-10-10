@@ -1,13 +1,32 @@
-// Browser bindings shared by the dashboard and the toolbar popup. Pages read
-// storage directly but send every change to the service worker.
+// Browser bindings shared by the dashboard and the toolbar popup. Pages never
+// touch chrome.storage directly and never hold a key: every read and every
+// change goes to the service worker, and every reply is validated here.
 
-import { isResponse, type Request, type Response } from '../background/messages';
-import { STORE_KEY, type StorageAreaLike } from '../persistence/storage';
+import {
+  isResponse,
+  isVaultResponse,
+  parseLegacyReadResponse,
+  parseReadResponse,
+  type LegacyReadResponse,
+  type Request,
+  type Response,
+  type VaultRequest,
+  type VaultResponse,
+} from '../background/messages';
+import { LOCAL_KEYS } from '../persistence/storage';
+import { VAULT_CHANNEL } from '../vault/channel';
+import type { LedgerState } from '../vault/state';
 
 export interface AppDeps {
-  area: StorageAreaLike;
+  /** The current ledger state from the service worker. Never throws: a failed read is `storage_error`. */
+  read: () => Promise<LedgerState>;
   send: (req: Request) => Promise<Response>;
+  /** Setup, migration, unlock, Lock and erase. A lost reply is `outcome_unknown`. */
+  vault: (req: Exclude<VaultRequest, { kind: 'read' } | { kind: 'readLegacy' }>) => Promise<VaultResponse>;
+  /** The plaintext records of an earlier version, for the explicit pre-migration backup only. */
+  readLegacy: () => Promise<LegacyReadResponse>;
   newId: () => string;
+  /** Calls back when stored records or the vault state may have changed. */
   subscribe: (onChange: () => void) => void;
 }
 
@@ -41,12 +60,42 @@ function requestBlobDownload(text: string, mimeType: string, filename: string): 
   setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_LIFETIME_MS);
 }
 
+function describe(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function chromeDeps(): AppDeps {
   return {
-    area: {
-      get: (key) => chrome.storage.local.get(key),
-      set: (items) => chrome.storage.local.set(items),
-      remove: (key) => chrome.storage.local.remove(key),
+    async read() {
+      try {
+        const raw: unknown = await chrome.runtime.sendMessage({ kind: 'read' });
+        const res = parseReadResponse(raw);
+        if (!res) {
+          const claimedOk = typeof raw === 'object' && raw !== null && (raw as { ok?: unknown }).ok === true;
+          return { status: 'storage_error', error: claimedOk ? 'The extension returned saved data that failed validation, so it was not used.' : 'The extension did not return a valid reply.' };
+        }
+        return res.ok ? res.ledger : { status: 'storage_error', error: res.error.message };
+      } catch (err) {
+        return { status: 'storage_error', error: describe(err) };
+      }
+    },
+    async readLegacy() {
+      try {
+        const res = parseLegacyReadResponse(await chrome.runtime.sendMessage({ kind: 'readLegacy' }));
+        return res ?? { ok: false, error: { code: 'invalid_reply', message: 'The extension did not return a valid reply.' } };
+      } catch (err) {
+        return { ok: false, error: { code: 'read_failed', message: describe(err) } };
+      }
+    },
+    async vault(req) {
+      try {
+        const res: unknown = await chrome.runtime.sendMessage(req);
+        if (isVaultResponse(res)) return res;
+        return { ok: false, error: { code: 'outcome_unknown', message: 'The extension did not return a valid response.' } };
+      } catch (err) {
+        // It may have been carried out before the reply was lost: re-read the state.
+        return { ok: false, error: { code: 'outcome_unknown', message: describe(err) } };
+      }
     },
     async send(req) {
       try {
@@ -61,9 +110,15 @@ export function chromeDeps(): AppDeps {
     },
     newId: () => crypto.randomUUID(),
     subscribe(onChange) {
-      chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === 'local' && STORE_KEY in changes) onChange();
+      // Local area only: this page never listens to chrome.storage.session, which holds the unlocked key.
+      chrome.storage.local.onChanged.addListener((changes) => {
+        if (LOCAL_KEYS.some((k) => k in changes)) onChange();
       });
+      // Lock, unlock and erase may change no local key; the worker announces them (no data) on this channel.
+      const channel = new BroadcastChannel(VAULT_CHANNEL);
+      channel.onmessage = (ev: MessageEvent) => {
+        if ((ev.data as { type?: unknown } | null)?.type === 'vault-changed') onChange();
+      };
     },
   };
 }

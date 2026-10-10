@@ -1,18 +1,21 @@
-// Dashboard presentation. Reads validated data from storage, renders it, and
-// sends every change to the service worker. It never computes money itself:
-// all figures come from the pure domain functions.
+// Dashboard presentation. Reads the validated, decrypted ledger from the
+// service worker (pages never decrypt anything), renders it, and sends every
+// change to the service worker. It never computes money itself: all figures
+// come from the pure domain functions. While the ledger is not unlocked, only
+// the vault screens (src/ui/vault.ts) are shown and nothing private is kept.
 
 import { centsToInput, formatUsd, moneyErrorMessage, parseMoney } from '../domain/money';
 import { buildTimeline, summarizeCase, type CaseSummary, type ItemSummary, type TimelineRow } from '../domain/reconcile';
 import type { CaptureProvenance, CaseRecord, Command, RecordEntryCommand, StoreData } from '../domain/types';
 import { LIMITS, isValidCalendarDate } from '../domain/validate';
-import { ERASE_CONFIRMATION, type Request } from '../background/messages';
-import { loadStore, type LoadResult } from '../persistence/storage';
+import type { Request } from '../background/messages';
+import type { LedgerState } from '../vault/state';
 import { buildCaseSummaryText } from '../export/summary';
 import { QUERY_MAX, STATUS_FILTERS, buildOverview, findCases, normalizeQuery, realCaseViews, type CaseView, type Overview, type StatusFilter } from '../domain/overview';
 import { buildBackup, countBackup, exportFilename, serializeBackup } from '../export/backup';
 import type { DashboardDeps } from './deps';
 import { createRestoreController } from './restore';
+import { createVaultScreens } from './vault';
 import { h, replaceContent, syncChildren } from './dom';
 import {
   CASE_STATUS_LABEL,
@@ -92,13 +95,25 @@ interface ExportPanel {
 
 type View = { name: 'list' } | { name: 'create'; draft: CreateDraft } | { name: 'case'; caseId: string };
 
+type LoadResult = LedgerState;
+
+/**
+ * States in which this browser session no longer has the records unlocked
+ * (Lock, erase, restart, setup or migration pending). Then nothing decrypted
+ * or private may stay in the page. A failed read or unreadable stored data
+ * says nothing about the session, so open drafts are kept (as before) while
+ * every export and change stays blocked.
+ */
+function isLockedOut(s: LoadResult): boolean {
+  return s.status === 'locked' || s.status === 'setup_required' || s.status === 'migration_required' || s.status === 'migration_pending' || s.status === 'storage_unavailable';
+}
+
 interface State {
-  load: LoadResult | { status: 'loading' };
+  load: LoadResult | { status: 'loading' } | { status: 'locking' };
   view: View;
   entryDraft: EntryDraft | null;
   voidDraft: VoidDraft | null;
   confirmDelete: boolean;
-  confirmErase: boolean;
   busy: boolean;
   exportPanel: ExportPanel | null;
   notice: { tone: 'success' | 'error' | 'info'; text: string } | null;
@@ -128,7 +143,6 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     entryDraft: null,
     voidDraft: null,
     confirmDelete: false,
-    confirmErase: false,
     busy: false,
     exportPanel: null,
     notice: null,
@@ -145,6 +159,13 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
    */
   let storageGen = 0;
   const restore = createRestoreController({ deps, render: () => render(), announce: (text) => announce(text), storageGen: () => storageGen });
+  const vault = createVaultScreens({ deps, render: () => render(), announce: (text) => announce(text), setNotice: (tone, text) => setNotice(tone, text), reload: () => reload() });
+  /**
+   * Incremented whenever decrypted data is dropped from this page (Lock,
+   * erase, or any state that is not unlocked). Work started before can see it
+   * changed and must not show its result or start an export.
+   */
+  let privacyEpoch = 0;
 
   // ---- Case finder (read-only; kept in this dashboard's memory only, never stored) ----
   const finder: { query: string; status: StatusFilter } = { query: '', status: 'all' };
@@ -170,9 +191,14 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   async function reload(): Promise<void> {
     const seq = ++loadSeq;
     const gen = storageGen;
-    const result = await loadStore(deps.area);
+    const result = await deps.read();
     if (seq !== loadSeq) return; // a newer load superseded this one
+    if (isLockedOut(result)) dropPrivateData();
+    const wasUnlocked = state.load.status === 'ok';
+    // A different state makes a plaintext backup still being prepared obsolete.
+    if (state.load.status !== result.status) vault.invalidateBackup();
     state.load = result;
+    if (result.status === 'ok' && !wasUnlocked) vault.reset();
     if (state.view.name === 'case' && result.status === 'ok') {
       const caseId = state.view.caseId;
       if (!result.store.cases.some((c) => c.id === caseId)) {
@@ -186,6 +212,56 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     const becameStale = updateExportFreshness(result, gen);
     render();
     if (becameStale) focusRefreshIfFocusLost();
+    if (isLockedOut(result) && wasUnlocked) {
+      // Locked or erased elsewhere: say so, and keep keyboard focus on the page.
+      announce(result.status === 'locked' ? 'Your records were locked. Enter your passphrase to unlock them.' : 'Your records are no longer unlocked.');
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || active === document.body || !active.isConnected) root.querySelector<HTMLElement>('h2[tabindex="-1"]')?.focus();
+    }
+  }
+
+  /**
+   * Forgets everything decrypted or private this page holds: records, open
+   * forms and drafts, search text, the export panel and its prepared text, and
+   * the restore panel with its file contents. Pending reads, copies, exports
+   * and restores started before can no longer show a result. A save the worker
+   * already committed, a download already requested and text already copied
+   * to the clipboard cannot be recalled.
+   */
+  function dropPrivateData(): void {
+    const hadPrivate = state.load.status === 'ok' || state.exportPanel !== null || restore.isOpen() || state.view.name !== 'list' || finder.query !== '';
+    privacyEpoch += 1;
+    loadSeq += 1;
+    exportSeq += 1;
+    state.view = { name: 'list' };
+    state.entryDraft = null;
+    state.voidDraft = null;
+    state.confirmDelete = false;
+    state.exportPanel = null;
+    uncertainOpId = null;
+    deletingCaseId = null;
+    restore.reset();
+    finder.query = '';
+    finder.status = 'all';
+    cancelCountAnnouncement();
+    listDom = null;
+    resultViews = [];
+    if (hadPrivate && state.notice?.tone !== 'error') state.notice = null;
+  }
+
+  async function lockNow(): Promise<void> {
+    // Clear this view at once; other views are told by the worker when Lock completes.
+    dropPrivateData();
+    state.load = { status: 'locking' };
+    announce('Locking…');
+    render();
+    document.getElementById('locking-heading')?.focus();
+    const res = await deps.vault({ kind: 'lock' });
+    if (res.ok) setNotice('success', res.message);
+    else if (res.error.code === 'outcome_unknown') setNotice('error', 'The extension’s reply was lost, so it is not confirmed that the records are locked. The current state is shown below.');
+    else setNotice('error', res.error.message);
+    await reload();
+    (document.getElementById('vault-locked-heading') ?? document.getElementById('list-heading'))?.focus();
   }
 
   function storeHasId(data: StoreData, id: string): boolean {
@@ -235,13 +311,27 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     uncertainOpId = null;
     state.busy = true;
     render();
+    const epoch = privacyEpoch;
     const res = await deps.send(req);
     state.busy = false;
+    if (epoch !== privacyEpoch) {
+      // Locked or erased while this was in flight: report only what is known, keep nothing.
+      setNotice(
+        res.ok ? 'success' : 'info',
+        res.ok
+          ? 'That change was saved before your records were locked.'
+          : res.error.code === 'outcome_unknown'
+            ? 'Your records were locked while a change was being saved, so its outcome is not known. Unlock and check before entering it again.'
+            : 'Your records were locked; that change was not saved.',
+      );
+      await reload();
+      return false;
+    }
     if (!res.ok && res.error.code === 'outcome_unknown') {
-      // Never treat a lost reply as a failure: read storage directly and look
+      // Never treat a lost reply as a failure: read saved data again and look
       // for the operation's own id.
       uncertainOpId = opId ?? null;
-      const check = await loadStore(deps.area);
+      const check = await deps.read();
       if (!opId) {
         setNotice('error', 'Could not confirm whether this change was saved. The page now shows what is in saved data; check it before trying again.');
       } else if (check.status === 'ok' && storeHasId(check.store, opId)) {
@@ -477,7 +567,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     do {
       attempt += 1;
       gen = storageGen;
-      result = await loadStore(deps.area);
+      result = await deps.read();
       if (seq !== exportSeq || state.exportPanel !== panel) return;
       superseded = storageGen !== gen;
     } while (superseded && attempt < SNAPSHOT_READ_ATTEMPTS);
@@ -490,10 +580,12 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       panel.phase = 'blocked';
       panel.blockedReason =
         result.status === 'storage_error'
-          ? `Chrome reported an error while reading extension storage: ${result.error}`
-          : result.status === 'unsupported_version'
+          ? `Saved data could not be read: ${result.error}`
+          : result.status === 'unsupported_version' || (result.status === 'vault_unreadable' && (result.reason === 'unsupported' || result.reason === 'payload_unsupported'))
             ? 'Stored data uses an unsupported version.'
-            : 'Stored data could not be read (it failed validation).';
+            : result.status === 'locked'
+              ? 'Your records are locked.'
+              : 'Stored data could not be read (it failed validation).';
       announce('Export unavailable: a valid snapshot of saved data cannot be read.');
     } else if (panel.kind === 'summary' && !result.store.cases.some((c) => c.id === panel.caseId)) {
       panel.phase = 'missing';
@@ -603,12 +695,46 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
    * and further copies are refused, so the completion message always
    * describes the text that was actually written.
    */
+  /**
+   * Re-confirms with the service worker, at the moment Copy or Download is
+   * pressed, that the records are still unlocked and the snapshot still
+   * matches saved data. A panel that was open before a Lock in another view
+   * can therefore never export afterwards.
+   */
+  async function confirmAtActionTime(panel: ExportPanel): Promise<boolean> {
+    const epoch = privacyEpoch;
+    const gen = storageGen;
+    const now = await deps.read();
+    if (epoch !== privacyEpoch || state.exportPanel !== panel) return false;
+    if (isLockedOut(now)) {
+      dropPrivateData();
+      state.load = now;
+      render();
+      return false;
+    }
+    updateExportFreshness(now, gen);
+    if (!exportable(panel)) {
+      render();
+      return false;
+    }
+    return true;
+  }
+
   async function copyExport(): Promise<void> {
     const panel = state.exportPanel;
     if (!panel || panel.copying || !exportable(panel)) return;
     const op = { text: panel.text, includeDetails: panel.includeDetails };
     panel.copying = op;
-    // Start the write inside the click so the browser still sees the user's gesture.
+    render();
+    if (!(await confirmAtActionTime(panel))) {
+      if (state.exportPanel === panel && panel.copying === op) {
+        panel.copying = null;
+        render();
+      }
+      return;
+    }
+    if (panel.copying !== op) return;
+    // Still within the click's user activation (a few seconds), so the browser accepts the write.
     let write: Promise<void>;
     try {
       write = deps.copyText(op.text);
@@ -654,9 +780,15 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     }
   }
 
-  function downloadExport(): void {
+  let downloading = false;
+  async function downloadExport(): Promise<void> {
     const panel = state.exportPanel;
-    if (!panel || !exportable(panel)) return;
+    if (!panel || !exportable(panel) || downloading) return;
+    downloading = true;
+    const confirmed = await confirmAtActionTime(panel).finally(() => {
+      downloading = false;
+    });
+    if (!confirmed || state.exportPanel !== panel) return;
     const mime = panel.kind === 'summary' ? 'text/plain;charset=utf-8' : 'application/json;charset=utf-8';
     try {
       deps.requestDownload(panel.text, mime, panel.filename);
@@ -690,6 +822,16 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
         h('p', { class: `notice notice-${state.notice.tone}`, role: state.notice.tone === 'error' ? 'alert' : null, 'data-testid': 'notice' }, state.notice.text),
       );
     }
+    if (state.load.status === 'ok') {
+      children.push(
+        h(
+          'div',
+          { class: 'lockbar', 'data-testid': 'lockbar' },
+          h('span', { class: 'muted small' }, 'Unlocked for this browser session. Saved records are encrypted.'),
+          h('button', { type: 'button', id: 'lock-now', on: { click: () => void lockNow() } }, 'Lock now'),
+        ),
+      );
+    }
     if (state.exportPanel) children.push(renderExportPanel(state.exportPanel));
     children.push(restore.render());
     children.push(renderBody());
@@ -719,8 +861,12 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       case 'corrupt':
       case 'unsupported_version':
         return renderUnreadable(load);
+      case 'locking':
+        return h('section', { class: 'panel', 'aria-labelledby': 'locking-heading' }, h('h2', { id: 'locking-heading', tabindex: -1 }, 'Locking…'), h('p', { class: 'muted' }, 'Your records have been cleared from this page.'));
       case 'ok':
         break;
+      default:
+        return vault.render(load);
     }
     const view = state.view;
     if (view.name === 'create') return renderCreate(view.draft);
@@ -782,7 +928,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
               : null,
             h(
               'button',
-              { type: 'button', id: 'export-download', class: isSummary ? null : 'primary', disabled: !exportable(panel), on: { click: downloadExport } },
+              { type: 'button', id: 'export-download', class: isSummary ? null : 'primary', disabled: !exportable(panel), on: { click: () => void downloadExport() } },
               isSummary ? 'Download text' : 'Download JSON',
             ),
             refreshBtn(isSummary ? 'Refresh preview' : 'Refresh snapshot'),
@@ -936,25 +1082,8 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       ),
       h('label', { for: 'raw-data' }, 'Raw stored data (read-only — copy it if you need to keep it)'),
       h('textarea', { id: 'raw-data', readonly: true, rows: 8, value: raw }),
-      state.confirmErase
-        ? h(
-            'div',
-            { class: 'confirm', role: 'group', 'aria-labelledby': 'erase-q' },
-            h('p', { id: 'erase-q' }, 'Permanently erase all Refund Reconciler data stored in this browser profile? This cannot be undone.'),
-            h('button', { type: 'button', class: 'danger', disabled: state.busy, on: { click: () => void eraseAll() } }, 'Permanently erase'),
-            h('button', { type: 'button', on: { click: () => { state.confirmErase = false; render(); } } }, 'Cancel'),
-          )
-        : h('button', { type: 'button', class: 'danger-outline', on: { click: () => { state.confirmErase = true; render(); } } }, 'Erase stored data…'),
+      vault.renderErase(),
     );
-  }
-
-  async function eraseAll(): Promise<void> {
-    const ok = await run({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION }, 'Stored data erased.');
-    if (ok) {
-      state.confirmErase = false;
-      state.view = { name: 'list' };
-      render();
-    }
   }
 
   function caseTitle(c: CaseRecord): string {
@@ -1644,6 +1773,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
 
   deps.subscribe(() => {
     storageGen += 1;
+    vault.invalidateBackup();
     invalidateExportOnChange();
     restore.onStorageChange();
     void reload();

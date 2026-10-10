@@ -14,6 +14,7 @@ import {
   eraseViaUi,
   expectEligible,
   expectErased,
+  resetToFreshLedger,
   holdNextReply,
   holdNextSend,
   openRestore,
@@ -55,7 +56,7 @@ test.describe('restore requests cannot outlive an erase', () => {
     await approveButton(a).click(); // the real Restore UI builds and sends the request
     await expect(a.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');
     const [original] = await sentRequests(a);
-    expect(original).toMatchObject({ kind: 'restore', expected: { revision: 0, stored: false, epoch: null } });
+    expect(original).toMatchObject({ kind: 'restore', expected: { revision: 0, stored: true, epoch: expect.any(String) } });
     expect(((await storedRaw(a)) as Raw).cases).toHaveLength(4);
 
     const b = await session.openDashboard();
@@ -101,7 +102,7 @@ test.describe('restore requests cannot outlive an erase', () => {
     await approveButton(a).click();
     await waitForHeldSend(a);
     const [held] = await sentRequests(a);
-    expect(held).toMatchObject({ expected: { revision: 0, stored: false, epoch: null } });
+    expect(held).toMatchObject({ expected: { revision: 0, stored: true, epoch: expect.any(String) } });
 
     // Another dashboard creates data, then erases it twice through the real UI.
     const b = await session.openDashboard();
@@ -112,15 +113,21 @@ test.describe('restore requests cannot outlive an erase', () => {
     await eraseViaUi(b, corrupt);
     const erased = await storedRaw(b);
     expectErased(erased);
+    // The erase cleared every open view, A's restore panel and its file included (0.7.0: erase drops pending UI work).
     await expect(a.getByTestId('empty-state')).toBeVisible();
-    await expect(restorePanel(a)).toHaveAttribute('data-phase', 'sending');
+    await expect(restorePanel(a)).toHaveCount(0);
 
-    // Release the original send: the worker refuses it; nothing is restored.
+    // Release the original send: the worker refuses it, nothing is restored, and A shows no late result.
     await releaseSend(a);
-    await expect(a.getByTestId('restore-feedback')).toContainText('Not restored. Saved data changed after this restore was approved');
+    // Queued behind the released request in the worker, so it is answered after it.
+    expect(await sendRaw(a, held)).toMatchObject({ ok: false, error: { code: 'restore_stale' } });
     expect(await storedRaw(b)).toEqual(erased);
+    await expect(restorePanel(a)).toHaveCount(0);
+    await expect(a.getByTestId('restore-done')).toHaveCount(0);
 
     // A new explicit approval against the fresh destination succeeds once.
+    await openRestore(a);
+    await chooseBackup(a, await writeBackupFile(scratch.dir, 'again.json', envelopeOf(richLedger())));
     await expectEligible(a);
     await approveButton(a).click();
     await expect(a.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'applied');
@@ -156,9 +163,7 @@ test.describe('a delayed successful reply keeps completion truthful about later 
   test('a later entry, then a deletion of the restored case, then an erase', async ({ session }) => {
     for (const change of ['entry', 'delete', 'erase'] as const) {
       // A fresh empty profile state for each variant.
-      const reset = await session.openDashboard();
-      await reset.evaluate((key) => chrome.storage.local.remove(key), 'refundReconciler.store');
-      await reset.close();
+      await resetToFreshLedger(session);
       const single = { schemaVersion: 1, revision: 3, cases: [richLedger().cases[1]] };
       const a = await preview(session, single, `${change}.json`);
       await commitAndHoldReply(a);
@@ -179,6 +184,18 @@ test.describe('a delayed successful reply keeps completion truthful about later 
       } else {
         await eraseViaUi(b, corrupt);
         await expect(a.getByTestId('empty-state')).toBeVisible();
+        // An erase clears every open view: the committed restore cannot be undone, but A's panel and
+        // its pending reply are discarded, so the late reply can never repopulate it.
+        await expect(restorePanel(a)).toHaveCount(0);
+        const afterErase = await storedRaw(b);
+        await releaseSend(a);
+        expect(await sendRaw(a, { kind: 'read' })).toMatchObject({ ok: true });
+        await expect(a.getByTestId('restore-done')).toHaveCount(0);
+        await expect(restorePanel(a)).toHaveCount(0);
+        expect(await storedRaw(b)).toEqual(afterErase);
+        await a.close();
+        await b.close();
+        continue;
       }
       // All events reached A before its reply: still sending, no completion shown yet.
       await expect(restorePanel(a)).toHaveAttribute('data-phase', 'sending');

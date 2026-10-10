@@ -133,17 +133,10 @@ test.describe('snapshot reads racing storage changes', () => {
     expect(file.text).toBe(await a.getByTestId('export-text').inputValue());
 
     // A refresh read that FAILS while storage changes stays blocked, then recovers.
-    await a.evaluate(() => {
-      const area = chrome.storage.local as unknown as { get: unknown };
-      const w = window as unknown as { __realGet: unknown };
-      area.get = () => Promise.reject(new Error('Simulated read failure'));
-      (window as unknown as { __restore: () => void }).__restore = () => {
-        area.get = w.__realGet;
-      };
-    });
+    await overridePageReads(a, 'reject');
     await a.getByRole('button', { name: 'Refresh preview' }).click();
     await expect(a.getByTestId('export-blocked')).toContainText('Simulated read failure');
-    await a.evaluate(() => (window as unknown as { __restore: () => void }).__restore());
+    await overridePageReads(a, 'real');
     await a.getByRole('button', { name: 'Try again' }).click();
     await expect(a.getByTestId('export-text')).toHaveValue(/Confirmed net received: \$65\.00/);
     await expect(a.getByRole('button', { name: 'Download text' })).toBeEnabled();

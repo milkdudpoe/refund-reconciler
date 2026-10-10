@@ -12,7 +12,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { test as base } from '@playwright/test';
-import { ExtensionSession, STORE_KEY, createCase, expect, recordForItem } from '../e2e/fixtures';
+import { ExtensionSession, createCase, expect, recordForItem } from '../e2e/fixtures';
+import { VAULT_KEY, decryptedRaw, setupViaUi, unlockViaUi, vaultScreen } from '../e2e/vault-helpers';
 import { isRegularFileEntry, isSafeEntryName, readZip } from '../../scripts/beta/zip.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -55,7 +56,7 @@ test('the extracted beta ZIP loads with production settings and its local workfl
   // exact permissions, no host access, icons in place.
   const extractedManifest = JSON.parse(await readFile(join(extracted, 'manifest.json'), 'utf8'));
   expect(extractedManifest).toEqual(JSON.parse(await readFile(join(ROOT, 'public', 'manifest.json'), 'utf8')));
-  const page = await session.openDashboard();
+  const page = await session.openDashboard({ unlock: false });
   const loaded = await page.evaluate(() => chrome.runtime.getManifest());
   expect(loaded).toMatchObject({ version: VERSION, permissions: ['storage', 'activeTab', 'scripting'] });
   expect(loaded.host_permissions ?? []).toEqual([]);
@@ -71,7 +72,11 @@ test('the extracted beta ZIP loads with production settings and its local workfl
     return sizes;
   }, Object.values(loaded.icons ?? {}));
   expect(iconSizes).toEqual([16, 32, 48, 128]);
-  expect(await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY)).toEqual({});
+  // A fresh installation asks to protect the records before anything else, then stores only the encrypted vault.
+  await expect(vaultScreen(page, 'vault-setup')).toBeVisible();
+  expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual({});
+  await setupViaUi(page);
+  expect(Object.keys(await page.evaluate(() => chrome.storage.local.get(null)))).toEqual([VAULT_KEY]);
 
   // The guide is reachable and closed by default.
   await expect(page.getByTestId('help')).not.toHaveAttribute('open');
@@ -88,9 +93,10 @@ test('the extracted beta ZIP loads with production settings and its local workfl
   await createCase(page, { orderRef: 'BETA-SMOKE-1', items: [{ label: 'Synthetic desk lamp', amount: '35.00' }] });
   await expect(page.locator('#case-heading')).toContainText('BETA-SMOKE-1');
   await recordForItem(page, 'Synthetic desk lamp', 'Confirm money received', '35.00', { reference: 'STMT-SMOKE' });
-  const stored = (await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY] as {
+  const stored = (await decryptedRaw(page)) as {
     cases: { isDemo: boolean; orderRef?: string; items: { label: string }[]; entries: Record<string, unknown>[] }[];
   };
+  expect(JSON.stringify(await page.evaluate(() => chrome.storage.local.get(null)))).not.toMatch(/Synthetic desk lamp|STMT-SMOKE/);
   expect(stored.cases).toHaveLength(1);
   expect(stored.cases[0]).toMatchObject({ isDemo: false, items: [{ label: 'Synthetic desk lamp' }] });
   const kinds = stored.cases[0]!.entries.map((e) => [e.kind, e.amountCents]);
@@ -107,6 +113,15 @@ test('the extracted beta ZIP loads with production settings and its local workfl
   const backup = JSON.parse(await readFile(await download.path(), 'utf8'));
   expect(backup).toMatchObject({ format: 'refund-reconciler-backup', formatVersion: 1 });
   expect(backup.store).toEqual(stored);
+
+  await page.locator('#export-close').click();
+
+  // Lock now, then unlock with the passphrase.
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  await expect(vaultScreen(page, 'vault-locked')).toBeVisible();
+  await expect(page.locator('#app')).not.toContainText('BETA-SMOKE-1');
+  await unlockViaUi(page);
+  await expect(page.getByTestId('case-row')).toContainText('BETA-SMOKE-1');
 
   // The toolbar popup page from the archive renders and points to the guide.
   const popup = await session.context!.newPage();
