@@ -1,0 +1,80 @@
+// "How to use Refund Reconciler": a static first-use guide shown as a native
+// disclosure in the dashboard header. It is built once, outside the app's
+// render tree, and neither reads nor writes saved data: opening, closing or
+// reading it never touches storage, drafts, filters or in-progress operations.
+
+import { h } from './dom';
+
+// Deliberately not "help": the popup opens dashboard.html#help, and a matching
+// fragment target would make Chrome move focus away from the guide.
+export const HELP_ID = 'help-guide';
+
+export function buildHelp(): HTMLDetailsElement {
+  return h(
+    'details',
+    { id: HELP_ID, class: 'help', 'data-testid': 'help' },
+    h('summary', { id: 'help-summary' }, 'How to use Refund Reconciler'),
+    h(
+      'div',
+      { class: 'help-body' },
+      h(
+        'ol',
+        { class: 'help-steps' },
+        h(
+          'li',
+          {},
+          h('strong', {}, 'Create a case. '),
+          'Choose Create case, add each returned item and enter the refund you expect for it, or tick Unknown if you don’t know it yet.',
+        ),
+        h(
+          'li',
+          {},
+          h('strong', {}, 'Optionally record what the merchant says. '),
+          'Use Record merchant report to type in what the merchant says it issued, or highlight one item’s refund line on a supported Amazon US page, click the toolbar button and approve the preview. This is the merchant’s statement, not proof that you were paid.',
+        ),
+        h(
+          'li',
+          {},
+          h('strong', {}, 'Confirm money yourself. '),
+          'After checking your card or bank statement, use Confirm money received. If money is later taken back, use Record recharge. If you entered something by mistake, Void it: the original and the void both stay in the history.',
+        ),
+        h(
+          'li',
+          {},
+          h('strong', {}, 'Follow up. '),
+          'Filter by Needs attention or Needs review and open a case to see what is unresolved. Prepare case summary… gives you text to share yourself; nothing is sent anywhere. Download all data (JSON)… saves a backup, which can be restored only into a ledger with no cases.',
+        ),
+      ),
+      h(
+        'p',
+        {},
+        'Want to look around first? Load synthetic demo (at the bottom of the case list) adds made-up example cases, clearly labelled and kept out of your totals. Remove synthetic demo deletes them again. It is never loaded for you.',
+      ),
+      h(
+        'details',
+        { class: 'help-more' },
+        h('summary', {}, 'Where your data is kept'),
+        h(
+          'ul',
+          {},
+          h('li', {}, 'Everything you enter stays in this Chrome profile on this computer. It is not synced, not encrypted by the extension, and not sent to Amazon, your bank or anyone else.'),
+          h('li', {}, 'Backups and summaries are ordinary, unencrypted files. Keep them somewhere safe and share them only if you choose to.'),
+          h('li', {}, 'Removing the extension, or losing or resetting this browser profile, deletes the saved records. Download a JSON backup first if you want to keep them.'),
+        ),
+      ),
+      h(
+        'details',
+        { class: 'help-more' },
+        h('summary', {}, 'About capturing selected text'),
+        h(
+          'ul',
+          {},
+          h('li', {}, 'Capture is a preview feature. It has been tested only with synthetic example pages, not with live Amazon pages, so it may not recognise the wording you see.'),
+          h('li', {}, 'Only the text you highlight and the page address are read, and only after you click the toolbar button and choose Capture. Nothing is saved until you approve the preview.'),
+          h('li', {}, 'If capture doesn’t work, enter the merchant report manually instead.'),
+        ),
+      ),
+      h('p', { class: 'muted small' }, 'Refund Reconciler tracks the evidence you record. It does not move money, contact merchants or decide what you are owed.'),
+    ),
+  );
+}

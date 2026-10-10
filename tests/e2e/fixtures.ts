@@ -24,7 +24,9 @@ export class ExtensionSession {
   ) {}
 
   async launch(): Promise<void> {
-    if (!existsSync(join(DIST, 'manifest.json'))) throw new Error('dist/ is missing; run `npm run build` first.');
+    if (!existsSync(join(this.extensionDir, 'manifest.json'))) {
+      throw new Error(`${this.extensionDir} has no manifest.json; run \`npm run build\` (or \`npm run package:beta\` for the archive test) first.`);
+    }
     this.context = await chromium.launchPersistentContext(this.userDataDir, {
       channel: 'chromium',
       args: [`--disable-extensions-except=${this.extensionDir}`, `--load-extension=${this.extensionDir}`],

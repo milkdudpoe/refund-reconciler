@@ -314,4 +314,7 @@ Test permissions never enter `dist/`.
 **Not verified:** behaviour on real, signed-in Amazon US pages; Amazon's
 current refund wording and how its pages produce `Selection.toString()` text;
 and the manual toolbar-click flow in a desktop Chrome profile. These need
-live, user-consented validation before anyone relies on this capture.
+live, user-consented validation before anyone relies on this capture. A
+manual checklist for both (the toolbar grant and one real refund line) is in
+[beta.md](beta.md#manual-checks-still-to-do); as of beta 0.6.0 neither has
+been performed.

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!--
+    Simplified 16 px variant of icon.svg, drawn on the pixel grid so the page
+    stays readable at toolbar size; the return arrow is left out because it
+    cannot be drawn legibly in 16 pixels. Regenerate with `npm run icons`.
+  -->
+  <rect x="0" y="0" width="16" height="16" rx="3" fill="#2456a6"/>
+  <path d="M4 2 H10 L13 5 V14 H4 Z" fill="#ffffff"/>
+  <path d="M10 2 V5 H13 Z" fill="#b9cdf0"/>
+  <rect x="6" y="5" width="3" height="1" fill="#2456a6"/>
+  <rect x="6" y="7" width="5" height="1" fill="#2456a6"/>
+  <rect x="6" y="9" width="5" height="1" fill="#2456a6"/>
+  <rect x="6" y="11" width="4" height="1" fill="#2456a6"/>
+</svg>
