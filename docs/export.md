@@ -70,6 +70,11 @@ cases, synthetic demo cases, items, entries including voids, captured
 reports), and states that the file contains all cases, notes, references and
 captured excerpts and is an ordinary unencrypted file.
 
+The dashboard's search and status filter (Task 05) never narrow this file:
+it always contains every stored case, including synthetic demo cases and all
+history, whatever the case list currently shows. Filtering does not change
+the snapshot's freshness checks.
+
 **Format:**
 
 ```json

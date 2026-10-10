@@ -1,4 +1,4 @@
-# Product scope and data model (Tasks 01–04)
+# Product scope and data model (Tasks 01–05)
 
 ## Scope
 
@@ -107,6 +107,63 @@ only); `excess` = Σ item excesses, reported separately. One item's excess never
 offsets another item's shortfall. A recharge after settlement recomputes the
 item as `reopened`, so the case leaves `settled`.
 
+## Dashboard overview and case finder (Task 05)
+
+Read-only views over the same derivations (`src/domain/overview.ts`). Nothing
+is stored: no new fields, no writes, no reordering of stored cases or evidence.
+
+**Overview** — shown above the case list, always for **all real cases**
+(`isDemo: false`), never for the filtered view and never including synthetic
+demo cases (even when demo cases are the only stored data):
+
+| Figure | Definition |
+| --- | --- |
+| Unresolved expected amounts | Σ over real cases of `summarizeCase(c).unresolvedCents`, using checked integer-cent addition. If the sum is not a safe integer it shows *Total unavailable* with an explanation; no inexact number is shown, and every case row keeps its own figures. |
+| Items with unknown amounts | Σ `unknownExpectationCount`. Shown separately; unknown amounts are never treated as zero or estimated. |
+| Cases needing attention | Cases whose status is not `settled` (open, unknown expectations, and every review condition). |
+| Cases needing review | Cases whose status is `needs_review`, including a balanced contradiction (difference $0.00 but the latest merchant report is below confirmed receipts). |
+
+Merchant reports stay status snapshots: they never enter the overview as
+receipts, and repeated snapshots do not add up. Excess on one item never
+offsets another item's unresolved amount, because only the per-case
+`unresolvedCents` (Σ positive item differences) is added. The overview says
+the totals come from the user's own saved evidence and are not confirmation
+that money is owed or that a refund was made. With no real cases it says so
+and makes no claim that the user's refunds are settled.
+
+**Finder** — a search field and one status selector, applied together:
+
+- *Search* is a literal, case-insensitive substring match (JavaScript
+  `toLowerCase` on both sides; no regular expressions, no markup) on the case's
+  order reference and its item descriptions only. Notes, transaction
+  references, sources and captured excerpts are not searched. The query is
+  trimmed; blank means no restriction; it is limited to 200 characters
+  (`maxlength` plus a cut in the helper). Stored text is never changed.
+- *Status*: All cases (initial), Needs attention (`status !== 'settled'`),
+  Needs review (`status === 'needs_review'`), Settled (`status === 'settled'`).
+- *Display order* of matching real cases: `updatedAt` descending, then case
+  id ascending as a deterministic tie-break. Storage order and evidence
+  chronology are unchanged. The synthetic demo section keeps its own list,
+  in stored order, and is never searched or counted.
+- The result count is shown (and announced to screen readers once typing
+  pauses, or at once for a status change). *Clear filters* resets both.
+  *No cases match* is distinct from *No cases yet*: it shows how many cases
+  are saved and does not offer restore.
+- The query and status live only in the open dashboard's memory. They survive
+  opening a case and returning, and storage changes from other views; a newly
+  opened dashboard starts at All with an empty query. Each storage change
+  re-reads and re-validates saved data, so totals and membership follow new
+  captures, receipts, voids, expectation edits, deletions, demo changes and
+  restores. If saved data cannot be read or is invalid, the existing
+  error/read-only screen replaces the list and overview; nothing is shown as
+  current or as an empty ledger until a valid read succeeds.
+- The search field, status selector and their containers stay attached to
+  the page across re-renders, so focus, caret, selection and characters typed
+  during a storage change are kept, including when the dashboard is a
+  background window.
+- Exports are unaffected: the JSON copy always contains all stored data, and
+  a case summary contains that case, whatever the finder shows.
+
 ## Idempotency and conflicts
 
 - Every entry carries a caller-generated ID (the dashboard creates one when a
@@ -178,6 +235,11 @@ item as `reopened`, so the case leaves `settled`.
 - Local data is not encrypted.
 - Expected-amount entries cannot be voided; record a new expected amount instead.
 - No toolbar badge or reminders.
+- The finder searches only order references and item descriptions, with
+  plain substring matching (no accent folding, fuzzy matching or saved
+  searches). Filters reset when the dashboard is reopened.
+- The overview totals are only as complete as the saved evidence; they say
+  nothing about refunds that were never recorded.
 
 ## Next milestone: capture validation
 
@@ -203,5 +265,10 @@ still unvalidated, and exports do not establish willingness to pay.
 Task 04 adds restoring a JSON backup into an empty ledger (see
 [restore.md](restore.md)). It is a recovery path for saved evidence, not a
 sync or merge feature, and changes none of the open validation items above.
+
+Task 05 adds a read-only overview and case finder on the dashboard (see
+above). It reads existing evidence only and changes none of the open
+validation items above: live Amazon compatibility and the real toolbar-grant
+flow are still unvalidated.
 
 Until then this should not be presented as a validated or paid product.

@@ -9,10 +9,11 @@ import { LIMITS, isValidCalendarDate } from '../domain/validate';
 import { ERASE_CONFIRMATION, type Request } from '../background/messages';
 import { loadStore, type LoadResult } from '../persistence/storage';
 import { buildCaseSummaryText } from '../export/summary';
+import { QUERY_MAX, STATUS_FILTERS, buildOverview, findCases, normalizeQuery, realCaseViews, type CaseView, type Overview, type StatusFilter } from '../domain/overview';
 import { buildBackup, countBackup, exportFilename, serializeBackup } from '../export/backup';
 import type { DashboardDeps } from './deps';
 import { createRestoreController } from './restore';
-import { h, replaceContent } from './dom';
+import { h, replaceContent, syncChildren } from './dom';
 import {
   CASE_STATUS_LABEL,
   FLAG_LABEL,
@@ -103,6 +104,16 @@ interface State {
   notice: { tone: 'success' | 'error' | 'info'; text: string } | null;
 }
 
+const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
+  all: 'All cases',
+  attention: 'Needs attention',
+  review: 'Needs review',
+  settled: 'Settled',
+};
+
+/** Delay before a typed search announces its result count, so each keystroke is not read out. */
+const SEARCH_ANNOUNCE_DELAY_MS = 600;
+
 const DEFAULT_SOURCE: Record<EntryDraft['kind'], string> = {
   expectation: 'Manual entry',
   merchant_report: 'Merchant order page (entered manually)',
@@ -134,6 +145,28 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
    */
   let storageGen = 0;
   const restore = createRestoreController({ deps, render: () => render(), announce: (text) => announce(text), storageGen: () => storageGen });
+
+  // ---- Case finder (read-only; kept in this dashboard's memory only, never stored) ----
+  const finder: { query: string; status: StatusFilter } = { query: '', status: 'all' };
+  /**
+   * The list view's containers, the search field and the status selector are
+   * created once and kept attached across renders (see syncChildren), so a
+   * re-render after a storage change never detaches the focused search field:
+   * typing, the caret, the selection and focus survive even when this
+   * dashboard is in a background window.
+   */
+  let listDom: {
+    view: HTMLElement;
+    realPanel: HTMLElement;
+    finderArea: HTMLElement;
+    finder: HTMLElement;
+    search: HTMLInputElement;
+    status: HTMLSelectElement;
+    results: HTMLElement;
+  } | null = null;
+  /** The real cases the latest list render was built from. */
+  let resultViews: readonly CaseView[] = [];
+  let countAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
   async function reload(): Promise<void> {
     const seq = ++loadSeq;
     const gen = storageGen;
@@ -259,6 +292,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   }
 
   function openCase(caseId: string, keepNotice = false): void {
+    cancelCountAnnouncement();
     state.view = { name: 'case', caseId };
     state.entryDraft = null;
     state.voidDraft = null;
@@ -269,12 +303,15 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   }
 
   function backToList(): void {
+    const from = state.view.name === 'case' ? state.view.caseId : null;
     state.view = { name: 'list' };
     state.entryDraft = null;
     state.voidDraft = null;
     state.confirmDelete = false;
     render();
-    document.getElementById('list-heading')?.focus();
+    // Return to the row that was opened if it is still listed under the current filters.
+    const row = from === null ? null : root.querySelector<HTMLElement>(`[data-testid="real-cases"] #${CSS.escape(`case-row-${from}`)}`);
+    (row ?? document.getElementById('list-heading'))?.focus();
   }
 
   async function submitCreate(draft: CreateDraft): Promise<void> {
@@ -924,17 +961,16 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     return c.orderRef ? `Order ${c.orderRef}` : `Case with ${c.items.length} item${c.items.length === 1 ? '' : 's'}`;
   }
 
-  function caseRow(c: CaseRecord): Node {
-    const s = summarizeCase(c);
+  function caseRow(c: CaseRecord, s: CaseSummary = summarizeCase(c)): Node {
     return h(
       'li',
-      { class: 'case-row' },
+      { class: 'case-row', 'data-case-id': c.id },
       h(
         'button',
-        { type: 'button', class: 'case-link', 'data-testid': 'case-row', on: { click: () => openCase(c.id) } },
+        { type: 'button', id: `case-row-${c.id}`, class: 'case-link', 'data-testid': 'case-row', on: { click: () => openCase(c.id) } },
         h('span', { class: 'case-title' }, c.isDemo ? h('span', { class: 'badge badge-demo' }, 'Synthetic') : null, ' ', caseTitle(c)),
         h('span', { class: 'case-items' }, c.items.map((i) => i.label).join(' · ')),
-        h('span', { class: `badge status-${s.status}` }, CASE_STATUS_LABEL[s.status]),
+        h('span', { class: `badge status-${s.status}`, 'data-testid': 'case-row-status' }, CASE_STATUS_LABEL[s.status]),
         h(
           'span',
           { class: 'case-amount' },
@@ -948,42 +984,228 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     );
   }
 
-  function renderList(data: StoreData): Node {
-    const real = data.cases.filter((c) => !c.isDemo);
-    const demo = data.cases.filter((c) => c.isDemo);
-    return h(
-      'div',
-      {},
-      h(
+  function plural(n: number, word: string): string {
+    return `${n} ${word}${n === 1 ? '' : 's'}`;
+  }
+
+  function renderOverview(o: Overview, demoCount: number): Node {
+    if (o.caseCount === 0) {
+      return h(
         'section',
-        { class: 'panel', 'aria-labelledby': 'list-heading' },
+        { class: 'overview', 'aria-labelledby': 'overview-heading', 'data-testid': 'overview' },
+        h('h3', { id: 'overview-heading' }, 'Overview'),
+        h(
+          'p',
+          { 'data-testid': 'overview-empty' },
+          'No cases of your own are saved, so there are no totals to show. This says nothing about whether your actual refunds are settled.',
+          demoCount > 0 ? ' Synthetic demo cases are never included in these totals.' : '',
+        ),
+      );
+    }
+    const figure = (label: string, testId: string, value: string) => h('div', {}, h('dt', {}, label), h('dd', { 'data-testid': testId }, value));
+    return h(
+      'section',
+      { class: 'overview', 'aria-labelledby': 'overview-heading', 'data-testid': 'overview' },
+      h('h3', { id: 'overview-heading' }, o.caseCount === 1 ? 'Overview of the 1 case you saved' : `Overview of all ${o.caseCount} cases you saved`),
+      h(
+        'dl',
+        { class: 'summary overview-figures' },
+        figure('Unresolved expected amounts', 'overview-unresolved', o.unresolved.ok ? formatUsd(o.unresolved.cents) : 'Total unavailable'),
+        figure('Items with unknown amounts', 'overview-unknown', String(o.unknownItemCount)),
+        figure('Cases needing attention', 'overview-attention', String(o.attentionCount)),
+        figure('Cases needing review', 'overview-review', String(o.reviewCount)),
+      ),
+      o.unresolved.ok
+        ? null
+        : h(
+            'p',
+            { class: 'notice notice-error', 'data-testid': 'overview-unavailable' },
+            'The unresolved amounts across your cases are too large to add up exactly, so no combined total is shown. Each case below still shows its own figures.',
+          ),
+      h(
+        'p',
+        { class: 'muted small' },
+        'Calculated from the evidence you saved in all of your cases, whatever the search or status filter below shows. Synthetic demo cases are not included. Items with unknown amounts are counted separately and are not part of the total. These figures are not confirmation from Amazon or your bank that money is owed or that a refund was made.',
+      ),
+    );
+  }
+
+  function getListDom(): NonNullable<typeof listDom> {
+    if (listDom) return listDom;
+    const search = h('input', {
+      id: 'case-search',
+      type: 'search',
+      maxlength: QUERY_MAX,
+      autocomplete: 'off',
+      spellcheck: 'false',
+      'aria-describedby': 'case-search-scope',
+      'aria-controls': 'case-results',
+      on: {
+        input: (ev) => {
+          finder.query = (ev.target as HTMLInputElement).value;
+          updateResults();
+          scheduleCountAnnouncement();
+        },
+      },
+    });
+    const status = h(
+      'select',
+      {
+        id: 'case-status-filter',
+        'aria-controls': 'case-results',
+        on: {
+          change: (ev) => {
+            const value = (ev.target as HTMLSelectElement).value;
+            finder.status = STATUS_FILTERS.includes(value as StatusFilter) ? (value as StatusFilter) : 'all';
+            updateResults();
+            announceCount();
+          },
+        },
+      },
+      ...STATUS_FILTERS.map((f) => h('option', { value: f }, STATUS_FILTER_LABEL[f])),
+    );
+    status.value = finder.status;
+    const finderEl = h(
+      'div',
+      { class: 'finder', role: 'search', 'aria-label': 'Find your cases' },
+      h(
+        'div',
+        { class: 'field grow' },
+        h('label', { for: 'case-search' }, 'Search by order reference or item description'),
+        search,
+        h(
+          'span',
+          { class: 'muted small', id: 'case-search-scope' },
+          'Matches order references and item descriptions only, ignoring letter case. Notes, transaction references and captured excerpts are not searched.',
+        ),
+      ),
+      h('div', { class: 'field' }, h('label', { for: 'case-status-filter' }, 'Status'), status),
+      h('div', { class: 'finder-clear' }, h('button', { type: 'button', id: 'clear-filters', on: { click: clearFilters } }, 'Clear filters')),
+    );
+    listDom = {
+      view: h('div', {}),
+      realPanel: h('section', { class: 'panel', 'aria-labelledby': 'list-heading' }),
+      finderArea: h('div', {}),
+      finder: finderEl,
+      search,
+      status,
+      results: h('div', { id: 'case-results', 'data-testid': 'case-results' }),
+    };
+    return listDom;
+  }
+
+  function filtersActive(): boolean {
+    return normalizeQuery(finder.query) !== '' || finder.status !== 'all';
+  }
+
+  function renderResults(views: readonly CaseView[]): Node[] {
+    const matches = findCases(views, finder);
+    const total = views.length;
+    const count = h(
+      'p',
+      { class: 'results-count', id: 'case-results-count', 'data-testid': 'results-count' },
+      filtersActive() ? `Showing ${matches.length} of ${plural(total, 'case')}` : `Showing all ${plural(total, 'case')}`,
+    );
+    if (matches.length === 0) {
+      return [
+        count,
         h(
           'div',
-          { class: 'row-between' },
-          h('h2', { id: 'list-heading', tabindex: -1 }, 'Your cases'),
-          h('button', { type: 'button', class: 'primary', on: { click: openCreate } }, 'Create case'),
+          { class: 'empty', 'data-testid': 'no-matches' },
+          h('p', {}, 'No cases match this search and status.'),
+          h(
+            'p',
+            { class: 'muted' },
+            `Your ${plural(total, 'saved case')} ${total === 1 ? 'is' : 'are'} unchanged; ${total === 1 ? 'it is' : 'they are'} just not shown with these filters.`,
+          ),
+          h('button', { type: 'button', id: 'clear-filters-empty', on: { click: clearFilters } }, 'Clear filters'),
         ),
-        real.length === 0
-          ? h(
-              'div',
-              { class: 'empty', 'data-testid': 'empty-state' },
-              h('p', {}, 'No cases yet.'),
-              h(
-                'p',
-                { class: 'muted' },
-                'Refund Reconciler only knows what you enter here or approve from text you select on an Amazon US page. Nothing is captured from Amazon or your bank automatically, so an empty list says nothing about your refunds.',
-              ),
-              data.cases.length === 0
-                ? h(
-                    'p',
-                    {},
-                    'Moving from another browser profile? ',
-                    h('button', { type: 'button', id: 'open-restore-empty', on: { click: () => restore.open('open-restore-empty') } }, 'Restore from a JSON backup…'),
-                  )
-                : null,
-            )
-          : h('ul', { class: 'case-list', 'data-testid': 'real-cases' }, ...real.map(caseRow)),
+      ];
+    }
+    return [count, h('ul', { class: 'case-list', 'data-testid': 'real-cases' }, ...matches.map((v) => caseRow(v.record, v.summary)))];
+  }
+
+  /** Re-renders only the results after a filter change, leaving the controls (and focus) untouched. */
+  function updateResults(): void {
+    if (listDom?.results.isConnected) replaceContent(listDom.results, renderResults(resultViews));
+  }
+
+  function countAnnouncement(): string {
+    const n = findCases(resultViews, finder).length;
+    if (n === 0) return 'No cases match this search and status.';
+    return filtersActive() ? `${n} of ${plural(resultViews.length, 'case')} shown.` : `All ${plural(resultViews.length, 'case')} shown.`;
+  }
+
+  function cancelCountAnnouncement(): void {
+    if (countAnnounceTimer !== null) clearTimeout(countAnnounceTimer);
+    countAnnounceTimer = null;
+  }
+
+  function announceCount(): void {
+    cancelCountAnnouncement();
+    if (listDom?.results.isConnected) announce(countAnnouncement());
+  }
+
+  /** Typing announces the count once the user pauses, not on every keystroke. */
+  function scheduleCountAnnouncement(): void {
+    cancelCountAnnouncement();
+    countAnnounceTimer = setTimeout(() => {
+      countAnnounceTimer = null;
+      announceCount();
+    }, SEARCH_ANNOUNCE_DELAY_MS);
+  }
+
+  function clearFilters(): void {
+    const controls = getListDom();
+    finder.query = '';
+    finder.status = 'all';
+    controls.search.value = '';
+    controls.status.value = 'all';
+    updateResults();
+    controls.search.focus();
+    announceCount();
+  }
+
+  function renderList(data: StoreData): Node {
+    const views = realCaseViews(data.cases);
+    const demo = data.cases.filter((c) => c.isDemo);
+    const dom = getListDom();
+    resultViews = views;
+    if (views.length > 0) {
+      replaceContent(dom.results, renderResults(views));
+      syncChildren(dom.finderArea, [dom.finder, dom.results]);
+    }
+    syncChildren(dom.realPanel, [
+      h(
+        'div',
+        { class: 'row-between' },
+        h('h2', { id: 'list-heading', tabindex: -1 }, 'Your cases'),
+        h('button', { type: 'button', class: 'primary', on: { click: openCreate } }, 'Create case'),
       ),
+      renderOverview(buildOverview(views), demo.length),
+      views.length > 0
+        ? dom.finderArea
+        : h(
+            'div',
+            { class: 'empty', 'data-testid': 'empty-state' },
+            h('p', {}, 'No cases yet.'),
+            h(
+              'p',
+              { class: 'muted' },
+              'Refund Reconciler only knows what you enter here or approve from text you select on an Amazon US page. Nothing is captured from Amazon or your bank automatically, so an empty list says nothing about your refunds.',
+            ),
+            data.cases.length === 0
+              ? h(
+                  'p',
+                  {},
+                  'Moving from another browser profile? ',
+                  h('button', { type: 'button', id: 'open-restore-empty', on: { click: () => restore.open('open-restore-empty') } }, 'Restore from a JSON backup…'),
+                )
+              : null,
+          ),
+    ]);
+    syncChildren(dom.view, [
+      dom.realPanel,
       h(
         'section',
         { class: 'panel', 'aria-labelledby': 'data-heading' },
@@ -1010,11 +1232,12 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
           : h(
               'div',
               {},
-              h('ul', { class: 'case-list', 'data-testid': 'demo-cases' }, ...demo.map(caseRow)),
+              h('ul', { class: 'case-list', 'data-testid': 'demo-cases' }, ...demo.map((c) => caseRow(c))),
               h('button', { type: 'button', disabled: state.busy, on: { click: () => void run({ kind: 'mutate', command: { type: 'removeDemo' } }, 'Synthetic demo removed.') } }, 'Remove synthetic demo'),
             ),
       ),
-    );
+    ]);
+    return dom.view;
   }
 
   function fieldError(id: string, errors: Record<string, string>): Node | null {
