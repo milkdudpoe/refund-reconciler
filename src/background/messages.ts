@@ -2,19 +2,26 @@
 // incoming message is validated at runtime before it is acted on.
 
 import type { ApplyOutcome, Command, CommandErrorCode } from '../domain/types';
-import { parseCommand, type Validation } from '../domain/validate';
+import { isId, parseBackupEnvelope, parseCommand, type Validation } from '../domain/validate';
+import type { RestoreRequest } from '../domain/restore';
 
 export const ERASE_CONFIRMATION = 'ERASE ALL REFUND RECONCILER DATA';
 
 export type Request =
   | { kind: 'mutate'; command: Command }
-  | { kind: 'eraseAll'; confirm: typeof ERASE_CONFIRMATION };
+  | { kind: 'eraseAll'; confirm: typeof ERASE_CONFIRMATION }
+  /** Restore a validated backup into an empty ledger (see src/domain/restore.ts). */
+  | ({ kind: 'restore' } & RestoreRequest);
 
 export type ResponseErrorCode =
   | CommandErrorCode
   | 'invalid_message'
   | 'storage_unreadable'
   | 'storage_unsupported'
+  /** Restore refused: the destination has cases. Nothing was written. */
+  | 'restore_not_empty'
+  /** Restore refused: the destination changed since approval. Nothing was written. */
+  | 'restore_stale'
   /** Reading stored data failed before any write was attempted. Nothing changed. */
   | 'storage_error'
   /** The change could not be applied before writing. Nothing was written. */
@@ -47,7 +54,31 @@ export function parseRequest(raw: unknown): Validation<Request> {
     }
     return { ok: true, value: { kind: 'eraseAll', confirm: ERASE_CONFIRMATION } };
   }
+  if (o.kind === 'restore') return parseRestoreRequest(o);
   return { ok: false, error: 'message: unknown kind' };
+}
+
+function parseRestoreRequest(o: Record<string, unknown>): Validation<Request> {
+  if (Object.keys(o).some((k) => !['kind', 'operationId', 'expected', 'backup'].includes(k))) return { ok: false, error: 'message: unexpected field' };
+  if (!isId(o.operationId)) return { ok: false, error: 'message.operationId: expected an id' };
+  const e = o.expected;
+  if (
+    typeof e !== 'object' || e === null || Array.isArray(e) ||
+    Object.keys(e).length !== 3 ||
+    typeof (e as Record<string, unknown>).stored !== 'boolean' ||
+    !((e as Record<string, unknown>).epoch === null || isId((e as Record<string, unknown>).epoch)) ||
+    !Number.isSafeInteger((e as Record<string, unknown>).revision) ||
+    ((e as Record<string, unknown>).revision as number) < 0
+  ) {
+    return { ok: false, error: 'message.expected: expected { revision, stored, epoch }' };
+  }
+  const backup = parseBackupEnvelope(o.backup);
+  if (!backup.ok) return { ok: false, error: `message.backup: ${backup.error}` };
+  const expected = e as { revision: number; stored: boolean; epoch: string | null };
+  return {
+    ok: true,
+    value: { kind: 'restore', operationId: o.operationId, expected: { revision: expected.revision, stored: expected.stored, epoch: expected.epoch }, backup: backup.value },
+  };
 }
 
 export function isResponse(v: unknown): v is Response {

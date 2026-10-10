@@ -179,3 +179,9 @@ ul.problems { padding-left: 18px; margin: 4px 0; }
 .export-panel .badge-demo { display: inline-block; margin: 0 0 8px; }
 textarea.export-text { white-space: pre; overflow: auto; min-height: 240px; resize: vertical; }
 .export-option { padding-top: 0; }
+
+.restore-panel .literal { white-space: pre-wrap; overflow-wrap: anywhere; }
+.restore-panel .badge-demo { display: inline-block; margin: 0 0 8px; }
+.restore-cases, .restore-details { padding-left: 20px; margin: 4px 0 12px; }
+.restore-cases li, .restore-details li { overflow-wrap: anywhere; margin-bottom: 4px; }
+.restore-panel input[type='file'] { display: block; margin: 4px 0; }

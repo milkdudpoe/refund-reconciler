@@ -134,7 +134,28 @@ describe('service worker handler', () => {
     expect((await handler.handle({ kind: 'eraseAll', confirm: 'please' })).ok).toBe(false);
     expect(area.data.has(STORE_KEY)).toBe(true);
     expect((await handler.handle({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION })).ok).toBe(true);
-    expect(area.data.has(STORE_KEY)).toBe(false);
+    // Erase keeps no data at all: only an empty ledger with a fresh, opaque marker.
+    const erased = area.data.get(STORE_KEY) as Record<string, unknown>;
+    expect(Object.keys(erased).sort()).toEqual(['cases', 'ledgerEpoch', 'revision', 'schemaVersion']);
+    expect(erased).toMatchObject({ schemaVersion: 1, revision: 0, cases: [] });
+    expect(erased.ledgerEpoch).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+    expect(await loadStore(area)).toMatchObject({ status: 'ok', isNew: false, store: { cases: [] } });
+  });
+
+  it('erases corrupt data without reading it, and a rejected erase leaves the original data intact', async () => {
+    const area = new FakeArea();
+    const corrupt = { schemaVersion: 1, revision: 'NaN', cases: [{ id: 'secret', note: 'PRIVATE' }], lastRestore: 'junk', ledgerEpoch: 7 };
+    area.data.set(STORE_KEY, corrupt);
+    area.failGets = true; // erase must not depend on a successful read
+    area.failSets = true;
+    const handler = createHandler(area);
+    expect(await handler.handle({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION })).toMatchObject({ ok: false, error: { code: 'write_rejected' } });
+    expect(area.data.get(STORE_KEY)).toEqual(corrupt);
+    area.failSets = false;
+    expect((await handler.handle({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION })).ok).toBe(true);
+    area.failGets = false;
+    expect(JSON.stringify(area.data.get(STORE_KEY))).not.toMatch(/secret|PRIVATE|junk/);
+    expect(await loadStore(area)).toMatchObject({ status: 'ok', store: { revision: 0, cases: [] } });
   });
 
   it('serialises concurrent writes from multiple views so none are lost', async () => {

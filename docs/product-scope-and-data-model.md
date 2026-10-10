@@ -1,4 +1,4 @@
-# Product scope and data model (Tasks 01–02)
+# Product scope and data model (Tasks 01–04)
 
 ## Scope
 
@@ -23,7 +23,9 @@ the digit string (with BigInt) and rejected if malformed, negative, more precise
 than cents, or above $1,000,000,000.00. Sums use checked integer addition.
 
 ```
-StoreData { schemaVersion: 1, revision, cases[] }
+StoreData { schemaVersion: 1, revision, cases[], lastRestore?, ledgerEpoch? }
+RestoreReceipt (lastRestore) { operationId, payloadSha256, restoredAt, restoredRevision,
+             sourceExportedAt, sourceRevision, caseCount }
 CaseRecord { id, retailer: 'amazon_us', orderRef | null, currency: 'USD',
              isDemo, createdAt, updatedAt, items[], entries[] }
 ItemRecord { id, label, createdAt }
@@ -39,6 +41,13 @@ Entry (append-only; common fields: id, itemId, recordedAt, occurredOn | null, so
 Entries are never edited or removed (except by deleting the whole case).
 The optional `capture` field (see [capture.md](capture.md#stored-provenance))
 was added without changing `schemaVersion`; Task 01 data reads unchanged.
+The optional `lastRestore` receipt (Task 04, see [restore.md](restore.md))
+was added the same way: it is written only by a restore from a backup file, in
+the same record as the restored cases, and is validated on every read. Ledgers
+and backup files without it stay valid. The optional `ledgerEpoch` (Task 04.1)
+is an opaque random marker written only by an explicit erase, which now stores
+`{ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch }` instead of removing
+the key; every other write keeps it, and an imported one is ignored.
 Item/case status is never stored; it is recomputed from entries every time.
 
 ## Derivation rules
@@ -125,7 +134,7 @@ item as `reopened`, so the case leaves `settled`.
 - One `chrome.storage.local` key. Every read is validated at runtime
   (`parseStore`). Unknown schema versions and malformed data are shown
   read-only; writes are refused and nothing is reset unless the user explicitly
-  erases.
+  erases (which leaves only an empty ledger with a new erase marker).
 - Dashboard pages never write storage directly. They send validated commands to
   the service worker, which applies them one at a time to the latest stored
   state and writes. Pages re-render on `chrome.storage.onChanged`, so two open
@@ -161,8 +170,9 @@ item as `reopened`, so the case leaves `settled`.
   It has been tested on synthetic fixtures, not on live Amazon pages.
 - Items cannot be added to or removed from an existing case yet; order
   reference and item labels cannot be edited after creation.
-- Export only: a plain-text case summary and a complete JSON data copy (see
-  [export.md](export.md)). There is no import or in-extension restore yet.
+- Exports: a plain-text case summary and a complete JSON data copy (see
+  [export.md](export.md)). A JSON copy can be restored only into a ledger with
+  no cases; there is no merge or partial import (see [restore.md](restore.md)).
   Storage is limited to Chrome's 10 MB `storage.local` quota (failed writes
   are reported, not hidden).
 - Local data is not encrypted.
@@ -189,5 +199,9 @@ Task 03 adds read-only exports from saved evidence (a shareable case summary
 and a portable JSON data copy; see [export.md](export.md)). They do not change
 the items above: live Amazon compatibility and the real toolbar-grant flow are
 still unvalidated, and exports do not establish willingness to pay.
+
+Task 04 adds restoring a JSON backup into an empty ledger (see
+[restore.md](restore.md)). It is a recovery path for saved evidence, not a
+sync or merge feature, and changes none of the open validation items above.
 
 Until then this should not be presented as a validated or paid product.

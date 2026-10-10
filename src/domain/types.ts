@@ -107,11 +107,52 @@ export interface CaseRecord {
   readonly entries: readonly Entry[];
 }
 
+/**
+ * Bookkeeping written by a restore from a backup file, in the SAME stored
+ * record as the restored cases, so a committed restore can always be
+ * recognised by its operation id (even after a lost reply or a service worker
+ * restart). Optional: absent on every ledger that was never restored, so all
+ * existing schema-1 data and Task 03 backup files stay valid. Only the most
+ * recent restore is kept. A receipt inside an imported backup is source
+ * metadata from another ledger and is never carried into the destination.
+ */
+export interface RestoreReceipt {
+  /** Id of the approved restore operation (generated per approval by the dashboard). */
+  readonly operationId: string;
+  /** SHA-256 (hex) of the approved payload; reusing the id with different contents is a conflict. */
+  readonly payloadSha256: string;
+  /** When the restore was committed (ISO 8601, service worker clock). */
+  readonly restoredAt: string;
+  /** Destination revision assigned by the restore write. */
+  readonly restoredRevision: number;
+  /** The backup's exportedAt (source metadata). */
+  readonly sourceExportedAt: string;
+  /** The backup ledger's own revision (source metadata; never applied to the destination counter). */
+  readonly sourceRevision: number;
+  /** Number of cases the restore wrote. */
+  readonly caseCount: number;
+}
+
 export interface StoreData {
   readonly schemaVersion: typeof SCHEMA_VERSION;
   /** Incremented on every successful write. */
   readonly revision: number;
   readonly cases: readonly CaseRecord[];
+  /** Present only after a restore from a backup file (see RestoreReceipt). */
+  readonly lastRestore?: RestoreReceipt;
+  /**
+   * Opaque random marker written by an explicit erase (a new value on every
+   * erase) and carried unchanged through every later write. It holds no user
+   * data; it only lets the service worker tell an erased ledger apart from the
+   * ledger an earlier restore approval was made against. Absent on ledgers
+   * that were never erased.
+   */
+  readonly ledgerEpoch?: string;
+}
+
+/** What an explicit erase leaves in storage: no cases, no receipt, only a new marker. */
+export function erasedStore(ledgerEpoch: string): StoreData {
+  return { schemaVersion: SCHEMA_VERSION, revision: 0, cases: [], ledgerEpoch };
 }
 
 export function emptyStore(): StoreData {

@@ -2,7 +2,7 @@
 // ever repairs, migrates or resets data it cannot read.
 
 import { parseStore } from '../domain/validate';
-import { emptyStore, type StoreData } from '../domain/types';
+import { emptyStore, erasedStore, type StoreData } from '../domain/types';
 
 /** All app data lives under this single chrome.storage.local key. */
 export const STORE_KEY = 'refundReconciler.store';
@@ -55,8 +55,15 @@ export async function saveStore(area: StorageAreaLike, store: StoreData): Promis
   await area.set({ [STORE_KEY]: store });
 }
 
-export async function eraseStore(area: StorageAreaLike): Promise<void> {
-  await area.remove(STORE_KEY);
+/**
+ * Explicit erase. Replaces whatever is stored (even corrupt or unsupported
+ * data, which is never read or trusted here) with an empty ledger that holds
+ * only a new random `ledgerEpoch`. One set(): if it is rejected, the original
+ * data stays as it was. Keeping a marker instead of removing the key means an
+ * approval made before the erase can never match the erased ledger.
+ */
+export async function eraseStore(area: StorageAreaLike, newEpoch: string): Promise<void> {
+  await area.set({ [STORE_KEY]: erasedStore(newEpoch) });
 }
 
 export function chromeLocalArea(): StorageAreaLike {

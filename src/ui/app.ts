@@ -11,6 +11,7 @@ import { loadStore, type LoadResult } from '../persistence/storage';
 import { buildCaseSummaryText } from '../export/summary';
 import { buildBackup, countBackup, exportFilename, serializeBackup } from '../export/backup';
 import type { DashboardDeps } from './deps';
+import { createRestoreController } from './restore';
 import { h, replaceContent } from './dom';
 import {
   CASE_STATUS_LABEL,
@@ -132,6 +133,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
    * change up to g, so it can be compared with reads from other generations.
    */
   let storageGen = 0;
+  const restore = createRestoreController({ deps, render: () => render(), announce: (text) => announce(text), storageGen: () => storageGen });
   async function reload(): Promise<void> {
     const seq = ++loadSeq;
     const gen = storageGen;
@@ -652,6 +654,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       );
     }
     if (state.exportPanel) children.push(renderExportPanel(state.exportPanel));
+    children.push(restore.render());
     children.push(renderBody());
     replaceContent(root, children);
   }
@@ -850,7 +853,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       h(
         'p',
         { class: 'muted small' },
-        'It is an ordinary, unencrypted JSON file: anyone who can open it can read it. It is a portable copy of your data; restoring from it inside the extension is not available yet.',
+        'It is an ordinary, unencrypted JSON file: anyone who can open it can read it. It is a portable copy of your data; it can be restored with “Restore from JSON…” into a browser profile that has no saved cases.',
       ),
       snapshotLine(panel),
       staleWarning(panel),
@@ -970,6 +973,14 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
                 { class: 'muted' },
                 'Refund Reconciler only knows what you enter here or approve from text you select on an Amazon US page. Nothing is captured from Amazon or your bank automatically, so an empty list says nothing about your refunds.',
               ),
+              data.cases.length === 0
+                ? h(
+                    'p',
+                    {},
+                    'Moving from another browser profile? ',
+                    h('button', { type: 'button', id: 'open-restore-empty', on: { click: () => restore.open('open-restore-empty') } }, 'Restore from a JSON backup…'),
+                  )
+                : null,
             )
           : h('ul', { class: 'case-list', 'data-testid': 'real-cases' }, ...real.map(caseRow)),
       ),
@@ -980,9 +991,14 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
         h(
           'p',
           { class: 'muted' },
-          'Download a complete JSON copy of everything saved here: all cases (including synthetic demo cases), notes, references and captured excerpts. It is an ordinary, unencrypted file. Restoring from it inside the extension is not available yet.',
+          'Download a complete JSON copy of everything saved here: all cases (including synthetic demo cases), notes, references and captured excerpts. It is an ordinary, unencrypted file. A backup can be restored into a browser profile that has no saved cases.',
         ),
-        h('button', { type: 'button', id: 'open-backup', on: { click: () => openExport('backup', null, 'open-backup') } }, 'Download all data (JSON)…'),
+        h(
+          'div',
+          { class: 'actions' },
+          h('button', { type: 'button', id: 'open-backup', on: { click: () => openExport('backup', null, 'open-backup') } }, 'Download all data (JSON)…'),
+          h('button', { type: 'button', id: 'open-restore', on: { click: () => restore.open('open-restore') } }, 'Restore from JSON…'),
+        ),
       ),
       h(
         'section',
@@ -1406,6 +1422,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   deps.subscribe(() => {
     storageGen += 1;
     invalidateExportOnChange();
+    restore.onStorageChange();
     void reload();
   });
   if (opts.startInCreate) openCreate();

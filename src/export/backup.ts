@@ -17,6 +17,14 @@ export interface BackupEnvelope {
   readonly store: StoreData;
 }
 
+/**
+ * Largest backup file the dashboard will read for restore (25 MiB). Checked
+ * from the file's size before any of it is read. The ledger itself lives in
+ * chrome.storage.local, whose quota (10 MB without unlimitedStorage) may still
+ * reject a restore of a very large file; that is reported as a rejected write.
+ */
+export const MAX_BACKUP_BYTES = 25 * 1024 * 1024;
+
 export function buildBackup(store: StoreData, exportedAt: string): BackupEnvelope {
   return { format: BACKUP_FORMAT, formatVersion: BACKUP_FORMAT_VERSION, exportedAt, store };
 }
@@ -63,4 +71,16 @@ export function exportFilename(kind: ExportKind, takenAt: string): string {
   const d = new Date(takenAt);
   const stamp = Number.isNaN(d.getTime()) ? 'undated' : `${d.toISOString().slice(0, 19).replaceAll(':', '')}Z`;
   return `${PREFIX[kind]}-${stamp}.${EXTENSION[kind]}`;
+}
+
+/**
+ * The identity of a restore payload: SHA-256 over the canonical JSON of the
+ * validated cases plus the backup's exportedAt. A restore operation id reused
+ * with a different payload is a conflict. Source revision and any imported
+ * restore receipt are deliberately excluded (they are never restored).
+ */
+export async function restorePayloadDigest(exportedAt: string, store: StoreData): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify([exportedAt, store.cases]));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }

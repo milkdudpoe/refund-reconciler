@@ -4,6 +4,8 @@
 
 import { MAX_INPUT_CENTS, isCents, parseMoney } from './money';
 import { SUPPORTED_ORIGINS, isValidSourcePath } from '../capture/source';
+import { KNOWN_PARSER_VERSIONS } from '../capture/parse';
+import { BACKUP_FORMAT, BACKUP_FORMAT_VERSION } from '../export/backup';
 import {
   SCHEMA_VERSION,
   type CaptureProvenance,
@@ -12,6 +14,7 @@ import {
   type Entry,
   type ItemRecord,
   type NewItemInput,
+  type RestoreReceipt,
   type StoreData,
 } from './types';
 
@@ -57,6 +60,10 @@ function exactKeys(o: Record<string, unknown>, keys: readonly string[], path: st
 
 const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
+export function isId(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0 && v.length <= LIMITS.idMax && ID_PATTERN.test(v);
+}
+
 function id(v: unknown, path: string): string {
   if (typeof v !== 'string' || v.length === 0 || v.length > LIMITS.idMax || !ID_PATTERN.test(v)) {
     fail(path, 'expected an id');
@@ -79,8 +86,12 @@ function nullableText(v: unknown, path: string, max: number): string | null {
 
 const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
+export function isIsoTimestamp(v: unknown): v is string {
+  return typeof v === 'string' && ISO_PATTERN.test(v) && !Number.isNaN(Date.parse(v));
+}
+
 function isoTimestamp(v: unknown, path: string): string {
-  if (typeof v !== 'string' || !ISO_PATTERN.test(v) || Number.isNaN(Date.parse(v))) {
+  if (!isIsoTimestamp(v)) {
     fail(path, 'expected an ISO timestamp');
   }
   return v;
@@ -242,6 +253,31 @@ function parseCase(v: unknown, path: string): CaseRecord {
   };
 }
 
+function nonNegativeInteger(v: unknown, path: string): number {
+  if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) fail(path, 'expected a non-negative integer');
+  return v;
+}
+
+const RECEIPT_KEYS = ['operationId', 'payloadSha256', 'restoredAt', 'restoredRevision', 'sourceExportedAt', 'sourceRevision', 'caseCount'];
+
+function parseRestoreReceipt(v: unknown, path: string, revision: number): RestoreReceipt {
+  const o = obj(v, path);
+  exactKeys(o, RECEIPT_KEYS, path);
+  for (const k of RECEIPT_KEYS) if (!(k in o)) fail(`${path}.${k}`, 'missing');
+  if (typeof o.payloadSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(o.payloadSha256)) fail(`${path}.payloadSha256`, 'expected a SHA-256 hex digest');
+  const restoredRevision = nonNegativeInteger(o.restoredRevision, `${path}.restoredRevision`);
+  if (restoredRevision < 1 || restoredRevision > revision) fail(`${path}.restoredRevision`, 'must be between 1 and the store revision');
+  return {
+    operationId: id(o.operationId, `${path}.operationId`),
+    payloadSha256: o.payloadSha256,
+    restoredAt: isoTimestamp(o.restoredAt, `${path}.restoredAt`),
+    restoredRevision,
+    sourceExportedAt: isoTimestamp(o.sourceExportedAt, `${path}.sourceExportedAt`),
+    sourceRevision: nonNegativeInteger(o.sourceRevision, `${path}.sourceRevision`),
+    caseCount: nonNegativeInteger(o.caseCount, `${path}.caseCount`),
+  };
+}
+
 export type StoreParse =
   | { status: 'ok'; store: StoreData }
   | { status: 'unsupported_version'; version: unknown }
@@ -254,10 +290,9 @@ export function parseStore(raw: unknown): StoreParse {
     return { status: 'unsupported_version', version: raw.schemaVersion };
   }
   try {
-    exactKeys(raw, ['schemaVersion', 'revision', 'cases'], 'store');
-    if (typeof raw.revision !== 'number' || !Number.isSafeInteger(raw.revision) || raw.revision < 0) {
-      fail('store.revision', 'expected a non-negative integer');
-    }
+    // `lastRestore` and `ledgerEpoch` are optional, so ledgers and backups written before they existed stay valid.
+    exactKeys(raw, ['schemaVersion', 'revision', 'cases', 'lastRestore', 'ledgerEpoch'], 'store');
+    const revision = nonNegativeInteger(raw.revision, 'store.revision');
     const cases = array(raw.cases, 'store.cases').map((c, i) => parseCase(c, `store.cases[${i}]`));
     const ids = new Set<string>();
     const entryIds = new Set<string>();
@@ -269,7 +304,10 @@ export function parseStore(raw: unknown): StoreParse {
         entryIds.add(e.id);
       }
     }
-    return { status: 'ok', store: { schemaVersion: SCHEMA_VERSION, revision: raw.revision, cases } };
+    let store: StoreData = { schemaVersion: SCHEMA_VERSION, revision, cases };
+    if ('lastRestore' in raw) store = { ...store, lastRestore: parseRestoreReceipt(raw.lastRestore, 'store.lastRestore', revision) };
+    if ('ledgerEpoch' in raw) store = { ...store, ledgerEpoch: id(raw.ledgerEpoch, 'store.ledgerEpoch') };
+    return { status: 'ok', store };
   } catch (err) {
     if (err instanceof ValidationError) return { status: 'corrupt', error: err.message };
     throw err;
@@ -355,4 +393,48 @@ export function parseCommand(v: unknown): Validation<Command> {
     if (err instanceof ValidationError) return { ok: false, error: err.message };
     throw err;
   }
+}
+
+// ---- Backup files (restore input) ----
+
+/**
+ * The exported backup envelope, validated for restore. `store` passes the same
+ * parseStore() validator as data read from chrome.storage.local.
+ */
+export interface ParsedBackup {
+  readonly format: typeof BACKUP_FORMAT;
+  readonly formatVersion: typeof BACKUP_FORMAT_VERSION;
+  readonly exportedAt: string;
+  readonly store: StoreData;
+}
+
+/**
+ * Validates an untrusted, already JSON-parsed backup file. Checks the exact
+ * envelope fields, format and version, then the complete ledger. Never repairs
+ * anything. Historical captures are accepted only with a known parser version
+ * and are never re-parsed.
+ */
+export function parseBackupEnvelope(v: unknown): Validation<ParsedBackup> {
+  if (!isRecord(v)) return { ok: false, error: 'This file is not a Refund Reconciler backup (expected a JSON object).' };
+  if (v.format !== BACKUP_FORMAT) return { ok: false, error: 'This file is not a Refund Reconciler backup (its "format" field is missing or different).' };
+  if (v.formatVersion !== BACKUP_FORMAT_VERSION) {
+    return { ok: false, error: `This backup uses format version ${JSON.stringify(v.formatVersion) ?? 'missing'}; this build can restore format version ${BACKUP_FORMAT_VERSION} only.` };
+  }
+  const unexpected = Object.keys(v).filter((k) => !['format', 'formatVersion', 'exportedAt', 'store'].includes(k));
+  if (unexpected.length > 0) return { ok: false, error: `The backup envelope has unexpected field(s): ${unexpected.slice(0, 5).join(', ')}.` };
+  if (!isIsoTimestamp(v.exportedAt)) return { ok: false, error: 'The backup’s "exportedAt" is not a valid ISO timestamp.' };
+  if (!('store' in v)) return { ok: false, error: 'The backup has no "store" (saved data) field.' };
+  const parsed = parseStore(v.store);
+  if (parsed.status === 'unsupported_version') {
+    return { ok: false, error: `The saved data in this backup uses ledger schema version ${JSON.stringify(parsed.version) ?? 'missing'}; this build supports version ${SCHEMA_VERSION} only.` };
+  }
+  if (parsed.status === 'corrupt') return { ok: false, error: `The saved data in this backup failed validation: ${parsed.error}` };
+  for (const [ci, c] of parsed.store.cases.entries()) {
+    for (const [ei, e] of c.entries.entries()) {
+      if (e.kind === 'merchant_report' && e.capture && !KNOWN_PARSER_VERSIONS.includes(e.capture.parserVersion)) {
+        return { ok: false, error: `The saved data in this backup failed validation: store.cases[${ci}].entries[${ei}].capture.parserVersion: unknown capture parser version.` };
+      }
+    }
+  }
+  return { ok: true, value: { format: BACKUP_FORMAT, formatVersion: BACKUP_FORMAT_VERSION, exportedAt: v.exportedAt, store: parsed.store } };
 }
