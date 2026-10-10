@@ -21,6 +21,7 @@ extra ZIP library.
 npm ci
 npm run package:beta   # fresh production build + verified ZIP
 npm run test:package   # the above, then load the extracted ZIP in Chromium and run a smoke test
+npm run test:update    # the above packaging, then update 0.5.0 in place to this ZIP (see below)
 ```
 
 Output, in the git-ignored `artifacts/beta/` folder:
@@ -61,8 +62,15 @@ What `npm run package:beta` does (`scripts/package-beta.ts`):
    leaves an archive that looks successful.
 6. Writes the checksum and report.
 
-The ZIP is reproducible: entries are sorted, timestamps and permissions are
-fixed, so the same source gives a byte-identical archive and checksum.
+**Reproducibility, and which checksum to trust.** The ZIP itself is
+deterministic: entries are sorted and timestamps and permissions are fixed,
+so identical build output always gives a byte-identical archive, and
+repeated builds in the same environment match. The *build output* can still
+differ between environments: a Windows checkout with CRLF line endings and a
+Linux checkout with LF endings at the same commit currently produce
+different CSS bytes and therefore different hashed file names. So the source
+commit alone does not guarantee the CI checksum. Check a ZIP only against the
+`.sha256` file that came with **that exact ZIP**.
 
 `npm run test:package` (`tests/package/beta-archive.spec.ts`) then extracts
 the real ZIP into a new temporary folder and loads **that extracted folder**
@@ -72,8 +80,73 @@ opens the dashboard and the guide, loads and removes the synthetic demo,
 creates a case, confirms a receipt, inspects the stored data, downloads a
 JSON backup and compares it with the stored data, and opens the popup.
 
+### Update check: 0.5.0 to this beta in the same installation
+
+`npm run test:update` (`tests/update/`, also run in CI) checks that updating
+the previous production version in place keeps a tester's data. It uses only
+folders and profiles it creates under the system temp directory, removes
+them afterwards, and uses synthetic data.
+
+1. **Baseline from its own source.** `git archive` exports commit
+   `b323930f7d9580f426e7e8fee39b4242143c4844` (merged Task 05, manifest
+   0.5.0) into the temp folder; the repository's working tree, index and HEAD
+   are not touched. The commit must be in the local repository (any full
+   clone has it; CI runs `git fetch --no-tags --depth=1 origin <commit>`
+   first, and the check prints that command if it is missing). The baseline
+   then runs `npm ci` from its own lockfile (scripts disabled) and its own
+   `vite build`.
+2. **0.5.0 in a fresh profile**, loaded from one stable temp folder. The
+   check switches on **Developer mode** with that profile's own
+   `chrome://extensions` switch (only if it is off) and confirms it is on
+   after reloading that page; Chromium refuses to reload an unpacked
+   extension without it, and a value written into the profile's
+   `Preferences` file is not applied on Windows. The check confirms the loaded version is 0.5.0, then
+   populates it: it writes a deliberately unreadable value to storage only to
+   reach 0.5.0's **Erase stored data…** control (giving an erase marker),
+   restores the synthetic rich ledger (`tests/shared/rich-ledger.ts`: two
+   real and two demo cases, partial receipt, recharges, a void, an unknown
+   expectation, current and historical captures) through 0.5.0's own
+   **Restore from JSON…**, and creates one more case entirely in 0.5.0's UI
+   (merchant report, partial receipt, recharge and its void, an unknown
+   item). It reads the stored ledger back, validates it, compares it with
+   0.5.0's own **Download JSON**, and records what 0.5.0's dashboard shows.
+3. **Update in place.** It extracts the real beta ZIP into a separate
+   folder, replaces the files in the **same** installed folder with it, and
+   reloads the extension with `chrome.runtime.reload()`. The loaded manifest
+   must now be 0.6.0 with the **same extension ID**.
+4. **Preservation.** The stored ledger must equal the 0.5.0 snapshot exactly
+   (every case, item and entry ID, date, note, reference, demo flag, capture
+   provenance, void, `revision`, `lastRestore` receipt and `ledgerEpoch`),
+   historical captures are not re-parsed, and the beta's dashboard must show
+   the same overview, case rows, case summaries, items and timelines as 0.5.0
+   did. Opening the guide and its sections must not change storage. The
+   beta's **Download JSON** must contain exactly the same ledger.
+5. **Full browser restart** with the same profile and folder: same ID,
+   version 0.6.0, same data and dashboard. Restoring the backup into this
+   populated installation is refused (**Restore** stays disabled) and
+   changes nothing.
+6. **Recovery:** the beta's backup is restored into a separate, empty
+   profile running the extracted ZIP; its cases equal the original exactly
+   and its dashboard shows the same states.
+
+What this does **not** cover: it runs in Playwright's bundled Chromium, not
+installed desktop Chrome; the extension is loaded with `--load-extension`
+and reloaded with `chrome.runtime.reload()`, which is not the same as Chrome's
+**Load unpacked** registration or the reload icon in `chrome://extensions`;
+and the "restart" relaunches the browser with the same command-line folder.
+The manual [Check 3](#check-3-optional-update-in-place-in-chrome) covers the
+Chrome UI path. Nothing is added to the production package for this check.
+
+Every browser the check starts is closed after the test, also when it fails
+(including a failed launch or a reload that never finishes), before its temp
+folder is removed, so a failure is reported as itself rather than as a
+locked-file error. Set `KEEP_UPDATE_CHECK_FILES=1` to keep the temp folder
+for inspection. CI runs the check on Ubuntu and on Windows (`windows-latest`,
+CRLF checkout, together with the unit tests).
+
 **CI.** Every pull request and push to `main` runs the full checks, then
-`npm run test:package`, then cross-checks the archive with `sha256sum -c`
+`npm run test:package`, then fetches the 0.5.0 baseline commit and runs
+`npm run test:update`, then cross-checks the archive with `sha256sum -c`
 and `unzip -l`. After all of that passes, the ZIP, checksum and report are
 saved as the workflow artifact **`refund-reconciler-beta`** (kept 14 days).
 GitHub delivers a workflow artifact as its own ZIP, so unzip the download once
@@ -95,8 +168,8 @@ developer tools.
 ### Install
 
 1. Get `refund-reconciler-beta-0.6.0.zip` from the person who built it.
-   Optionally compare its SHA-256 with the `.sha256` file
-   (Windows PowerShell: `Get-FileHash refund-reconciler-beta-0.6.0.zip`;
+   Optionally compare its SHA-256 with the `.sha256` file that came with
+   that same ZIP (Windows PowerShell: `Get-FileHash refund-reconciler-beta-0.6.0.zip`;
    macOS: `shasum -a 256 refund-reconciler-beta-0.6.0.zip`).
 2. **Unzip it into a folder you will keep**, for example
    `Documents/Refund Reconciler beta`. Chrome runs the extension from this
@@ -149,8 +222,9 @@ for an extension loaded this way.
 
 ## Manual checks still to do
 
-These two checks need a person using real desktop Chrome. They are **not
-yet performed**; nothing in this repository claims otherwise.
+These checks need a person using real desktop Chrome. They are **not yet
+performed**; nothing in this repository claims otherwise (see
+[validation.md](validation.md)).
 
 What automated testing does and does not show:
 
@@ -160,16 +234,19 @@ What automated testing does and does not show:
   access, because a real toolbar click cannot be automated.
 - **The extracted-ZIP smoke test** (`npm run test:package`) shows that the
   packaged extension loads from the archive and its local workflow works.
-- **Neither** shows that a real toolbar click grants page access, or that
+- **The update check** (`npm run test:update`) shows that 0.5.0 updated in
+  place to the beta ZIP keeps its data, in bundled Chromium.
+- **None** shows that a real toolbar click grants page access, or that
   today's Amazon wording is recognised. Opening the popup page directly in a
   tab is not a toolbar click either.
 
 Record results only for yourself, for example in a note:
 
-| Date | Chrome version | Check | Result (pass / fail / not run) | General reason |
+| Date | Chrome version | Check | Result (pass / fail / inconclusive / not run) | General reason |
 | --- | --- | --- | --- | --- |
 | | | Toolbar grant | | |
 | | | Real Amazon refund line (optional) | | |
+| | | Update in place in Chrome (optional) | | |
 
 Write a general reason only (for example "preview said no issued amount was
 found"). Do not record or send the selected text, order numbers, screenshots
@@ -186,14 +263,22 @@ has no telemetry and submits nothing.
    `popup.html`), then **Capture selected refund text**.
 4. **Pass:** the panel shows **Cannot propose a report from this selection**
    with a reason such as "No amount is clearly described as issued or
-   refunded" (or, if the highlight was lost, "No text is selected"). This
-   means the click gave the extension temporary access and it read your
-   selection. Choose **Discard**; nothing was saved.
-5. **Fail:** the panel says **Refund Reconciler has no access to this tab**
+   refunded". The click gave temporary access and your selection was read
+   and refused. Choose **Discard**; nothing was saved.
+5. **Retry once:** if the panel instead says **No text is selected** (with
+   **Try again** and **Open dashboard**, no **Discard**), access worked but
+   the highlight was not kept. Close the panel by clicking the page; nothing
+   was saved. Highlight the text again, click the toolbar icon and Capture
+   once more. If it says the same again, record **inconclusive**.
+6. **Fail:** the panel says **Refund Reconciler has no access to this tab**
    even though you clicked the toolbar icon while that tab was active.
-6. Optional control: do the same on `https://example.com`. Expected: "Only
-   pages on amazon.com or www.amazon.com are supported", which shows the page
-   address was visible to the extension after the click.
+7. **Anything else** (another message, or a preview offering to save):
+   record **fail** or **inconclusive** with a general reason. Do not count it
+   as a pass.
+8. Optional control: do the same on `https://example.com`. Expected: "Only
+   pages on amazon.com or www.amazon.com are supported" (with **Try again** /
+   **Open dashboard**), which shows the page address was visible to the
+   extension after the click.
 
 ### Check 2 (optional): one real refund line from your own order
 
@@ -211,6 +296,19 @@ Only if you have a real Amazon US return with a refund shown for one item.
 5. **Fail:** the preview shows a different amount, or says it cannot propose
    a report although the line clearly states an issued refund for one item.
    Note the general reason shown, and enter the report manually instead.
+
+### Check 3 (optional): update in place in Chrome
+
+Only with a throwaway Chrome profile and made-up data, not your real cases.
+
+1. Load the previous version's folder (0.5.0, built from commit `b323930`)
+   with **Load unpacked**, load the synthetic demo and create one made-up
+   case, then download a JSON backup.
+2. Replace that folder's contents with the new ZIP's contents and press the
+   reload icon on the Refund Reconciler card in `chrome://extensions`.
+3. **Pass:** the card shows the new version, the extension ID on the card is
+   unchanged, and the dashboard shows the same cases after the reload and
+   after quitting and reopening Chrome.
 
 Do not broaden permissions, edit the extension or change parser rules to
 make a check pass. A failure is useful information for the next milestone.

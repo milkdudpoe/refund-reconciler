@@ -278,4 +278,10 @@ not change the open items above. The manual toolbar-grant check and the
 optional real-Amazon check are written up in beta.md and are not yet
 performed.
 
+Task 07 adds an automated same-installation update check (0.5.0 built from
+its own source, updated in place to the beta ZIP, data preserved; bundled
+Chromium only) and corrects the beta docs on reproducibility and the toolbar
+check's outcomes. The toolbar-grant and real-Amazon checks remain **not run**
+(see [validation.md](validation.md)).
+
 Until then this should not be presented as a validated or paid product.
