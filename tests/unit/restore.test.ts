@@ -7,7 +7,7 @@ import { decideRestore, type RestoreRequest } from '../../src/domain/restore';
 import { emptyStore, type StoreData } from '../../src/domain/types';
 import { parseBackupEnvelope, parseStore, type ParsedBackup } from '../../src/domain/validate';
 import { MAX_BACKUP_BYTES, buildBackup, restorePayloadDigest, serializeBackup } from '../../src/export/backup';
-import { STORE_KEY, loadStore, type StorageAreaLike } from '../../src/persistence/storage';
+import { STORE_KEY, type StorageAreaLike } from '../../src/persistence/storage';
 import { HISTORICAL_REFUSED_EXCERPT, richLedger } from '../shared/rich-ledger';
 
 const EXPORTED_AT = '2026-10-09T08:00:00.000Z';
@@ -23,7 +23,7 @@ function mustParse(v: unknown): ParsedBackup {
   return r.value;
 }
 
-function request(operationId = 'op-1', expected = { revision: 0, stored: false }, backup: unknown = envelope()) {
+function request(operationId = 'op-1', expected: { revision: number; stored: boolean; epoch: string | null } = { revision: 0, stored: false, epoch: null }, backup: unknown = envelope()) {
   return { kind: 'restore', operationId, expected, backup };
 }
 
@@ -114,7 +114,7 @@ describe('backup file validation', () => {
 });
 
 describe('decideRestore', () => {
-  const req = (overrides: Partial<RestoreRequest> = {}): RestoreRequest => ({ operationId: 'op-1', expected: { revision: 0, stored: false }, backup: mustParse(envelope()), ...overrides });
+  const req = (overrides: Partial<RestoreRequest> = {}): RestoreRequest => ({ operationId: 'op-1', expected: { revision: 0, stored: false, epoch: null }, backup: mustParse(envelope()), ...overrides });
 
   it('restores every case unchanged into an empty ledger with the next revision and a receipt', () => {
     const r = req();
@@ -130,7 +130,7 @@ describe('decideRestore', () => {
   });
 
   it('continues an existing empty ledger’s counter', () => {
-    const d = decideRestore({ ...emptyStore(), revision: 7 }, true, req({ expected: { revision: 7, stored: true } }), 'f'.repeat(64), NOW);
+    const d = decideRestore({ ...emptyStore(), revision: 7 }, true, req({ expected: { revision: 7, stored: true, epoch: null } }), 'f'.repeat(64), NOW);
     expect(d.kind === 'write' && d.store.revision).toBe(8);
   });
 
@@ -146,10 +146,10 @@ describe('decideRestore', () => {
   it('refuses non-empty, stale or never-written-vs-written destinations, and recognises its own receipt', () => {
     const backup = mustParse(envelope());
     const demoOnly = { ...emptyStore(), revision: 1, cases: backup.store.cases.filter((c) => c.isDemo) };
-    expect(decideRestore(demoOnly, true, req({ expected: { revision: 1, stored: true } }), 'f'.repeat(64), NOW)).toMatchObject({ kind: 'refused', code: 'restore_not_empty' });
-    expect(decideRestore({ ...emptyStore(), revision: 3 }, true, req({ expected: { revision: 2, stored: true } }), 'f'.repeat(64), NOW)).toMatchObject({ kind: 'refused', code: 'restore_stale' });
+    expect(decideRestore(demoOnly, true, req({ expected: { revision: 1, stored: true, epoch: null } }), 'f'.repeat(64), NOW)).toMatchObject({ kind: 'refused', code: 'restore_not_empty' });
+    expect(decideRestore({ ...emptyStore(), revision: 3 }, true, req({ expected: { revision: 2, stored: true, epoch: null } }), 'f'.repeat(64), NOW)).toMatchObject({ kind: 'refused', code: 'restore_stale' });
     expect(decideRestore(emptyStore(), true, req(), 'f'.repeat(64), NOW)).toMatchObject({ kind: 'refused', code: 'restore_stale' });
-    expect(decideRestore(emptyStore(), false, req({ expected: { revision: 0, stored: true } }), 'f'.repeat(64), NOW)).toMatchObject({ kind: 'refused', code: 'restore_stale' });
+    expect(decideRestore(emptyStore(), false, req({ expected: { revision: 0, stored: true, epoch: null } }), 'f'.repeat(64), NOW)).toMatchObject({ kind: 'refused', code: 'restore_stale' });
 
     const written = decideRestore(emptyStore(), false, req(), 'f'.repeat(64), NOW);
     if (written.kind !== 'write') throw new Error(written.kind);
@@ -184,12 +184,12 @@ describe('restore through the service worker handler', () => {
     const s = richLedger();
     (s.cases[0] as { entries: Record<string, unknown>[] }).entries[1]!.amountCents = 1.5;
     const forged = [
-      request('op-1', { revision: 0, stored: false }, envelope(s)),
+      request('op-1', { revision: 0, stored: false, epoch: null }, envelope(s)),
       request('op 1'),
-      request('op-1', { revision: -1, stored: false }),
+      request('op-1', { revision: -1, stored: false, epoch: null }),
       { ...request(), extra: true },
-      request('op-1', { revision: 0, stored: false }, { ...envelope(), formatVersion: 9 }),
-      { kind: 'restore', operationId: 'op-1', expected: { revision: 0, stored: false } },
+      request('op-1', { revision: 0, stored: false, epoch: null }, { ...envelope(), formatVersion: 9 }),
+      { kind: 'restore', operationId: 'op-1', expected: { revision: 0, stored: false, epoch: null } },
     ];
     for (const msg of forged) {
       expect(await handler.handle(msg)).toMatchObject({ ok: false, error: { code: 'invalid_message' } });
@@ -218,7 +218,7 @@ describe('restore through the service worker handler', () => {
     // Same id, different contents: conflict, nothing replaced.
     const other = richLedger();
     other.cases.pop();
-    expect(await restarted.handle(request('op-1', { revision: 0, stored: false }, envelope(other)))).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await restarted.handle(request('op-1', { revision: 0, stored: false, epoch: null }, envelope(other)))).toMatchObject({ ok: false, error: { code: 'conflict' } });
     // A different operation is refused because the ledger is not empty.
     expect(await restarted.handle(request('op-2'))).toMatchObject({ ok: false, error: { code: 'restore_not_empty' } });
     expect(area.data.get(STORE_KEY)).toEqual(afterEdit);
@@ -239,7 +239,7 @@ describe('restore through the service worker handler', () => {
     for (const raw of [{ schemaVersion: 1, revision: 'x', cases: [] }, { schemaVersion: 99, revision: 1, cases: [] }, 'garbage']) {
       const area = new FakeArea();
       area.data.set(STORE_KEY, raw);
-      const res = await createHandler(area).handle(request('op-1', { revision: 0, stored: true }));
+      const res = await createHandler(area).handle(request('op-1', { revision: 0, stored: true, epoch: null }));
       expect(res.ok).toBe(false);
       expect(area.setCalls).toBe(0);
       expect(area.data.get(STORE_KEY)).toEqual(raw);
@@ -254,7 +254,7 @@ describe('restore through the service worker handler', () => {
     const area = new FakeArea();
     const handler = createHandler(area, () => NOW);
     const other = { schemaVersion: 1, revision: 3, cases: [richLedger().cases[1]] };
-    const [a, b] = await Promise.all([handler.handle(request('op-a')), handler.handle(request('op-b', { revision: 0, stored: false }, envelope(other)))]);
+    const [a, b] = await Promise.all([handler.handle(request('op-a')), handler.handle(request('op-b', { revision: 0, stored: false, epoch: null }, envelope(other)))]);
     expect(a).toMatchObject({ ok: true, outcome: 'applied', revision: 1 });
     expect(b).toMatchObject({ ok: false, error: { code: 'restore_not_empty' } });
     expect(JSON.parse(JSON.stringify(area.stored().cases))).toEqual(richLedger().cases);
@@ -263,7 +263,7 @@ describe('restore through the service worker handler', () => {
 
   it('an empty backup is a no-op that writes nothing', async () => {
     const area = new FakeArea();
-    const res = await createHandler(area).handle(request('op-1', { revision: 0, stored: false }, envelope({ schemaVersion: 1, revision: 0, cases: [] })));
+    const res = await createHandler(area).handle(request('op-1', { revision: 0, stored: false, epoch: null }, envelope({ schemaVersion: 1, revision: 0, cases: [] })));
     expect(res).toEqual({ ok: true, outcome: 'unchanged', revision: 0 });
     expect(area.setCalls).toBe(0);
   });
@@ -271,7 +271,7 @@ describe('restore through the service worker handler', () => {
   it('deleting restored cases or erasing data never lets an old retry resurrect them at the worker', async () => {
     const area = new FakeArea();
     const handler = createHandler(area, () => NOW);
-    await handler.handle(request('op-1', { revision: 0, stored: false }));
+    await handler.handle(request('op-1', { revision: 0, stored: false, epoch: null }));
     for (const id of ['real-1', 'real-2']) await handler.handle({ kind: 'mutate', command: { type: 'deleteCase', caseId: id } });
     await handler.handle({ kind: 'mutate', command: { type: 'removeDemo' } });
     expect(area.stored().cases).toHaveLength(0);
@@ -280,11 +280,72 @@ describe('restore through the service worker handler', () => {
     expect(await handler.handle(request('op-1'))).toMatchObject({ ok: true, outcome: 'duplicate' });
     expect(area.data.get(STORE_KEY)).toEqual(emptied);
 
-    // An approval made against a written ledger never matches an erased (missing) one.
+    // An approval made against a written ledger never matches the erased one.
     const approvedAt = area.stored().revision;
     expect(await handler.handle({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION })).toMatchObject({ ok: true });
-    expect(await handler.handle(request('op-2', { revision: approvedAt, stored: true }))).toMatchObject({ ok: false, error: { code: 'restore_stale' } });
-    expect(area.data.has(STORE_KEY)).toBe(false);
-    expect((await loadStore(area)).status).toBe('ok');
+    expect(await handler.handle(request('op-2', { revision: approvedAt, stored: true, epoch: null }))).toMatchObject({ ok: false, error: { code: 'restore_stale' } });
+    expect(area.stored()).toMatchObject({ revision: 0, cases: [] });
+    expect(area.stored().lastRestore).toBeUndefined();
+  });
+
+  const ERASE = { kind: 'eraseAll', confirm: ERASE_CONFIRMATION };
+  const FRESH = { revision: 0, stored: false, epoch: null };
+
+  it('replaying a committed first restore verbatim after one or more erases never resurrects it (handler recreated)', async () => {
+    const area = new FakeArea();
+    let epochs = 0;
+    const make = () => createHandler(area, () => NOW, () => `epoch-${++epochs}`);
+    const original = request('op-first', FRESH);
+    expect(await make().handle(original)).toMatchObject({ ok: true, outcome: 'applied', revision: 1 });
+    for (let cycle = 0; cycle < 3; cycle++) {
+      expect(await make().handle(ERASE)).toMatchObject({ ok: true });
+      const erased = structuredClone(area.data.get(STORE_KEY));
+      // Same request, same id, same original token, sent to a new handler instance.
+      expect(await make().handle(structuredClone(original))).toMatchObject({ ok: false, error: { code: 'restore_stale' } });
+      expect(area.data.get(STORE_KEY)).toEqual(erased);
+      expect(area.stored().cases).toEqual([]);
+    }
+    // A fresh read and a new approval (new id, current token) restore exactly once.
+    const dest = area.stored();
+    expect(dest.ledgerEpoch).toBe('epoch-3');
+    const fresh = request('op-new', { revision: dest.revision, stored: true, epoch: dest.ledgerEpoch ?? null });
+    expect(await make().handle(fresh)).toMatchObject({ ok: true, outcome: 'applied', revision: 1 });
+    expect(await make().handle(fresh)).toMatchObject({ ok: true, outcome: 'duplicate' });
+    expect(await make().handle(original)).toMatchObject({ ok: false });
+    expect(area.stored().lastRestore?.operationId).toBe('op-new');
+    expect(area.stored().ledgerEpoch).toBe('epoch-3');
+  });
+
+  it('a first restore delivered late, after another view created data and erased it, is refused', async () => {
+    const area = new FakeArea();
+    const handler = createHandler(area, () => NOW);
+    const delayed = request('op-late', FRESH); // approved against the never-written profile
+    await handler.handle({ kind: 'mutate', command: { type: 'loadDemo' } });
+    await handler.handle(ERASE);
+    await handler.handle({ kind: 'mutate', command: { type: 'loadDemo' } });
+    await handler.handle({ kind: 'mutate', command: { type: 'removeDemo' } });
+    await handler.handle(ERASE);
+    const before = structuredClone(area.data.get(STORE_KEY));
+    expect(await createHandler(area).handle(delayed)).toMatchObject({ ok: false, error: { code: 'restore_stale' } });
+    expect(area.data.get(STORE_KEY)).toEqual(before);
+  });
+
+  it('keeps the destination marker through mutations, deletion and restore; never imports a backup’s marker', async () => {
+    const area = new FakeArea();
+    const handler = createHandler(area, () => NOW, () => 'dest-epoch');
+    await handler.handle(ERASE);
+    await handler.handle({ kind: 'mutate', command: { type: 'loadDemo' } });
+    await handler.handle({ kind: 'mutate', command: { type: 'removeDemo' } });
+    expect(area.stored()).toMatchObject({ ledgerEpoch: 'dest-epoch', revision: 2 });
+    const source = { ...richLedger(), ledgerEpoch: 'source-epoch' };
+    expect(await handler.handle(request('op-1', { revision: 2, stored: true, epoch: 'source-epoch' }, envelope(source)))).toMatchObject({ ok: false, error: { code: 'restore_stale' } });
+    expect(await handler.handle(request('op-1', { revision: 2, stored: true, epoch: 'dest-epoch' }, envelope(source)))).toMatchObject({ ok: true, outcome: 'applied' });
+    expect(area.stored().ledgerEpoch).toBe('dest-epoch');
+    await handler.handle({ kind: 'mutate', command: { type: 'deleteCase', caseId: 'real-1' } });
+    expect(area.stored().ledgerEpoch).toBe('dest-epoch');
+    // Invalid markers are rejected on read and at the message boundary.
+    expect(parseStore({ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: 'bad epoch!' }).status).toBe('corrupt');
+    expect(parseRequest(request('op-9', { revision: 0, stored: true, epoch: 5 } as never)).ok).toBe(false);
+    expect(parseRequest(request('op-9', { revision: 0, stored: true } as never)).ok).toBe(false);
   });
 });

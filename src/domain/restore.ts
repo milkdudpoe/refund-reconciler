@@ -12,6 +12,8 @@ export interface RestoreExpectation {
   readonly revision: number;
   /** Whether the ledger key existed at approval (false for a never-written profile). */
   readonly stored: boolean;
+  /** The destination's `ledgerEpoch` at approval (null if it had none). Every erase changes it. */
+  readonly epoch: string | null;
 }
 
 export interface RestoreRequest {
@@ -47,7 +49,9 @@ export function decideRestore(dest: StoreData, destStored: boolean, req: Restore
       message: `Saved data now contains ${dest.cases.length} case${dest.cases.length === 1 ? '' : 's'}, so nothing was restored. Restore only writes into an empty ledger and never merges with, replaces or deletes existing cases.`,
     };
   }
-  if (dest.revision !== req.expected.revision || destStored !== req.expected.stored) {
+  // The erase marker makes this token unrepeatable across erases: an erase
+  // always writes a new epoch, so no approval made before it can match after it.
+  if (dest.revision !== req.expected.revision || destStored !== req.expected.stored || (dest.ledgerEpoch ?? null) !== req.expected.epoch) {
     return {
       kind: 'refused',
       code: 'restore_stale',
@@ -59,6 +63,8 @@ export function decideRestore(dest: StoreData, destStored: boolean, req: Restore
     kind: 'write',
     store: {
       schemaVersion: SCHEMA_VERSION,
+      // The destination's own marker; a marker inside the backup is never imported.
+      ...(dest.ledgerEpoch === undefined ? {} : { ledgerEpoch: dest.ledgerEpoch }),
       revision,
       // Cases, items and entries exactly as validated: original ids, timestamps,
       // order, amounts, notes, references, voids, demo flags and provenance.

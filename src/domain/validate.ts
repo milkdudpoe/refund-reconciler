@@ -290,8 +290,8 @@ export function parseStore(raw: unknown): StoreParse {
     return { status: 'unsupported_version', version: raw.schemaVersion };
   }
   try {
-    // `lastRestore` is optional, so ledgers and backups written before restore existed stay valid.
-    exactKeys(raw, ['schemaVersion', 'revision', 'cases', 'lastRestore'], 'store');
+    // `lastRestore` and `ledgerEpoch` are optional, so ledgers and backups written before they existed stay valid.
+    exactKeys(raw, ['schemaVersion', 'revision', 'cases', 'lastRestore', 'ledgerEpoch'], 'store');
     const revision = nonNegativeInteger(raw.revision, 'store.revision');
     const cases = array(raw.cases, 'store.cases').map((c, i) => parseCase(c, `store.cases[${i}]`));
     const ids = new Set<string>();
@@ -304,8 +304,10 @@ export function parseStore(raw: unknown): StoreParse {
         entryIds.add(e.id);
       }
     }
-    const store: StoreData = { schemaVersion: SCHEMA_VERSION, revision, cases };
-    return { status: 'ok', store: 'lastRestore' in raw ? { ...store, lastRestore: parseRestoreReceipt(raw.lastRestore, 'store.lastRestore', revision) } : store };
+    let store: StoreData = { schemaVersion: SCHEMA_VERSION, revision, cases };
+    if ('lastRestore' in raw) store = { ...store, lastRestore: parseRestoreReceipt(raw.lastRestore, 'store.lastRestore', revision) };
+    if ('ledgerEpoch' in raw) store = { ...store, ledgerEpoch: id(raw.ledgerEpoch, 'store.ledgerEpoch') };
+    return { status: 'ok', store };
   } catch (err) {
     if (err instanceof ValidationError) return { status: 'corrupt', error: err.message };
     throw err;

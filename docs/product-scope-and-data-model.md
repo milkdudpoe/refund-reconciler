@@ -23,7 +23,7 @@ the digit string (with BigInt) and rejected if malformed, negative, more precise
 than cents, or above $1,000,000,000.00. Sums use checked integer addition.
 
 ```
-StoreData { schemaVersion: 1, revision, cases[], lastRestore? }
+StoreData { schemaVersion: 1, revision, cases[], lastRestore?, ledgerEpoch? }
 RestoreReceipt (lastRestore) { operationId, payloadSha256, restoredAt, restoredRevision,
              sourceExportedAt, sourceRevision, caseCount }
 CaseRecord { id, retailer: 'amazon_us', orderRef | null, currency: 'USD',
@@ -44,7 +44,10 @@ was added without changing `schemaVersion`; Task 01 data reads unchanged.
 The optional `lastRestore` receipt (Task 04, see [restore.md](restore.md))
 was added the same way: it is written only by a restore from a backup file, in
 the same record as the restored cases, and is validated on every read. Ledgers
-and backup files without it stay valid.
+and backup files without it stay valid. The optional `ledgerEpoch` (Task 04.1)
+is an opaque random marker written only by an explicit erase, which now stores
+`{ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch }` instead of removing
+the key; every other write keeps it, and an imported one is ignored.
 Item/case status is never stored; it is recomputed from entries every time.
 
 ## Derivation rules
@@ -131,7 +134,7 @@ item as `reopened`, so the case leaves `settled`.
 - One `chrome.storage.local` key. Every read is validated at runtime
   (`parseStore`). Unknown schema versions and malformed data are shown
   read-only; writes are refused and nothing is reset unless the user explicitly
-  erases.
+  erases (which leaves only an empty ledger with a new erase marker).
 - Dashboard pages never write storage directly. They send validated commands to
   the service worker, which applies them one at a time to the latest stored
   state and writes. Pages re-render on `chrome.storage.onChanged`, so two open

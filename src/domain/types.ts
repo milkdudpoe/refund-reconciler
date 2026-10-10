@@ -140,6 +140,19 @@ export interface StoreData {
   readonly cases: readonly CaseRecord[];
   /** Present only after a restore from a backup file (see RestoreReceipt). */
   readonly lastRestore?: RestoreReceipt;
+  /**
+   * Opaque random marker written by an explicit erase (a new value on every
+   * erase) and carried unchanged through every later write. It holds no user
+   * data; it only lets the service worker tell an erased ledger apart from the
+   * ledger an earlier restore approval was made against. Absent on ledgers
+   * that were never erased.
+   */
+  readonly ledgerEpoch?: string;
+}
+
+/** What an explicit erase leaves in storage: no cases, no receipt, only a new marker. */
+export function erasedStore(ledgerEpoch: string): StoreData {
+  return { schemaVersion: SCHEMA_VERSION, revision: 0, cases: [], ledgerEpoch };
 }
 
 export function emptyStore(): StoreData {

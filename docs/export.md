@@ -96,6 +96,9 @@ captured excerpts and is an ordinary unencrypted file.
   created by a restore (Task 04). It is the destination's own bookkeeping,
   exported so later exports keep the complete ledger; when such a file is
   restored elsewhere it is treated as source metadata and is not carried over.
+- `store.ledgerEpoch` is present only if the exported ledger was explicitly
+  erased at some point (an opaque random marker, no user data). It is exported
+  as part of the ledger and ignored when the file is restored elsewhere.
 
 **Restore:** a file in this format can be restored into a browser profile
 whose ledger has no cases; see [restore.md](restore.md). Files exported by

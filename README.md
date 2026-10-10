@@ -96,7 +96,11 @@ all data (JSON):
 - Restore writes every original case, item and entry unchanged (ids, times,
   voids, history, provenance) and adds a small `lastRestore` receipt in the
   same write, used to recognise the operation after a lost reply. The
-  destination revision continues from its own counter.
+  destination revision continues from its own counter. A restore is approved
+  against the destination's revision, existence and erase marker, so a request
+  approved before an erase is refused after it.
+- After completion the panel re-reads saved data and says whether it still
+  matches the restore, has changed since, or could not be verified.
 - Restored records are not verification of money received, and the file is
   not encrypted or authenticated.
 
@@ -147,7 +151,9 @@ is used.
 - *Remove synthetic demo* removes only the demo cases.
 - If stored data is unreadable or from an unsupported version, the dashboard
   shows it read-only and blocks changes. *Erase stored data…* → *Permanently
-  erase* removes the whole key; nothing is erased automatically.
+  erase* replaces everything with an empty ledger that keeps only a random
+  erase marker (`ledgerEpoch`, no user data), so restore approvals made before
+  the erase can never apply afterwards; nothing is erased automatically.
 - Removing the extension from Chrome deletes all of its stored data.
 
 ## Project layout

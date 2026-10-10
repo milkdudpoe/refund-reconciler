@@ -12,6 +12,7 @@ import {
   destination,
   dropNextSend,
   envelopeOf,
+  expectErased,
   expectEligible,
   failWorkerReads,
   holdNextSend,
@@ -137,7 +138,7 @@ test('acceptance 1, 2 and 11: a real exported file restores into a second empty 
     expect(JSON.parse(JSON.stringify(reparsed.value.store.cases))).toEqual(source.cases);
     expect(reparsed.value.store.lastRestore?.operationId).toBe(stored.lastRestore?.operationId);
     // It can itself be restored into another empty ledger, where the old receipt is not carried over.
-    const next = decideRestore(emptyStore(), false, { operationId: 'next-op', expected: { revision: 0, stored: false }, backup: reparsed.value }, 'a'.repeat(64), '2026-10-10T00:00:00.000Z');
+    const next = decideRestore(emptyStore(), false, { operationId: 'next-op', expected: { revision: 0, stored: false, epoch: null }, backup: reparsed.value }, 'a'.repeat(64), '2026-10-10T00:00:00.000Z');
     expect(next.kind === 'write' && next.store.lastRestore?.operationId).toBe('next-op');
   } finally {
     await b.close();
@@ -169,8 +170,14 @@ test('acceptance 3: preview, cancel and file replacement write nothing; hostile 
 
   // Replacing the file re-validates and re-previews the new one.
   const demoOnly = { ...richLedger(), cases: richLedger().cases.filter((c) => (c as { isDemo: boolean }).isDemo) };
-  await chooseBackup(page, await writeBackupFile(scratch.dir, '<b>second<i>.json', envelopeOf(demoOnly)));
+  // A hostile file name is not a valid path on every OS, so this file is supplied in memory through the real input.
+  await page.getByLabel('Backup file (.json)').setInputFiles({
+    name: '<b>second<i>.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(envelopeOf(demoOnly))),
+  });
   await expect(page.getByTestId('restore-file-name')).toContainText('<b>second<i>.json');
+  expect(await page.locator('[data-testid="restore-file-name"] b, [data-testid="restore-file-name"] i').count()).toBe(0);
   await expect(page.getByTestId('restore-real-count')).toHaveText('0');
   await expect(page.getByTestId('restore-demo-count')).toHaveText('2');
   await expect(approveButton(page)).toHaveText('Restore 2 cases');
@@ -197,7 +204,7 @@ test('acceptance 3: preview, cancel and file replacement write nothing; hostile 
   await expect(approveButton(page)).toHaveCount(0);
   expect(await storedRaw(page)).toBeUndefined();
   // Also at the worker: nothing written, revision unchanged.
-  expect(await sendRaw(page, { kind: 'restore', operationId: 'empty-op', expected: { revision: 0, stored: false }, backup: envelopeOf({ schemaVersion: 1, revision: 6, cases: [] }) })).toEqual({ ok: true, outcome: 'unchanged', revision: 0 });
+  expect(await sendRaw(page, { kind: 'restore', operationId: 'empty-op', expected: { revision: 0, stored: false, epoch: null }, backup: envelopeOf({ schemaVersion: 1, revision: 6, cases: [] }) })).toEqual({ ok: true, outcome: 'unchanged', revision: 0 });
   expect(await storedRaw(page)).toBeUndefined();
 });
 
@@ -239,12 +246,12 @@ test('acceptance 4: invalid files give useful errors and no write; forged worker
 
   // Forged messages straight to the real service worker are validated there.
   const forged: unknown[] = [
-    { kind: 'restore', operationId: 'f1', expected: { revision: 0, stored: false }, backup: mutate((s) => { entries(s)[1]!.amountCents = -5; }) },
-    { kind: 'restore', operationId: 'f2', expected: { revision: 0, stored: false }, backup: mutate((s) => { s.cases.push(structuredClone(s.cases[0]!)); }) },
-    { kind: 'restore', operationId: 'f3', expected: { revision: 0, stored: false }, backup: mutate((s) => { entries(s).find((e) => e.id === 'v1')!.targetEntryId = 'missing'; }) },
-    { kind: 'restore', operationId: 'f4', expected: { revision: 0, stored: false }, backup: mutate((s) => { (entries(s).find((e) => e.id === 'cap-new')!.capture as Record<string, unknown>).sourceOrigin = 'https://evil.example'; }) },
-    { kind: 'restore', operationId: 'f5', expected: { revision: 0, stored: false }, backup: { ...envelopeOf(richLedger()), formatVersion: 3 } },
-    { kind: 'restore', operationId: '../f6', expected: { revision: 0, stored: false }, backup: envelopeOf(richLedger()) },
+    { kind: 'restore', operationId: 'f1', expected: { revision: 0, stored: false, epoch: null }, backup: mutate((s) => { entries(s)[1]!.amountCents = -5; }) },
+    { kind: 'restore', operationId: 'f2', expected: { revision: 0, stored: false, epoch: null }, backup: mutate((s) => { s.cases.push(structuredClone(s.cases[0]!)); }) },
+    { kind: 'restore', operationId: 'f3', expected: { revision: 0, stored: false, epoch: null }, backup: mutate((s) => { entries(s).find((e) => e.id === 'v1')!.targetEntryId = 'missing'; }) },
+    { kind: 'restore', operationId: 'f4', expected: { revision: 0, stored: false, epoch: null }, backup: mutate((s) => { (entries(s).find((e) => e.id === 'cap-new')!.capture as Record<string, unknown>).sourceOrigin = 'https://evil.example'; }) },
+    { kind: 'restore', operationId: 'f5', expected: { revision: 0, stored: false, epoch: null }, backup: { ...envelopeOf(richLedger()), formatVersion: 3 } },
+    { kind: 'restore', operationId: '../f6', expected: { revision: 0, stored: false, epoch: null }, backup: envelopeOf(richLedger()) },
     { kind: 'restore', operationId: 'f7', backup: envelopeOf(richLedger()) },
   ];
   for (const msg of forged) {
@@ -264,7 +271,7 @@ test('acceptance 5: existing cases (even demo-only) block restore; corrupt, unsu
   await expect(destination(page)).toContainText('2 synthetic demo cases');
   await expect(destination(page)).toContainText('never merges with, replaces or deletes');
   await expect(approveButton(page)).toBeDisabled();
-  expect(await sendRaw(page, { kind: 'restore', operationId: 'over-demo', expected: { revision: (demoState as Raw).revision, stored: true }, backup: envelopeOf(richLedger()) })).toMatchObject({
+  expect(await sendRaw(page, { kind: 'restore', operationId: 'over-demo', expected: { revision: (demoState as Raw).revision, stored: true, epoch: null }, backup: envelopeOf(richLedger()) })).toMatchObject({
     ok: false,
     error: { code: 'restore_not_empty' },
   });
@@ -286,7 +293,7 @@ test('acceptance 5: existing cases (even demo-only) block restore; corrupt, unsu
     await expect(approveButton(page)).toBeDisabled();
     await expect(page.getByTestId('unreadable')).toBeVisible();
     for (const stored of [true, false]) {
-      const res = await sendRaw(page, { kind: 'restore', operationId: 'over-bad', expected: { revision: 0, stored }, backup: envelopeOf(richLedger()) });
+      const res = await sendRaw(page, { kind: 'restore', operationId: 'over-bad', expected: { revision: 0, stored, epoch: null }, backup: envelopeOf(richLedger()) });
       expect(res.ok).toBe(false);
       expect(['storage_unreadable', 'storage_unsupported']).toContain(res.error?.code);
     }
@@ -303,7 +310,7 @@ test('acceptance 5: existing cases (even demo-only) block restore; corrupt, unsu
   await expect(approveButton(page)).toBeDisabled();
   await overridePageReads(page, 'real');
   await failWorkerReads(session, true);
-  expect(await sendRaw(page, { kind: 'restore', operationId: 'read-fail', expected: { revision: 0, stored: true }, backup: envelopeOf(richLedger()) })).toMatchObject({
+  expect(await sendRaw(page, { kind: 'restore', operationId: 'read-fail', expected: { revision: 0, stored: true, epoch: null }, backup: envelopeOf(richLedger()) })).toMatchObject({
     ok: false,
     error: { code: 'storage_error' },
   });
@@ -325,7 +332,7 @@ test('acceptance 6: a case created in another dashboard after preview pauses app
   const afterB = await storedRaw(b);
 
   // A stale attempt sent to the worker (as an old approval would) is refused there.
-  expect(await sendRaw(a, { kind: 'restore', operationId: 'stale-op', expected: { revision: 0, stored: false }, backup: envelopeOf(richLedger()) })).toMatchObject({
+  expect(await sendRaw(a, { kind: 'restore', operationId: 'stale-op', expected: { revision: 0, stored: false, epoch: null }, backup: envelopeOf(richLedger()) })).toMatchObject({
     ok: false,
     error: { code: 'restore_not_empty' },
   });
@@ -339,7 +346,7 @@ test('acceptance 6: a case created in another dashboard after preview pauses app
   await b.getByRole('button', { name: 'Permanently delete' }).click();
   await expectEligible(a);
   await expect(destination(a)).toContainText('revision 2');
-  expect(await sendRaw(a, { kind: 'restore', operationId: 'stale-op', expected: { revision: 0, stored: false }, backup: envelopeOf(richLedger()) })).toMatchObject({
+  expect(await sendRaw(a, { kind: 'restore', operationId: 'stale-op', expected: { revision: 0, stored: false, epoch: null }, backup: envelopeOf(richLedger()) })).toMatchObject({
     ok: false,
     error: { code: 'restore_stale' },
   });
@@ -428,7 +435,7 @@ test('acceptance 8: a committed restore with a lost reply and failing reads stay
   // An identical retry never duplicates or overwrites: the worker recognises the
   // operation from the receipt in storage, not from memory (restart is covered
   // in tests/unit/restore.test.ts with a fresh handler over the same storage).
-  expect(await sendRaw(b, { kind: 'restore', operationId: opId, expected: { revision: 0, stored: false }, backup: envelopeOf(richLedger()) })).toEqual({ ok: true, outcome: 'duplicate', revision: 2 });
+  expect(await sendRaw(b, { kind: 'restore', operationId: opId, expected: { revision: 0, stored: false, epoch: null }, backup: envelopeOf(richLedger()) })).toEqual({ ok: true, outcome: 'duplicate', revision: 2 });
   const final = (await storedRaw(b)) as Raw;
   expect(final).toEqual(afterB);
   const chair = final.cases.find((c) => (c as { id: string }).id === 'real-2') as { entries: { note: string }[] };
@@ -482,7 +489,7 @@ test('acceptance 9: a rejected write keeps the preview and changes nothing; a la
 
   const changed = richLedger();
   (changed.cases[1] as { entries: Record<string, unknown>[] }).entries[1]!.amountCents = 1;
-  expect(await sendRaw(a, { kind: 'restore', operationId: stored.lastRestore!.operationId, expected: { revision: 0, stored: false }, backup: envelopeOf(changed) })).toMatchObject({
+  expect(await sendRaw(a, { kind: 'restore', operationId: stored.lastRestore!.operationId, expected: { revision: 0, stored: false, epoch: null }, backup: envelopeOf(changed) })).toMatchObject({
     ok: false,
     error: { code: 'conflict' },
   });
@@ -512,7 +519,7 @@ test('acceptance 10: after deletion or erase, a delayed retry cannot resurrect r
   await a.getByRole('button', { name: 'Check and retry restore' }).click();
   await expect(a.getByTestId('restore-done')).toHaveAttribute('data-outcome', 'recovered');
   await expect(a.getByTestId('restore-changed-since')).toBeVisible();
-  expect(await sendRaw(b, { kind: 'restore', operationId: firstOp, expected: { revision: 0, stored: false }, backup: envelopeOf(richLedger()) })).toMatchObject({ ok: true, outcome: 'duplicate' });
+  expect(await sendRaw(b, { kind: 'restore', operationId: firstOp, expected: { revision: 0, stored: false, epoch: null }, backup: envelopeOf(richLedger()) })).toMatchObject({ ok: true, outcome: 'duplicate' });
   expect(await storedRaw(b)).toEqual(emptied);
   await a.close();
 
@@ -528,19 +535,19 @@ test('acceptance 10: after deletion or erase, a delayed retry cannot resurrect r
   await b.getByRole('button', { name: 'Erase stored data…' }).click();
   await b.getByRole('button', { name: 'Permanently erase' }).click();
   await expect(b.getByTestId('empty-state')).toBeVisible();
-  expect(await storedRaw(b)).toBeUndefined();
+  const erasedEpoch = expectErased(await storedRaw(b));
 
   await overridePageReads(a, 'real');
   await a.getByRole('button', { name: 'Check and retry restore' }).click();
   await expect(a.getByTestId('restore-feedback')).toContainText('this approval was withdrawn and nothing was resent');
   expect(await sentOperationIds(a)).toEqual([secondOp]);
-  expect(await storedRaw(a)).toBeUndefined();
+  expect(expectErased(await storedRaw(a))).toBe(erasedEpoch);
   // The old approval, replayed at the worker, no longer matches the erased destination.
-  expect(await sendRaw(b, { kind: 'restore', operationId: secondOp, expected: { revision: emptied.revision, stored: true }, backup: envelopeOf(richLedger()) })).toMatchObject({
+  expect(await sendRaw(b, { kind: 'restore', operationId: secondOp, expected: { revision: emptied.revision, stored: true, epoch: null }, backup: envelopeOf(richLedger()) })).toMatchObject({
     ok: false,
     error: { code: 'restore_stale' },
   });
-  expect(await storedRaw(a)).toBeUndefined();
+  expect(expectErased(await storedRaw(a))).toBe(erasedEpoch);
 
   // A new restore is a new explicit approval against the fresh (erased) destination, with a new id.
   await expectEligible(a);

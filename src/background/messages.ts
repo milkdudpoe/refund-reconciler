@@ -64,17 +64,21 @@ function parseRestoreRequest(o: Record<string, unknown>): Validation<Request> {
   const e = o.expected;
   if (
     typeof e !== 'object' || e === null || Array.isArray(e) ||
-    Object.keys(e).length !== 2 ||
+    Object.keys(e).length !== 3 ||
     typeof (e as Record<string, unknown>).stored !== 'boolean' ||
+    !((e as Record<string, unknown>).epoch === null || isId((e as Record<string, unknown>).epoch)) ||
     !Number.isSafeInteger((e as Record<string, unknown>).revision) ||
     ((e as Record<string, unknown>).revision as number) < 0
   ) {
-    return { ok: false, error: 'message.expected: expected { revision, stored }' };
+    return { ok: false, error: 'message.expected: expected { revision, stored, epoch }' };
   }
   const backup = parseBackupEnvelope(o.backup);
   if (!backup.ok) return { ok: false, error: `message.backup: ${backup.error}` };
-  const expected = e as { revision: number; stored: boolean };
-  return { ok: true, value: { kind: 'restore', operationId: o.operationId, expected: { revision: expected.revision, stored: expected.stored }, backup: backup.value } };
+  const expected = e as { revision: number; stored: boolean; epoch: string | null };
+  return {
+    ok: true,
+    value: { kind: 'restore', operationId: o.operationId, expected: { revision: expected.revision, stored: expected.stored, epoch: expected.epoch }, backup: backup.value },
+  };
 }
 
 export function isResponse(v: unknown): v is Response {

@@ -13,7 +13,11 @@ export interface Handler {
   handle(raw: unknown): Promise<Response>;
 }
 
-export function createHandler(area: StorageAreaLike, now: () => string = () => new Date().toISOString()): Handler {
+export function createHandler(
+  area: StorageAreaLike,
+  now: () => string = () => new Date().toISOString(),
+  newEpoch: () => string = () => crypto.randomUUID(),
+): Handler {
   let queue: Promise<unknown> = Promise.resolve();
 
   async function process(raw: unknown): Promise<Response> {
@@ -22,7 +26,7 @@ export function createHandler(area: StorageAreaLike, now: () => string = () => n
 
     if (request.value.kind === 'eraseAll') {
       try {
-        await eraseStore(area);
+        await eraseStore(area, newEpoch());
         return { ok: true, outcome: 'applied', revision: 0 };
       } catch (err) {
         return { ok: false, error: { code: 'write_rejected', message: `Storage rejected the erase, so nothing was erased: ${describeError(err)}` } };

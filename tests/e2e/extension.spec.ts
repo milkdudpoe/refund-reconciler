@@ -183,6 +183,13 @@ test('unsupported stored data is shown, not reset, and only erased on explicit c
   await page.getByRole('button', { name: 'Erase stored data…' }).click();
   await page.getByRole('button', { name: 'Permanently erase' }).click();
   await expect(page.getByTestId('empty-state')).toBeVisible();
+  // Only after explicit confirmation: nothing of the old data remains, only an empty ledger with an opaque erase marker.
+  expect((await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY]).toEqual({
+    schemaVersion: 1,
+    revision: 0,
+    cases: [],
+    ledgerEpoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/),
+  });
 });
 
 test('corrupt stored data is reported without being overwritten', async ({ session }) => {

@@ -64,9 +64,10 @@ export async function expectEligible(page: Page): Promise<void> {
 
 type SendWindow = Window & {
   __realSend?: (msg: unknown) => Promise<unknown>;
-  __sendModes?: ('hold' | 'lose' | 'drop')[];
+  __sendModes?: ('hold' | 'holdReply' | 'lose' | 'drop')[];
   __sendGate?: { held: boolean; release: () => void } | undefined;
   __sentOps?: string[];
+  __sentMessages?: unknown[];
 };
 
 /** Sends a raw message to the real service worker from an extension page (forged requests; bypasses any test wrapper). */
@@ -83,7 +84,7 @@ export async function sendRaw(page: Page, message: unknown): Promise<{ ok: boole
  * hold (until releaseSend), lose (delivered and processed, reply lost) or drop
  * (fails before delivery).
  */
-function queueSendBehaviour(page: Page, mode: 'hold' | 'lose' | 'drop'): Promise<void> {
+function queueSendBehaviour(page: Page, mode: 'hold' | 'holdReply' | 'lose' | 'drop' | null): Promise<void> {
   return page.evaluate((m) => {
     const w = window as SendWindow;
     const rt = chrome.runtime as unknown as { sendMessage: (msg: unknown) => Promise<unknown> };
@@ -92,15 +93,28 @@ function queueSendBehaviour(page: Page, mode: 'hold' | 'lose' | 'drop'): Promise
       w.__realSend = real;
       w.__sentOps = [];
       w.__sendModes = [];
+      w.__sentMessages = [];
       rt.sendMessage = async (msg: unknown) => {
         const op = (msg as { operationId?: string }).operationId;
-        if (op) w.__sentOps!.push(op);
+        if (op) {
+          w.__sentOps!.push(op);
+          // The exact outgoing request, as the dashboard built it (for verbatim replay).
+          w.__sentMessages!.push(JSON.parse(JSON.stringify(msg)));
+        }
         const behaviour = w.__sendModes!.shift();
         if (behaviour === 'hold') {
           await new Promise<void>((resolve) => {
             w.__sendGate = { held: true, release: resolve };
           });
           return real(msg);
+        }
+        if (behaviour === 'holdReply') {
+          // Delivered and processed by the real worker; only the reply is held.
+          const reply = await real(msg);
+          await new Promise<void>((resolve) => {
+            w.__sendGate = { held: true, release: resolve };
+          });
+          return reply;
         }
         if (behaviour === 'lose') {
           await real(msg);
@@ -110,7 +124,7 @@ function queueSendBehaviour(page: Page, mode: 'hold' | 'lose' | 'drop'): Promise
         return real(msg);
       };
     }
-    w.__sendModes!.push(m);
+    if (m) w.__sendModes!.push(m);
   }, mode);
 }
 
@@ -120,6 +134,31 @@ export const holdNextSend = (page: Page) => queueSendBehaviour(page, 'hold');
 export const loseNextReply = (page: Page) => queueSendBehaviour(page, 'lose');
 /** The page's next runtime message fails before reaching the worker (the page cannot tell). */
 export const dropNextSend = (page: Page) => queueSendBehaviour(page, 'drop');
+/** The page's next runtime message is delivered and processed; its (successful) reply is held until releaseSend(). */
+export const holdNextReply = (page: Page) => queueSendBehaviour(page, 'holdReply');
+
+/** Records this page's outgoing restore requests without changing them. */
+export const recordSends = (page: Page) => queueSendBehaviour(page, null);
+
+/** The exact restore requests this page sent, in order. */
+export async function sentRequests(page: Page): Promise<Record<string, unknown>[]> {
+  return page.evaluate(() => ((window as SendWindow).__sentMessages ?? []) as Record<string, unknown>[]);
+}
+
+/** Erase leaves only an empty ledger with an opaque marker: no cases, receipt or other data. */
+export function expectErased(raw: unknown): string {
+  expect(raw).toEqual({ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) });
+  return (raw as { ledgerEpoch: string }).ledgerEpoch;
+}
+
+/** Erases through the dashboard's real confirmation UI. That UI is offered for unreadable data, so corrupt data is seeded first. */
+export async function eraseViaUi(page: Page, seedCorrupt: (page: Page) => Promise<void>): Promise<void> {
+  await seedCorrupt(page);
+  await expect(page.getByTestId('unreadable')).toBeVisible();
+  await page.getByRole('button', { name: 'Erase stored data…' }).click();
+  await page.getByRole('button', { name: 'Permanently erase' }).click();
+  await expect(page.getByTestId('empty-state')).toBeVisible();
+}
 
 export async function waitForHeldSend(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => (window as SendWindow).__sendGate?.held === true)).toBe(true);

@@ -35,13 +35,22 @@ interface Operation {
   sentGen: number;
 }
 
+/**
+ * Whether current saved data still matches a completed restore. The commit
+ * itself is known regardless; this only qualifies what is in storage now.
+ * `changed` is final. `current` is only set by a read that no storage change
+ * overtook.
+ */
+type CompletionFreshness = 'checking' | 'current' | 'changed' | 'unverified';
+
 interface Done {
   readonly outcome: 'applied' | 'duplicate' | 'recovered';
   readonly fileName: string;
   readonly caseCount: number;
-  /** Destination revision written by the restore. */
-  readonly revision: number;
-  changedSince: boolean;
+  readonly operationId: string;
+  /** Destination revision written by the restore, when known from the reply or receipt. */
+  readonly revision: number | null;
+  freshness: CompletionFreshness;
 }
 
 interface Panel {
@@ -97,6 +106,7 @@ export function createRestoreController(host: RestoreHost): RestoreController {
   let fileSeq = 0;
   let destSeq = 0;
   let checkSeq = 0;
+  let verifySeq = 0;
 
   function current(p: Panel): boolean {
     return panel === p;
@@ -228,7 +238,7 @@ export function createRestoreController(host: RestoreHost): RestoreController {
       case 'ok': {
         const cases = result.store.cases;
         if (cases.length > 0) return { kind: 'not_empty', real: cases.filter((c) => !c.isDemo).length, demo: cases.filter((c) => c.isDemo).length };
-        return { kind: 'eligible', expected: { revision: result.store.revision, stored: !result.isNew } };
+        return { kind: 'eligible', expected: { revision: result.store.revision, stored: !result.isNew, epoch: result.store.ledgerEpoch ?? null } };
       }
     }
   }
@@ -289,6 +299,55 @@ export function createRestoreController(host: RestoreHost): RestoreController {
     host.announce(doneText(done));
     host.render();
     document.getElementById('restore-heading')?.focus();
+    // Events may have arrived while the reply was pending (or before a lost
+    // reply was resolved), so establish freshness with a new read.
+    void verifyCompletion(p, done);
+  }
+
+  /** Saved data is exactly what this restore wrote: its own receipt, at the revision the restore wrote. */
+  function matchesRestore(store: StoreData, done: Done): boolean {
+    const receipt = store.lastRestore;
+    return (
+      receipt !== undefined &&
+      receipt.operationId === done.operationId &&
+      store.revision === receipt.restoredRevision &&
+      (done.revision === null || receipt.restoredRevision === done.revision)
+    );
+  }
+
+  /**
+   * Generation-safe freshness read for a completed restore. A mismatch is
+   * final (every later write changes the revision or removes the receipt). A
+   * match counts only if no storage change overtook the read; otherwise it is
+   * read again. A failed read leaves the completion intact but unverified.
+   */
+  async function verifyCompletion(p: Panel, done: Done): Promise<void> {
+    if (done.freshness === 'changed') return;
+    const seq = ++verifySeq;
+    for (let attempt = 1; attempt <= READ_ATTEMPTS; attempt++) {
+      const gen = host.storageGen();
+      const result = await loadStore(deps.area);
+      if (!current(p) || p.done !== done || seq !== verifySeq || (done.freshness as CompletionFreshness) === 'changed') return;
+      if (result.status === 'ok' && !matchesRestore(result.store, done)) {
+        done.freshness = 'changed';
+        host.announce('Saved data has changed since this restore, so it may no longer match the backup file.');
+        host.render();
+        return;
+      }
+      if (result.status !== 'ok') {
+        done.freshness = 'unverified';
+        host.render();
+        return;
+      }
+      if (host.storageGen() === gen) {
+        done.freshness = 'current';
+        host.render();
+        return;
+      }
+      // Overtaken by a storage change: this match says nothing about now.
+    }
+    done.freshness = 'unverified';
+    host.render();
   }
 
   async function send(p: Panel, op: Operation): Promise<void> {
@@ -309,7 +368,15 @@ export function createRestoreController(host: RestoreHost): RestoreController {
         host.render();
         return;
       }
-      finish(p, { outcome: res.outcome === 'duplicate' ? 'duplicate' : 'applied', fileName: op.fileName, caseCount, revision: res.revision, changedSince: false });
+      finish(p, {
+        outcome: res.outcome === 'duplicate' ? 'duplicate' : 'applied',
+        fileName: op.fileName,
+        caseCount,
+        operationId: op.id,
+        // For a duplicate the reply carries the current revision, not the restore's.
+        revision: res.outcome === 'duplicate' ? null : res.revision,
+        freshness: 'checking',
+      });
       return;
     }
     if (res.error.code === 'outcome_unknown') {
@@ -349,8 +416,9 @@ export function createRestoreController(host: RestoreHost): RestoreController {
         outcome: 'recovered',
         fileName: op.fileName,
         caseCount: receipt.caseCount,
+        operationId: op.id,
         revision: receipt.restoredRevision,
-        changedSince: result.store.revision !== receipt.restoredRevision,
+        freshness: 'checking',
       });
       return 'done';
     }
@@ -406,16 +474,6 @@ export function createRestoreController(host: RestoreHost): RestoreController {
     }
   }
 
-  async function recheckDone(p: Panel): Promise<void> {
-    const done = p.done;
-    if (!done || done.changedSince) return;
-    const result = await loadStore(deps.area);
-    if (!current(p) || p.done !== done || result.status !== 'ok') return;
-    if (result.store.revision !== done.revision) {
-      done.changedSince = true;
-      host.render();
-    }
-  }
 
   function onStorageChange(): void {
     const p = panel;
@@ -433,9 +491,16 @@ export function createRestoreController(host: RestoreHost): RestoreController {
       case 'uncertain':
         if (p.op) void recheckUncertain(p, p.op);
         break;
-      case 'done':
-        void recheckDone(p);
+      case 'done': {
+        const done = p.done;
+        if (done && done.freshness !== 'changed') {
+          // At event time: no longer known to match until a new read says so.
+          done.freshness = 'checking';
+          host.render();
+          void verifyCompletion(p, done);
+        }
         break;
+      }
       default:
         break;
     }
@@ -449,9 +514,30 @@ export function createRestoreController(host: RestoreHost): RestoreController {
       case 'applied':
         return `Restore complete: ${what} were restored into this browser (saved-data revision ${done.revision}).`;
       case 'duplicate':
-        return `This restore was already completed earlier (saved-data revision ${done.revision}); nothing was added twice.`;
+        return `This restore of ${what} was already completed earlier; nothing was added twice.`;
       case 'recovered':
         return `Restore complete: the extension’s reply was lost, but this restore’s own operation id is in your saved data, so ${what} were restored (saved-data revision ${done.revision}). It was not applied twice.`;
+    }
+  }
+
+  function renderCompletionFreshness(done: Done): Node {
+    switch (done.freshness) {
+      case 'changed':
+        return h(
+          'p',
+          { class: 'notice notice-info', 'data-testid': 'restore-changed-since', 'data-freshness': 'changed' },
+          'Saved data has changed since this restore, so it may no longer match the backup file.',
+        );
+      case 'unverified':
+        return h(
+          'p',
+          { class: 'notice notice-info', 'data-testid': 'restore-freshness', 'data-freshness': 'unverified' },
+          'The restore was saved, but current saved data could not be verified (it could not be read, or kept changing), so it is not known whether it still matches the backup file.',
+        );
+      case 'checking':
+        return h('p', { class: 'muted small', 'data-testid': 'restore-freshness', 'data-freshness': 'checking' }, 'Checking whether current saved data still matches this restore…');
+      case 'current':
+        return h('p', { class: 'muted small', 'data-testid': 'restore-freshness', 'data-freshness': 'current' }, 'Current saved data still matches this restore.');
     }
   }
 
@@ -680,9 +766,7 @@ export function createRestoreController(host: RestoreHost): RestoreController {
         if (done) {
           body.push(
             h('p', { class: 'notice notice-success', 'data-testid': 'restore-done', 'data-outcome': done.outcome }, doneText(done)),
-            done.changedSince
-              ? h('p', { class: 'notice notice-info', 'data-testid': 'restore-changed-since' }, 'Saved data has changed since this restore, so it may no longer match the backup file.')
-              : null,
+            renderCompletionFreshness(done),
             h('p', { class: 'muted small' }, 'Restored records keep their original sources and recorded times. Restoring is not verification that any money was received.'),
             h('div', { class: 'actions' }, h('button', { type: 'button', id: 'restore-cancel', on: { click: close } }, 'Close')),
           );
