@@ -147,13 +147,79 @@ test('acceptance 1, 4: keyboard search and status persist through case detail an
   await expect(search(a)).toBeFocused();
   await expect(statusFilter(a)).toHaveValue('all');
   await expect(rows(a)).toHaveCount(8);
+});
 
-  // A narrow dashboard window keeps the controls usable without horizontal scrolling.
+test('a narrow 360px dashboard keeps search, status and Clear filters reachable by vertical scrolling without horizontal overflow', async ({ session }) => {
+  const a = await session.openDashboard();
   await a.setViewportSize({ width: 360, height: 720 });
-  expect(await a.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await seed(a, mixedRaw());
+  await expectOverview(a, MIXED);
+  await expect(rows(a)).toHaveCount(7);
+
+  const noHorizontalOverflow = () => a.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  /** The control's box lies within the viewport's width (it may be anywhere vertically). */
+  const fitsHorizontally = async (locator: ReturnType<typeof search>) => {
+    const box = await locator.boundingBox();
+    const width = await a.evaluate(() => document.documentElement.clientWidth);
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+  };
+  expect(await noHorizontalOverflow()).toBe(true);
+
+  // Search: scrolled into view by normal vertical scrolling, then typed with the keyboard.
+  await search(a).scrollIntoViewIfNeeded();
   await expect(search(a)).toBeInViewport();
-  await search(a).fill('lamp');
+  await fitsHorizontally(search(a));
+  await search(a).focus();
+  await a.keyboard.type('Rain (');
+  await expect(search(a)).toHaveValue('Rain (');
+  await expect(a.getByTestId('no-matches')).toBeVisible(); // "(" is literal, not a pattern
+  await a.keyboard.press('Backspace');
+  await a.keyboard.press('Backspace');
+  await expect(search(a)).toHaveValue('Rain');
   await expect(rows(a)).toHaveCount(1);
+  await expect(rows(a)).toContainText('Order 111-0000005-0000005');
+  await expect(a.getByTestId('results-count')).toHaveText('Showing 1 of 7 cases');
+  expect(await noHorizontalOverflow()).toBe(true);
+
+  // Status: combined with the search.
+  await statusFilter(a).scrollIntoViewIfNeeded();
+  await expect(statusFilter(a)).toBeInViewport();
+  await fitsHorizontally(statusFilter(a));
+  await statusFilter(a).selectOption('settled');
+  await expect(a.getByTestId('no-matches')).toBeVisible();
+  await statusFilter(a).selectOption('review');
+  await expect(rows(a)).toHaveCount(1);
+  await expect(rows(a)).toContainText('Order 111-0000005-0000005');
+  await search(a).scrollIntoViewIfNeeded();
+  await search(a).fill('');
+  await search(a).focus();
+  await a.keyboard.type('111-');
+  await expect(rows(a)).toHaveCount(3);
+  // The overview stays the evidence-based total for all cases.
+  await expectOverview(a, MIXED);
+  expect(await noHorizontalOverflow()).toBe(true);
+
+  // Clear filters: reachable, restores everything and returns focus to the search field.
+  const clear = a.locator('#clear-filters');
+  await clear.scrollIntoViewIfNeeded();
+  await expect(clear).toBeInViewport();
+  await fitsHorizontally(clear);
+  await clear.click();
+  await expect(search(a)).toBeFocused();
+  await expect(search(a)).toHaveValue('');
+  await expect(statusFilter(a)).toHaveValue('all');
+  await expect(rows(a)).toHaveCount(7);
+  await expect(a.getByTestId('results-count')).toHaveText('Showing all 7 cases');
+  await expect(search(a)).toBeInViewport();
+
+  // The last row and the demo section are still reachable by vertical scrolling.
+  await rows(a).last().scrollIntoViewIfNeeded();
+  await expect(rows(a).last()).toBeInViewport();
+  await a.getByTestId('demo-cases').scrollIntoViewIfNeeded();
+  await expect(a.getByTestId('demo-cases')).toBeInViewport();
+  expect(await noHorizontalOverflow()).toBe(true);
 });
 
 test('acceptance 5: settling and re-opening a filtered case, contradictions, demo changes and restore update the overview', async ({ session }) => {
