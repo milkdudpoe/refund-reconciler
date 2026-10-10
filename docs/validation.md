@@ -2,7 +2,55 @@
 
 What has and has not been checked for the 0.6.0 beta. Synthetic data only;
 no private data, browser profiles or backups are kept in this repository.
-This is not commercial validation or Chrome Web Store approval.
+This is not commercial validation, evidence of customer demand or Chrome Web
+Store approval.
+
+## Current status (as of 2026-10-10)
+
+| Check | Status | Source |
+| --- | --- | --- |
+| Automated suites, extracted-ZIP smoke test, same-installation update (bundled Chromium) | pass | [Task 07](#task-07-2026-10-10) |
+| Toolbar access on the public amazon.com home page (desktop Chrome) | **pass, owner-reported** (not independently reproduced) | [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
+| Real Amazon refund wording (optional) | **untested** | — |
+| Update in place through the `chrome://extensions` UI (optional) | **untested** | — |
+
+## Task 08: owner-reported toolbar check (reported 2026-10-10)
+
+The owner ran the toolbar check from the [checklist](#reusable-manual-toolbar-checklist)
+in desktop Chrome and reported this on 2026-10-10:
+
+```text
+Chrome version: 154.0.8037.98 (Official Build) (64-bit) (cohort: Stable)
+Toolbar check: pass
+General outcome: Cannot propose a report from this selection
+Dashboard stayed empty: yes
+```
+
+- **Status:** owner-reported. It was not independently reproduced by the
+  person writing this record.
+- **Date:** the report date, 2026-10-10. A separate test date and time were
+  not supplied.
+- **Method:** the checklist asked for an actual toolbar click on ordinary
+  selected text from the public Amazon US home page, followed by Capture.
+- **Not supplied, so not recorded:** operating system, profile
+  configuration, the optional `example.com` control and any other
+  observations.
+- **Artifact context (from the checklist, not from the reply):** the
+  checklist was issued for the reviewed Ubuntu CI beta 0.6.0 artifact
+  built from source `60e330b12d195908a44ad341a73e34678a5a697d`, ZIP SHA-256
+  `ec7286901a29ce80b564deb5314d4a6363f5b7b2e2fd5810a1e238c1a4e2d259`, CI
+  run <https://github.com/milkdudpoe/refund-reconciler/actions/runs/38037209436>.
+  The owner's reply did not separately reconfirm the installed ZIP's checksum
+  or source commit.
+
+What this result supports: in that desktop Chrome, a toolbar click gave the
+extension access to the active amazon.com tab, the selection was read and
+refused as a refund report ("Cannot propose a report from this selection"),
+and the dashboard was empty afterwards (nothing was saved).
+
+What it does not show: that real Amazon refund wording is recognised, that
+updating through Chrome's extensions UI keeps data, anything about other
+Chrome versions or operating systems, store approval, or customer demand.
 
 ## Task 07 (2026-10-10)
 
@@ -74,13 +122,16 @@ Check a ZIP only against the checksum that came with it.
 
 | Check | Result | Note |
 | --- | --- | --- |
-| Toolbar grant on public amazon.com (desktop Chrome) | **not run** | No real desktop Chrome toolbar was available in the environment used. Owner checklist below. |
+| Toolbar grant on public amazon.com (desktop Chrome) | **not run** (at Task 07) | No real desktop Chrome toolbar was available in the environment used. Later owner-reported as a pass; see [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10). |
 | Real Amazon refund line (optional) | **not run** | Needs the owner's own suitable order; no access was available or requested. |
 | Update in place through the `chrome://extensions` UI (optional) | **not run** | Automated check covers reload and restart in bundled Chromium only. |
 
-## Still outstanding (owner)
+## Reusable manual toolbar checklist
 
-**Toolbar grant** (needs desktop Chrome, no account; see
+The owner-reported result above covers this check for the 0.6.0 beta. Keep
+the checklist for future builds (for example after a permission, manifest or
+popup change) or for another Chrome version. It needs desktop Chrome and no
+account (details in
 [beta.md, Check 1](beta.md#check-1-the-actual-toolbar-grant-no-account-or-private-data-needed)):
 
 1. New, temporary Chrome profile. `chrome://extensions` → Developer mode →

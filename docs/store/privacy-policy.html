@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Refund Reconciler privacy policy (draft)</title>
+<!-- Generated from privacy-policy.md. Standalone: no scripts, fonts or other external resources. Not part of the extension package. -->
+<style>
+  :root { color-scheme: light dark; --fg: #1d1f23; --bg: #ffffff; --muted: #5a606b; --accent: #2456a6; --note-bg: #fff4d6; --note-border: #b07c00; --mark-bg: #ffe08a; --mark-fg: #1d1f23; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e7e9ee; --bg: #15171b; --muted: #a3a9b4; --accent: #8fb3f0; --note-bg: #3a2f10; --note-border: #e0b040; --mark-bg: #ffd75e; --mark-fg: #15171b; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  h1 { font-size: 1.8rem; line-height: 1.25; margin: 0 0 1rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 0.5rem; color: var(--accent); }
+  ul { padding-left: 1.4rem; }
+  li { margin: 0.3rem 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92em; overflow-wrap: anywhere; }
+  .draft { background: var(--note-bg); border-left: 4px solid var(--note-border); padding: 0.5rem 1rem; margin: 0 0 1.5rem; }
+  mark.pending { background: var(--mark-bg); color: var(--mark-fg); font-weight: 700; padding: 0 0.2em; border-radius: 3px; }
+  @media print { .draft { border: 2px solid #000; } mark.pending { outline: 2px solid #000; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Refund Reconciler privacy policy</h1>
+<aside class="draft" role="note"><p><strong>DRAFT, not published.</strong> Fields marked <mark class="pending">[PENDING: …]</mark> must be filled in by the publisher before this policy is posted. Do not post this draft until the open items in readiness.md are resolved. This draft describes the current build and is not legal advice.</p></aside>
+<ul>
+  <li><strong>Publisher:</strong> <mark class="pending">[PENDING: publisher or developer name]</mark></li>
+  <li><strong>Contact:</strong> <mark class="pending">[PENDING: contact email or support URL controlled by the publisher]</mark></li>
+  <li><strong>Effective date:</strong> <mark class="pending">[PENDING: set on publication]</mark></li>
+  <li><strong>Applies to:</strong> Refund Reconciler (local preview) Chrome extension, version 0.6.0</li>
+</ul>
+<h2>Summary</h2>
+<p>Refund Reconciler is a Chrome extension for keeping track of refunds for items you returned. It handles information you enter, and text you choose to capture from Amazon US pages, <strong>only inside your own Chrome profile on your device</strong>. The extension does not send this information to the publisher or to anyone else. The publisher does not receive, see, sell or share it. Stored records are <strong>not encrypted</strong> in this version.</p>
+<h2>What information the extension handles</h2>
+<p><strong>Information you type in.</strong> For each case you create:</p>
+<ul>
+  <li>an optional order reference;</li>
+  <li>descriptions of the returned items;</li>
+  <li>expected refund amounts (or "unknown");</li>
+  <li>entries you record: merchant reports, money you confirmed receiving, and recharges, each with an amount and optionally a date, a transaction or observation reference, a source and a note;</li>
+  <li>reasons you give when you void a mistaken entry;</li>
+  <li>the time each entry was recorded.</li>
+</ul>
+<p>This is financial information about your purchases and refunds. The extension does not ask for your name, address, email, account login, card numbers or bank details. Free-text fields (order reference, item description, reference, source, note, void reason) accept anything you type, so do not enter information you do not want stored.</p>
+<p><strong>Information from a web page, only when you capture.</strong> The capture feature works only on <code>https://amazon.com</code> and <code>https://www.amazon.com</code>:</p>
+<ul>
+  <li>When you click the Refund Reconciler toolbar button, Chrome temporarily lets the extension see the address of the tab you are on. The extension uses it only to check whether the page is supported. It is not saved.</li>
+  <li>When you then choose <strong>Capture selected refund text</strong>, the extension reads the text you highlighted (up to 4,000 characters) and the page's address. It does not read the rest of the page, form fields, passwords, cookies or other tabs, and it takes no screenshots.</li>
+  <li>The extension shows you a preview. <strong>Nothing is saved unless you approve it.</strong> If you approve, it saves the highlighted text, the page's address (shortened: tracking parts and all query parameters except a single order number are removed), the capture time, the amount text you approved and any order number found, together with the merchant report.</li>
+  <li>If you discard the preview or close the panel, nothing is saved.</li>
+</ul>
+<p><strong>Backup files you choose to restore.</strong> If you use <strong>Restore from JSON</strong>, the file you pick is read on your device and its records are saved into the extension.</p>
+<p><strong>Synthetic demo.</strong> If you choose <strong>Load synthetic demo</strong>, made-up example records are saved until you remove them.</p>
+<h2>How the information is used</h2>
+<p>Only to provide the extension's single purpose: showing you, item by item, which refunds are expected, reported, confirmed, reversed or still unresolved, and letting you create summaries and backups. It is not used for advertising, profiling, creditworthiness or lending decisions, analytics or any other purpose.</p>
+<h2>Where it is stored and how it is protected</h2>
+<ul>
+  <li>Records are stored in Chrome's extension storage (<code>chrome.storage.local</code>) in your Chrome profile on your device. They are not synced to other devices by the extension.</li>
+  <li>Web pages and the capture code that runs in a page cannot read the stored records; only the extension's own pages can.</li>
+  <li><strong>The stored records are not encrypted by the extension.</strong> Anyone or any software that can read your Chrome profile or your device's files could read them. Protect your device and your operating-system account.</li>
+</ul>
+<h2>Sharing and transmission</h2>
+<ul>
+  <li>The extension makes <strong>no network requests</strong>. It has no analytics, advertising, tracking, remote code or AI services, and no account or server.</li>
+  <li>The publisher has no access to your records and does not transfer them to anyone.</li>
+  <li><strong>Your own exports.</strong> If you copy a case summary to the clipboard or download a summary or a JSON backup, the result is an ordinary, <strong>unencrypted</strong> file or clipboard text that you control. The extension cannot track or delete it. Anyone you share it with, and any app that can read your clipboard or files, may be able to read it. Summaries leave out notes, references and captured text unless you choose to include them. A JSON backup contains all stored records.</li>
+</ul>
+<h2>How long it is kept and how to delete it</h2>
+<p>Records are kept until you delete them, remove the extension, or the Chrome profile is deleted or lost.</p>
+<ul>
+  <li><strong>Delete case…</strong> permanently removes a case and all its records.</li>
+  <li><strong>Remove synthetic demo</strong> removes the demo records.</li>
+  <li>If stored data cannot be read, the dashboard offers <strong>Erase stored data…</strong>, which erases everything.</li>
+  <li><strong>Removing the extension</strong> from Chrome deletes all of its stored records. Download a backup first if you want to keep them.</li>
+  <li>Losing or resetting the Chrome profile also loses the records. The publisher cannot recover them.</li>
+  <li>Deleting records in the extension does not delete files you exported.</li>
+  <li>The extension does not securely wipe the underlying storage files on disk.</li>
+</ul>
+<h2>Your choices</h2>
+<p>Using the extension is optional, and so is every field marked optional. Capture is optional and runs only when you ask; you can enter merchant reports manually instead. You can view everything stored in the dashboard, export it, and delete it as described above.</p>
+<h2>Chrome Web Store User Data Policy</h2>
+<p>The use of information received by Refund Reconciler adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.</p>
+<h2>Changes to this policy</h2>
+<p>If a future version handles data differently, for example by adding encryption, network features or new data types, this policy will be updated before that version is released, and the extension will show the change prominently. The effective date above shows when this version took effect.</p>
+<h2>Contact</h2>
+<p>Questions about this policy: <mark class="pending">[PENDING: contact email or support URL controlled by the publisher]</mark>.</p>
+</main>
+</body>
+</html>

@@ -7,7 +7,7 @@ Web Store. This page is in two parts:
 - [For developers: build the beta package](#for-developers-build-the-beta-package)
 - [For testers: install and try the beta](#for-testers-install-and-try-the-beta)
 
-followed by the [manual checks still to do](#manual-checks-still-to-do) and
+followed by the [manual checks](#manual-checks) and
 [what the beta does with your data](#what-the-beta-does-with-your-data).
 
 ## For developers: build the beta package
@@ -220,11 +220,17 @@ for an extension loaded this way.
   creates a separate installation that starts empty (and the old one keeps
   the old data until you remove it).
 
-## Manual checks still to do
+## Manual checks
 
-These checks need a person using real desktop Chrome. They are **not yet
-performed**; nothing in this repository claims otherwise (see
-[validation.md](validation.md)).
+These checks need a person using real desktop Chrome. Current status for
+0.6.0 (details in [validation.md](validation.md)):
+
+- **Check 1 (toolbar grant):** pass, **owner-reported** on 2026-10-10 in
+  desktop Chrome 154.0.8037.98 (general outcome "Cannot propose a report from
+  this selection"; dashboard stayed empty). Not independently reproduced.
+  The checklist stays here for future builds.
+- **Check 2 (real refund line, optional):** untested.
+- **Check 3 (update in place in Chrome, optional):** untested.
 
 What automated testing does and does not show:
 
@@ -238,7 +244,8 @@ What automated testing does and does not show:
   place to the beta ZIP keeps its data, in bundled Chromium.
 - **None** shows that a real toolbar click grants page access, or that
   today's Amazon wording is recognised. Opening the popup page directly in a
-  tab is not a toolbar click either.
+  tab is not a toolbar click either. (The owner-reported Check 1 above covers
+  the toolbar grant for 0.6.0; refund wording is still untested.)
 
 Record results only for yourself, for example in a note:
 

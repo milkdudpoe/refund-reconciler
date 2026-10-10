@@ -205,8 +205,10 @@ revalidation result is delivered.
 
 - Exports describe what the user recorded. They are not bank-verified, are not
   endorsed by Amazon and do not establish legal entitlement.
-- Capture is still validated only against synthetic fixtures; live Amazon
-  compatibility and the real toolbar-grant flow remain outstanding.
+- The capture parser is still validated only against synthetic fixtures;
+  real Amazon refund wording is untested. The toolbar grant was
+  owner-reported as passing on 2026-10-10 (see
+  [validation.md](validation.md)).
 - Restore only into an empty ledger (no merge or partial import); no
   reminders, automatic support messages or whole-page capture.
 - These exports do not establish willingness to pay or readiness for paid
