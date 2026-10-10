@@ -329,6 +329,13 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
             h('button', { type: 'button', class: 'primary', disabled: phase.name === 'reading', on: { click: () => void capture() } }, phase.name === 'reading' ? 'Reading selection…' : 'Capture selected refund text'),
             dashboardButton(),
           ),
+          h(
+            'p',
+            { class: 'muted small' },
+            'New here? ',
+            h('button', { type: 'button', class: 'link', on: { click: () => deps.openDashboard('#help') } }, 'How to use Refund Reconciler'),
+            ' opens a short guide in the dashboard.',
+          ),
         );
       case 'failed':
         return h(

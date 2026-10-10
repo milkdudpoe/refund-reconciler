@@ -13,7 +13,8 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src", "tests", "vite.config.ts", "playwright.config.ts", "eslint.config.js"]
+  "include": ["src", "tests", "scripts", "playwright.package.config.ts", "vite.config.ts", "playwright.config.ts", "eslint.config.js"]
 }

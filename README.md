@@ -3,18 +3,20 @@
 A local Chrome extension (Manifest V3) that helps you see which return/refund
 records are unresolved or contradictory, item by item.
 
-> **Status: Task 05 — manual entry, explicitly approved selected-text
-> capture, local exports, restore into an empty ledger, and a read-only
-> dashboard overview and case finder. Not a validated product.** You can enter
-> evidence manually, or highlight a refund line on an Amazon US page and
-> approve a previewed merchant-report snapshot (see
+> **Status: beta 0.6.0 (Task 06), a local preview, not a validated
+> product.** You can enter evidence manually, or highlight a refund line on an
+> Amazon US page and approve a previewed merchant-report snapshot (see
 > [docs/capture.md](docs/capture.md)). You can copy or download a plain-text
-> case summary to use when contacting support yourself, and download a JSON
-> copy of all saved data (see [docs/export.md](docs/export.md)), and restore
-> that JSON copy into a browser profile with no saved cases (see
-> [docs/restore.md](docs/restore.md)). Capture
-> has been tested only against synthetic fixtures, not live Amazon pages, and
-> the real toolbar-grant flow has not been validated manually.
+> case summary to use when contacting support yourself, download a JSON copy
+> of all saved data (see [docs/export.md](docs/export.md)), restore that copy
+> into a browser profile with no saved cases (see
+> [docs/restore.md](docs/restore.md)), and see what needs attention in a
+> read-only overview. Task 06 adds an installable beta ZIP, icons and an
+> in-app **How to use Refund Reconciler** guide (see
+> [docs/beta.md](docs/beta.md)). Capture has been tested only against
+> synthetic fixtures, not live Amazon pages, and the real toolbar-grant flow
+> has not been validated manually; both live checks are described in
+> docs/beta.md and are **not yet performed**.
 > There is no automatic reconciliation, whole-page extraction or history
 > crawling, and no payment/commercial validation. The tool tracks evidence; it
 > does not move money, file disputes, or establish legal entitlement to a
@@ -38,17 +40,35 @@ npm run lint        # eslint
 npm test            # Vitest unit tests (domain, validation, persistence, handler)
 npm run build       # Vite build of the extension into dist/
 npm run test:e2e    # build, then Playwright tests against the real unpacked extension
-npm run check       # all of the above
+npm run package:beta  # fresh build + verified beta ZIP in artifacts/beta/ (see docs/beta.md)
+npm run test:package  # package:beta, then smoke-test the extracted ZIP in Chromium
+npm run icons       # re-render public/icons/*.png from assets-src/*.svg (after editing the SVGs)
+npm run check       # typecheck, lint, unit, browser and package tests
 ```
 
-## Install the unpacked extension
+## Beta package
+
+`npm run package:beta` writes `artifacts/beta/refund-reconciler-beta-0.6.0.zip`
+(manifest at the ZIP root, production files only), its `.sha256` checksum and
+a `.report.json` inventory with the source commit. The archive is read back
+and verified before it is kept; CI saves all three as the
+`refund-reconciler-beta` workflow artifact after every passing run. Testers
+can install that ZIP without Node: unzip it into a folder they keep, then
+**Load unpacked** that folder. Step-by-step tester instructions, updating
+without losing data, the manual checks that are still outstanding and a
+plain-language data explanation are in [docs/beta.md](docs/beta.md).
+
+## Install the unpacked extension (developers)
+
+Testers using a built ZIP: see [docs/beta.md](docs/beta.md#for-testers-install-and-try-the-beta).
 
 1. `npm ci && npm run build`
 2. Open `chrome://extensions`, switch on **Developer mode**.
 3. Click **Load unpacked** and choose the `dist/` folder.
 4. Click the Refund Reconciler toolbar button (pin it from the puzzle-piece
-   menu if needed). A small panel offers **Open dashboard** and **Capture
-   selected refund text**.
+   menu if needed). A small panel offers **Open dashboard**, **Capture
+   selected refund text** and a link to the **How to use Refund Reconciler**
+   guide, which is also at the top of the dashboard.
 
 ## Capture a refund line from Amazon US
 
@@ -193,19 +213,23 @@ src/persistence/  chrome.storage.local read/write (validated, never auto-reset)
 src/background/   service worker: message validation + serialised writes
 src/ui/           dashboard (plain TS + CSS, text-only rendering)
 src/popup/        toolbar popup: Open dashboard, capture preview and approval
-public/manifest.json
+public/manifest.json, public/icons/   manifest and generated PNG icons
+assets-src/       editable icon SVGs
+scripts/          icon generation and beta packaging (dev tooling; never shipped)
 tests/unit/       Vitest
 tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,
                   synthetic Amazon-like fixtures served in-browser, no network)
-docs/             product scope, data model, capture, export, restore
+tests/package/    smoke test of the extracted beta ZIP
+docs/             product scope, data model, capture, export, restore, beta
 ```
 
 See [docs/product-scope-and-data-model.md](docs/product-scope-and-data-model.md)
 for the derivation rules, limitations and next milestone, and
 [docs/capture.md](docs/capture.md) for the capture flow, parser patterns and
 what was or was not verified, [docs/export.md](docs/export.md) for the
-summary and backup formats, and [docs/restore.md](docs/restore.md) for
-restoring a backup.
+summary and backup formats, [docs/restore.md](docs/restore.md) for
+restoring a backup, and [docs/beta.md](docs/beta.md) for the beta package,
+tester instructions and outstanding live checks.
 
 Capture browser tests cannot click the real toolbar button, so they load a
 temporary copy of `dist/` with host access to the synthetic fixture hosts

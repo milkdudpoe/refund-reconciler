@@ -1,8 +1,8 @@
 {
   "name": "refund-reconciler",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
-  "description": "Local Chrome extension for reconciling return/refund records (Task 05: selected-text capture, local evidence exports, restore into an empty ledger, and a read-only case overview and finder).",
+  "description": "Local Chrome extension (beta 0.6.0) for tracking per-item return/refund evidence: manual entry, approved selected-text capture, exports, restore, case overview and an installable beta package.",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
@@ -13,7 +13,10 @@
     "test": "vitest run",
     "build": "vite build",
     "test:e2e": "npm run build && playwright test",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run test:e2e"
+    "icons": "node --experimental-strip-types scripts/generate-icons.ts",
+    "package:beta": "node --experimental-strip-types scripts/package-beta.ts",
+    "test:package": "npm run package:beta && playwright test -c playwright.package.config.ts",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run test:e2e && npm run test:package"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

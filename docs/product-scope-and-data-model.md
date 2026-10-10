@@ -1,4 +1,4 @@
-# Product scope and data model (Tasks 01–05)
+# Product scope and data model (Tasks 01–06)
 
 ## Scope
 
@@ -270,5 +270,12 @@ Task 05 adds a read-only overview and case finder on the dashboard (see
 above). It reads existing evidence only and changes none of the open
 validation items above: live Amazon compatibility and the real toolbar-grant
 flow are still unvalidated.
+
+Task 06 packages the extension as an installable beta ZIP with icons, an
+in-app first-use guide and tester instructions (see [beta.md](beta.md)). The
+extracted-ZIP smoke test shows the package loads and works locally; it does
+not change the open items above. The manual toolbar-grant check and the
+optional real-Amazon check are written up in beta.md and are not yet
+performed.
 
 Until then this should not be presented as a validated or paid product.
