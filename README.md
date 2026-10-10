@@ -3,8 +3,10 @@
 A local Chrome extension (Manifest V3) that helps you see which return/refund
 records are unresolved or contradictory, item by item.
 
-> **Status: beta 0.7.0 (Task 09), a local preview, not a validated
-> product.** The saved ledger is **encrypted** with a key protected by a
+> **Status: beta 0.8.0 (Task 10), a local preview, not a validated
+> product.** Before any data feature, the dashboard explains how the
+> extension handles your data and asks for an explicit **Agree and
+> continue** (see [docs/consent.md](docs/consent.md)). The saved ledger is **encrypted** with a key protected by a
 > passphrase you choose (see [docs/vault.md](docs/vault.md)); there is no
 > recovery service, and exports stay unencrypted. You can enter evidence manually, or highlight a refund line on an
 > Amazon US page and approve a previewed merchant-report snapshot (see
@@ -20,8 +22,8 @@ records are unresolved or contradictory, item by item.
 > reported (2026-10-10, desktop Chrome 154) that a real toolbar click on the
 > public amazon.com home page gave access, refused ordinary selected text and
 > saved nothing; this was not independently reproduced, and it was 0.6.0:
-> the 0.7.0 popup, which reads nothing while locked, still needs a new
-> owner-operated toolbar check. Real refund wording
+> the 0.7.0 and 0.8.0 popups (which read nothing before agreement or while
+> locked) still need a new owner-operated toolbar check. Real refund wording
 > and updating through Chrome's extensions UI remain **untested** (see
 > [docs/validation.md](docs/validation.md)).
 > There is no automatic reconciliation, whole-page extraction or history
@@ -49,14 +51,14 @@ npm run build       # Vite build of the extension into dist/
 npm run test:e2e    # build, then Playwright tests against the real unpacked extension
 npm run package:beta  # fresh build + verified beta ZIP in artifacts/beta/ (see docs/beta.md)
 npm run test:package  # package:beta, then smoke-test the extracted ZIP in Chromium
-npm run test:update   # package:beta, then update 0.5.0 and 0.6.0 (each built from its own source) in place to that ZIP
+npm run test:update   # package:beta, then update 0.5.0, 0.6.0 and 0.7.0 (each built from its own source) in place to that ZIP
 npm run icons       # re-render public/icons/*.png from assets-src/*.svg (after editing the SVGs)
 npm run check       # typecheck, lint, unit, browser, package and update tests
 ```
 
 ## Beta package
 
-`npm run package:beta` writes `artifacts/beta/refund-reconciler-beta-0.7.0.zip`
+`npm run package:beta` writes `artifacts/beta/refund-reconciler-beta-0.8.0.zip`
 (manifest at the ZIP root, production files only), its `.sha256` checksum and
 a `.report.json` inventory with the source commit. The archive is read back
 and verified before it is kept; CI saves all three as the
@@ -69,14 +71,30 @@ explanation are in [docs/beta.md](docs/beta.md).
 **Chrome Web Store drafts (not a release).** [docs/store/](docs/store/readiness.md)
 holds a readiness assessment, listing text, a draft privacy policy and draft
 dashboard privacy answers. They are unpublished drafts with pending publisher
-fields. 0.7.0 implements the at-rest encryption the assessment recommended;
-in-product disclosure and consent before capture, publisher inputs, a hosted
-policy and store images are still pending and block submission; see
+fields. 0.7.0 implemented the at-rest encryption the assessment recommended
+and 0.8.0 the in-product disclosure and agreement (B2); publisher inputs, a
+hosted policy, store images, a real toolbar check and the store review are
+still pending and block submission; see
 [docs/store/readiness.md](docs/store/readiness.md).
+
+## Data practices: read, then agree
+
+The first time you open the dashboard (also after updating from an earlier
+version, and after an erase), it shows **How Refund Reconciler handles your
+data**: the purpose, what you type or import, what optional capture reads and
+saves, that nothing is sent anywhere, how records are stored and protected,
+that exports are unencrypted, and your choices. Choose **Agree and continue**
+to go on, or **Not now** to leave data features off without changing
+anything stored. The agreement is a small nonprivate receipt in this profile
+(version 1 of the data practices); you are asked again only if the practices
+change. Reread it any time under **Data and privacy** at the top of the
+dashboard. Until you agree, the worker refuses every data operation and the
+toolbar popup only offers to open the dashboard; **Erase stored data…** stays
+available. Details: [docs/consent.md](docs/consent.md).
 
 ## Protect, unlock and lock your records
 
-The first time you open the dashboard, **Protect your records** asks for a
+After agreeing, **Protect your records** asks for a
 passphrase (at least 12 characters, used exactly as typed) and a ticked
 acknowledgment that it cannot be recovered. Nothing can be created, captured
 or restored before that. The saved ledger is then encrypted
@@ -92,9 +110,11 @@ details in [docs/vault.md](docs/vault.md)).
 - **Forgot your passphrase?** There is no recovery service and no reset.
   **Erase stored data…** (type `ERASE`) removes the stored records; then set
   a new passphrase and restore a JSON backup you saved earlier.
-- **Updating from 0.5.0 or 0.6.0:** your existing records stay exactly as
-  they are until you choose a passphrase on **Protect your existing
-  records**. You can first download them as a plaintext JSON backup. The
+- **Updating from 0.7.0:** after **Agree and continue**, your existing
+  passphrase unlocks the same encrypted records; nothing is reset.
+- **Updating from 0.5.0 or 0.6.0:** after **Agree and continue**, your
+  existing records stay exactly as they are until you choose a passphrase on
+  **Protect your existing records**. You can first download them as a plaintext JSON backup. The
   encrypted copy is checked against them field by field before the plaintext
   copy is removed. Older plaintext may remain in Chrome's own files, and
   backups you saved earlier stay readable.
@@ -109,13 +129,17 @@ Testers using a built ZIP: see [docs/beta.md](docs/beta.md#for-testers-install-a
 2. Open `chrome://extensions`, switch on **Developer mode**.
 3. Click **Load unpacked** and choose the `dist/` folder.
 4. Click the Refund Reconciler toolbar button (pin it from the puzzle-piece
-   menu if needed). A small panel offers **Open dashboard**, **Capture
-   selected refund text** and a link to the **How to use Refund Reconciler**
-   guide, which is also at the top of the dashboard.
+   menu if needed). Until you have agreed to the data practices and unlocked
+   your records in the dashboard, the panel only offers to open the
+   dashboard. After that it offers **Open dashboard**, **Capture selected
+   refund text** and a link to the **How to use Refund Reconciler** guide,
+   which is also at the top of the dashboard.
 
 ## Capture a refund line from Amazon US
 
-While your records are unlocked, highlight the refund line for one item on
+After you have agreed to the data practices, and while your records are
+unlocked, opening the toolbar panel looks up the current tab's address to
+check whether it is supported. Highlight the refund line for one item on
 an `https://www.amazon.com` page (for example `Refund issued: $35.00`), click
 the toolbar button, and choose
 **Capture selected refund text**. Check the preview, choose the case and item
@@ -215,7 +239,9 @@ ledger, because the service worker restricts `chrome.storage.local` and
 `chrome.storage.session` to trusted extension contexts (and refuses to work
 if it cannot).
 
-**What is stored:** the encrypted vault `refundReconciler.vault`, whose
+**What is stored:** the nonprivate consent receipt `refundReconciler.consent`
+(data-practices version and the time you agreed; see
+[docs/consent.md](docs/consent.md)) and the encrypted vault `refundReconciler.vault`, whose
 ciphertext contains your cases:
 optional order reference, item descriptions, expected amounts, and every
 merchant report, receipt confirmation, recharge, void and expected-amount edit
@@ -251,9 +277,10 @@ is used.
   its evidence from storage.
 - *Remove synthetic demo* removes only the demo cases.
 - If stored data is locked, unreadable, inconsistent or from an unsupported
-  version, the dashboard blocks changes. *Erase stored data…* → type `ERASE`
-  → *Permanently erase* removes the vault, any plaintext ledger and the
-  migration marker, revokes the session, and leaves only a random erase
+  version, or if you have not agreed to the data practices, the dashboard
+  blocks changes. *Erase stored data…* → type `ERASE`
+  → *Permanently erase* removes the vault, any plaintext ledger, the
+  migration marker and the consent receipt, revokes the session, and leaves only a random erase
   marker (no user data), so restore approvals and session keys from before
   the erase can never apply afterwards; nothing is erased automatically.
   There is no "erase all" for unlocked, readable data.
@@ -265,6 +292,7 @@ is used.
 src/domain/       pure model, money parsing, derivations, overview/finder, ledger, restore decision, runtime validation
 src/capture/      source checks, page collector, acquisition, deterministic excerpt parser
 src/export/       pure case-summary text, JSON backup envelope, size bound and payload digest
+src/consent/      the shared data-practices text and version, and the consent receipt format
 src/vault/        encrypted envelope format, WebCrypto boundary, passphrase rules, ledger states
 src/persistence/  storage keys and the chrome.storage bindings used by the service worker
 src/background/   service worker: message validation, the vault (setup, unlock, Lock, migration, erase), serialised reads and writes
@@ -277,11 +305,12 @@ tests/unit/       Vitest
 tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,
                   synthetic Amazon-like fixtures served in-browser, no network)
 tests/package/    smoke test of the extracted beta ZIP
-docs/             product scope, data model, vault, capture, export, restore, beta
+docs/             product scope, data model, consent, vault, capture, export, restore, beta
 ```
 
 See [docs/product-scope-and-data-model.md](docs/product-scope-and-data-model.md)
 for the derivation rules, limitations and next milestone,
+[docs/consent.md](docs/consent.md) for the data-practices disclosure, receipt and gate,
 [docs/vault.md](docs/vault.md) for the encrypted storage format, key
 lifecycle, migration and threat model, and
 [docs/capture.md](docs/capture.md) for the capture flow, parser patterns and

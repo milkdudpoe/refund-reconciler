@@ -4,8 +4,16 @@
 
 import type { StoreData } from '../domain/types';
 import { isId, parseStore } from '../domain/validate';
+import { DATA_PRACTICES_VERSION } from '../consent/practices';
 
 export type LedgerState =
+  /**
+   * The data practices (version `version`) have not been agreed to in this
+   * profile, so the service worker did not look at the stored records at all.
+   * missing: never agreed (or erased). obsolete: agreed to another version.
+   * invalid: the stored receipt is damaged. Says nothing about what is stored.
+   */
+  | { readonly status: 'consent_required'; readonly reason: 'missing' | 'obsolete' | 'invalid'; readonly version: typeof DATA_PRACTICES_VERSION }
   /** Unlocked: the decrypted, validated ledger. `isNew` is always false for a vault (it always exists once set up). */
   | { readonly status: 'ok'; readonly store: StoreData; readonly isNew: false; readonly vaultId: string }
   /** No ledger of any kind: "Protect your records" must be completed first. `erased` after an explicit erase. */
@@ -49,6 +57,11 @@ const count = (v: unknown): v is number => Number.isSafeInteger(v) && (v as numb
 export function parseLedgerState(v: unknown): LedgerState | null {
   if (!isRecord(v)) return null;
   switch (v.status) {
+    case 'consent_required':
+      // A version this page does not display is not something it can ask the user to agree to.
+      return (v.reason === 'missing' || v.reason === 'obsolete' || v.reason === 'invalid') && v.version === DATA_PRACTICES_VERSION
+        ? { status: 'consent_required', reason: v.reason, version: DATA_PRACTICES_VERSION }
+        : null;
     case 'ok': {
       if (v.isNew !== false || !isId(v.vaultId)) return null;
       const parsed = parseStore(v.store);

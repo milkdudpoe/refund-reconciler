@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { test as base } from '@playwright/test';
 import { ExtensionSession, createCase, expect, recordForItem } from '../e2e/fixtures';
-import { VAULT_KEY, decryptedRaw, setupViaUi, unlockViaUi, vaultScreen } from '../e2e/vault-helpers';
+import { CONSENT_KEY, VAULT_KEY, acceptViaUi, consentGate, decryptedRaw, setupViaUi, unlockViaUi, vaultScreen } from '../e2e/vault-helpers';
 import { isRegularFileEntry, isSafeEntryName, readZip } from '../../scripts/beta/zip.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -56,7 +56,7 @@ test('the extracted beta ZIP loads with production settings and its local workfl
   // exact permissions, no host access, icons in place.
   const extractedManifest = JSON.parse(await readFile(join(extracted, 'manifest.json'), 'utf8'));
   expect(extractedManifest).toEqual(JSON.parse(await readFile(join(ROOT, 'public', 'manifest.json'), 'utf8')));
-  const page = await session.openDashboard({ unlock: false });
+  const page = await session.openDashboard({ accept: false });
   const loaded = await page.evaluate(() => chrome.runtime.getManifest());
   expect(loaded).toMatchObject({ version: VERSION, permissions: ['storage', 'activeTab', 'scripting'] });
   expect(loaded.host_permissions ?? []).toEqual([]);
@@ -72,11 +72,25 @@ test('the extracted beta ZIP loads with production settings and its local workfl
     return sizes;
   }, Object.values(loaded.icons ?? {}));
   expect(iconSizes).toEqual([16, 32, 48, 128]);
-  // A fresh installation asks to protect the records before anything else, then stores only the encrypted vault.
-  await expect(vaultScreen(page, 'vault-setup')).toBeVisible();
+  // A fresh installation shows the data practices before anything else and stores nothing until Agree and continue.
+  await expect(consentGate(page)).toBeVisible();
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
   expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual({});
+  const gatedPopup = await session.context!.newPage();
+  await gatedPopup.goto(`chrome-extension://${session.extensionId}/popup.html`);
+  await expect(gatedPopup.getByTestId('popup-locked')).toHaveAttribute('data-state', 'consent_required');
+  await gatedPopup.close();
+  await acceptViaUi(page);
+  // Then it asks to protect the records, and stores only the receipt and the encrypted vault.
+  await expect(vaultScreen(page, 'vault-setup')).toBeVisible();
+  expect(Object.keys(await page.evaluate(() => chrome.storage.local.get(null)))).toEqual([CONSENT_KEY]);
   await setupViaUi(page);
-  expect(Object.keys(await page.evaluate(() => chrome.storage.local.get(null)))).toEqual([VAULT_KEY]);
+  expect(Object.keys(await page.evaluate(() => chrome.storage.local.get(null))).sort()).toEqual([CONSENT_KEY, VAULT_KEY]);
+
+  // "Data and privacy" can be reread after agreeing.
+  await page.getByText('Data and privacy', { exact: true }).click();
+  await expect(page.getByTestId('privacy')).toContainText('How Refund Reconciler handles your data');
+  await page.getByText('Data and privacy', { exact: true }).click();
 
   // The guide is reachable and closed by default.
   await expect(page.getByTestId('help')).not.toHaveAttribute('open');

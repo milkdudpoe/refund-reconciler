@@ -6,7 +6,8 @@ It is deliberately narrow:
 
 - it writes only into an **unlocked** ledger that has **no cases** (not even
   synthetic demo cases). From 0.7.0 a new installation must complete
-  **Protect your records** first, and the restored records are written into
+  **Protect your records** first (from 0.8.0, after agreeing to the data
+  practices; restore neither imports nor implies that agreement), and the restored records are written into
   the encrypted vault ([vault.md](vault.md)); the backup file itself stays
   plaintext;
 - it never merges with, replaces, deletes or clears existing cases, and there
@@ -229,7 +230,9 @@ a never-written profile stays without a key until a real write.
   nothing is resurrected.
 - **Erase stored data** (0.7.0: typed `ERASE`, available while locked or
   unreadable) removes the vault with its receipt, revokes the session and
-  writes a fresh erase marker; the next **Protect your records** creates a new
+  writes a fresh erase marker; from 0.8.0 it also removes the data-practices
+  agreement, and is available before agreement too. After agreeing again, the
+  next **Protect your records** creates a new
   vault whose ledger carries that marker as its `ledgerEpoch`. The worker
   refuses every request approved before the erase (`restore_stale`), whether
   it is a retry, a verbatim replay of a committed request, or a first request

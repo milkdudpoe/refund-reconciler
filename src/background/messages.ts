@@ -2,7 +2,8 @@
 // Every incoming message is validated at runtime before it is acted on, and
 // pages validate every reply. Ledger data reaches a page only in a `read`
 // reply while the vault is unlocked (or, before migration, in a
-// `readLegacy` reply for the plaintext backup of an earlier version's data).
+// `readLegacy` reply for the plaintext backup of an earlier version's data),
+// and only after the data practices were agreed to (`acceptDataPractices`).
 
 import type { ApplyOutcome, Command, CommandErrorCode, StoreData } from '../domain/types';
 import { isId, parseBackupEnvelope, parseCommand, parseStore, type Validation } from '../domain/validate';
@@ -27,11 +28,16 @@ export type VaultRequest =
   | { kind: 'lock' }
   | { kind: 'eraseAll'; confirm: typeof ERASE_CONFIRMATION };
 
-export type AnyRequest = Request | VaultRequest;
+/** Agreement to the data practices the page displayed (DATA_PRACTICES_VERSION). */
+export type ConsentRequest = { kind: 'acceptDataPractices'; version: number };
+
+export type AnyRequest = Request | VaultRequest | ConsentRequest;
 
 export type ResponseErrorCode =
   | CommandErrorCode
   | 'invalid_message'
+  /** The data practices have not been agreed to in this profile. Nothing was read or written. */
+  | 'consent_required'
   | 'storage_unreadable'
   | 'storage_unsupported'
   /** The vault is locked (or the session that unlocked it was revoked). Nothing was written. */
@@ -73,6 +79,8 @@ export type VaultOutcome = 'unlocked' | 'locked' | 'protected_locked' | 'erased'
 
 export type VaultErrorCode =
   | 'invalid_message'
+  /** The data practices have not been agreed to in this profile. Nothing was read, derived or written. */
+  | 'consent_required'
   /** The passphrase does not meet the documented rules. Nothing changed. */
   | 'passphrase_rejected'
   /** Wrong passphrase, or a damaged stored key: the two cannot be told apart. Nothing changed. */
@@ -102,6 +110,26 @@ export type VaultErrorCode =
   | 'outcome_unknown';
 
 export type VaultResponse = { ok: true; outcome: VaultOutcome; message: string } | { ok: false; error: { code: VaultErrorCode; message: string } };
+
+/**
+ * accepted: the agreement was just stored. already_accepted: this version was
+ * already agreed to; nothing was written (a repeated request is harmless).
+ */
+export type ConsentOutcome = 'accepted' | 'already_accepted';
+
+export type ConsentErrorCode =
+  | 'invalid_message'
+  /** The page asked to accept a version this build does not display. Nothing was written. */
+  | 'version_mismatch'
+  /** The current agreement could not be read, so nothing was written. */
+  | 'storage_error'
+  | 'storage_unavailable'
+  /** chrome.storage rejected the write, so the agreement was not stored. */
+  | 'write_rejected'
+  /** No valid reply arrived (set by a page), or an unexpected error stopped the worker: re-read the state to find out. */
+  | 'outcome_unknown';
+
+export type ConsentResponse = { ok: true; outcome: ConsentOutcome; message: string } | { ok: false; error: { code: ConsentErrorCode; message: string } };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -144,6 +172,11 @@ export function parseRequest(raw: unknown): Validation<AnyRequest> {
         return { ok: false, error: 'message: migration requires a passphrase and the recovery acknowledgment' };
       }
       return { ok: true, value: { kind: 'migrate', passphrase: o.passphrase, acknowledged: true, replaceCandidate: o.replaceCandidate } };
+    case 'acceptDataPractices':
+      if (!onlyKeys(o, ['kind', 'version']) || typeof o.version !== 'number' || !Number.isSafeInteger(o.version) || o.version < 1) {
+        return { ok: false, error: 'message: acceptance requires the displayed data-practices version' };
+      }
+      return { ok: true, value: { kind: 'acceptDataPractices', version: o.version } };
     case 'unlock':
       if (!onlyKeys(o, ['kind', 'passphrase']) || !isPassphraseField(o.passphrase)) return { ok: false, error: 'message: unlock requires a passphrase' };
       return { ok: true, value: { kind: 'unlock', passphrase: o.passphrase } };
@@ -207,5 +240,11 @@ export function parseLegacyReadResponse(v: unknown): LegacyReadResponse | null {
 export function isVaultResponse(v: unknown): v is VaultResponse {
   if (!isRecord(v)) return false;
   if (v.ok === true) return (v.outcome === 'unlocked' || v.outcome === 'locked' || v.outcome === 'protected_locked' || v.outcome === 'erased') && typeof v.message === 'string';
+  return isErrorReply(v);
+}
+
+export function isConsentResponse(v: unknown): v is ConsentResponse {
+  if (!isRecord(v)) return false;
+  if (v.ok === true) return (v.outcome === 'accepted' || v.outcome === 'already_accepted') && typeof v.message === 'string' && Object.keys(v).length === 3;
   return isErrorReply(v);
 }

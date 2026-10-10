@@ -1,9 +1,12 @@
-# Beta 0.7.0: build, install and check
+# Beta 0.8.0: build, install and check
 
-Refund Reconciler 0.7.0 is a **local beta preview**. It runs only in your own
+Refund Reconciler 0.8.0 is a **local beta preview**. It runs only in your own
 Chrome profile, has no account or server, and is not published in the Chrome
-Web Store. From 0.7.0 the saved ledger is encrypted with a passphrase you
-choose ([vault.md](vault.md)); there is no recovery service. This page is in two parts:
+Web Store. From 0.8.0 the dashboard explains how the extension handles your
+data and asks for **Agree and continue** before any data feature
+([consent.md](consent.md)). Since 0.7.0 the saved ledger is encrypted with a
+passphrase you choose ([vault.md](vault.md)); there is no recovery service.
+This page is in two parts:
 
 - [For developers: build the beta package](#for-developers-build-the-beta-package)
 - [For testers: install and try the beta](#for-testers-install-and-try-the-beta)
@@ -22,16 +25,16 @@ extra ZIP library.
 npm ci
 npm run package:beta   # fresh production build + verified ZIP
 npm run test:package   # the above, then load the extracted ZIP in Chromium and run a smoke test
-npm run test:update    # the above packaging, then update 0.5.0 and 0.6.0 in place to this ZIP (see below)
+npm run test:update    # the above packaging, then update 0.5.0, 0.6.0 and 0.7.0 in place to this ZIP (see below)
 ```
 
 Output, in the git-ignored `artifacts/beta/` folder:
 
 | File | What it is |
 | --- | --- |
-| `refund-reconciler-beta-0.7.0.zip` | The installable extension. `manifest.json` is at the ZIP root. |
-| `refund-reconciler-beta-0.7.0.zip.sha256` | SHA-256 checksum, in `sha256sum -c` format. |
-| `refund-reconciler-beta-0.7.0.report.json` | Version, source commit, Node version, permissions, icons, and every file with its size and SHA-256. |
+| `refund-reconciler-beta-0.8.0.zip` | The installable extension. `manifest.json` is at the ZIP root. |
+| `refund-reconciler-beta-0.8.0.zip.sha256` | SHA-256 checksum, in `sha256sum -c` format. |
+| `refund-reconciler-beta-0.8.0.report.json` | Version, source commit, Node version, permissions, icons, and every file with its size and SHA-256. |
 
 The checksum and report sit next to the ZIP and are not inside it.
 
@@ -47,7 +50,7 @@ What `npm run package:beta` does (`scripts/package-beta.ts`):
    entry scripts, `chunks/*.js`, `assets/*.css`, `icons/icon-*.png`,
    `manifest.json`). Anything else, such as a log, `.env` or a stray folder,
    fails packaging instead of being skipped.
-4. Checks the extension: manifest version 3, version 0.7.0, name and
+4. Checks the extension: manifest version 3, version 0.8.0, name and
    beta/preview positioning, a description of at most 132 characters, exactly
    the `storage`, `activeTab` and `scripting` permissions, no other manifest
    keys (so no host permissions or content scripts), PNG icons of the declared
@@ -77,18 +80,21 @@ commit alone does not guarantee the CI checksum. Check a ZIP only against the
 the real ZIP into a new temporary folder and loads **that extracted folder**
 (not `dist/`) in Playwright's Chromium with a new, empty profile. It checks
 the checksum file, the loaded manifest, version, permissions and icon sizes,
-opens the dashboard and the guide, loads and removes the synthetic demo,
-completes **Protect your records**, checks that only the encrypted vault is
-stored, creates a case, confirms a receipt, inspects the stored data
+checks that the data practices come first (nothing stored, the popup only
+offers the dashboard), agrees, completes **Protect your records**, checks
+that only the consent receipt and the encrypted vault are stored, rereads
+**Data and privacy**, opens the guide, loads and removes the synthetic demo,
+creates a case, confirms a receipt, inspects the stored data
 (decrypted by a test-side decoder) and that no plaintext is in storage,
 downloads a JSON backup and compares it with the stored data, uses **Lock
 now** and unlocks again, and opens the popup.
 
-### Update checks: 0.5.0 and 0.6.0 to this beta in the same installation
+### Update checks: 0.5.0, 0.6.0 and 0.7.0 to this beta in the same installation
 
 `npm run test:update` (`tests/update/`, also run in CI) checks that updating
-each earlier production version in place keeps a tester's data and migrates
-it into the encrypted vault. It uses only folders and profiles it creates
+each earlier production version in place requires the new agreement first,
+keeps a tester's data, and migrates a plaintext ledger into the encrypted
+vault (or keeps the 0.7.0 vault and passphrase as they are). It uses only folders and profiles it creates
 under the system temp directory, removes them afterwards, and uses synthetic
 data. It runs once per baseline:
 
@@ -96,6 +102,7 @@ data. It runs once per baseline:
 | --- | --- | --- |
 | 0.5.0 | `b323930f7d9580f426e7e8fee39b4242143c4844` | merged Task 05 |
 | 0.6.0 | `60e330b12d195908a44ad341a73e34678a5a697d` | Task 07.1 head, the last plaintext version |
+| 0.7.0 | `da475840933b21eab85553e8b2ad54c3e049bf90` | Task 09.1 head, the encrypted ledger before the agreement step |
 
 1. **Baseline from its own source.** `git archive` exports the commit into
    the temp folder; the repository's working tree, index and HEAD are not
@@ -110,24 +117,33 @@ data. It runs once per baseline:
    after reloading that page; Chromium refuses to reload an unpacked
    extension without it, and a value written into the profile's
    `Preferences` file is not applied on Windows. The check confirms the
-   loaded version, then populates it: it writes a deliberately unreadable
-   value to the plaintext key only to reach the baseline's **Erase stored
-   data…** control (giving an erase marker), restores the synthetic rich
+   loaded version, then populates it: for 0.5.0/0.6.0 it writes a
+   deliberately unreadable value to the plaintext key only to reach the
+   baseline's **Erase stored data…** control (giving an erase marker); 0.7.0
+   is first protected with a synthetic passphrase in its own UI, locked, and
+   erased from its own locked screen, then protected again. It then restores the synthetic rich
    ledger (`tests/shared/rich-ledger.ts`: two real and two demo cases,
    partial receipt, recharges, a void, an unknown expectation, current and
    historical captures) through the baseline's own **Restore from JSON…**,
    and creates one more case entirely in the baseline's UI (merchant report,
-   partial receipt, recharge and its void, an unknown item). It reads the
-   plaintext ledger back, validates it, compares it with the baseline's own
+   partial receipt, recharge and its void, an unknown item; for 0.7.0 a
+   merchant report, partial receipt and an unknown item). It reads the
+   ledger back (decrypted by the test-side decoder for 0.7.0), validates it, compares it with the baseline's own
    **Download JSON** (kept as a real earlier-version backup), and records
    what the baseline's dashboard shows.
 3. **Update in place.** It extracts the real beta ZIP into a separate
    folder, replaces the files in the **same** installed folder with it, and
    reloads the extension with `chrome.runtime.reload()`. The loaded manifest
-   must now be 0.7.0 with the **same extension ID** and exactly the three
+   must now be 0.8.0 with the **same extension ID** and exactly the three
    permissions.
-4. **Migration.** The dashboard shows **Protect your existing records**;
-   storage still holds exactly the plaintext snapshot. **Download plaintext
+4. **Agreement first.** The dashboard shows **How Refund Reconciler handles
+   your data**, with no passphrase field; storage is byte-for-byte what the
+   baseline left; the popup only offers the dashboard; a direct migrate (or,
+   for 0.7.0, unlock) request is refused with `consent_required`; **Not now**
+   and a reload change nothing. Then **Agree and continue** through the UI
+   stores only the nonprivate receipt.
+5. **0.5.0/0.6.0 migration.** The dashboard shows **Protect your existing records**;
+   the records still hold exactly the plaintext snapshot. **Download plaintext
    backup (JSON)** gives exactly that ledger and changes nothing. The check
    then migrates through the real UI. A read-only recorder in the service
    worker confirms the order: migration marker, candidate vault, read-back,
@@ -138,13 +154,19 @@ data. It runs once per baseline:
    receipt and `ledgerEpoch`), no private text is readable in storage,
    historical captures are not re-parsed, and the dashboard shows the same
    overview, case rows, summaries, items and timelines as the baseline did.
-5. **Full browser restart** with the same profile and folder: same ID,
-   version 0.7.0, **locked until the passphrase is entered**, then the same
+   **0.7.0 unlock.** The dashboard shows the locked screen (never setup); the
+   0.7.0 passphrase unlocks the same vault; the stored ciphertext, erase
+   marker and absence of a plaintext key are unchanged, and the decrypted
+   ledger and dashboard equal the baseline's.
+6. **Full browser restart** with the same profile and folder: same ID,
+   version 0.8.0, the agreement still in place (no disclosure screen),
+   **locked until the passphrase is entered**, then the same
    data and dashboard. The current **Download JSON** contains the same
    ledger. Restoring the backup into this populated installation is refused
    and changes nothing. One new entry continues the same history, encrypted.
-6. **Recovery:** the **baseline's own backup** is restored into a separate,
-   empty profile running the extracted ZIP, after **Protect your records**;
+7. **Recovery:** the **baseline's own backup** is restored into a separate,
+   empty profile running the extracted ZIP, after **Agree and continue** and
+   **Protect your records**; restore neither imports nor implies agreement;
    its cases equal the original exactly, the destination keeps its own erase
    marker, and its dashboard shows the same states.
 
@@ -166,12 +188,12 @@ for inspection. CI runs the check on Ubuntu and on Windows (`windows-latest`,
 CRLF checkout, together with the unit tests).
 
 **CI.** Every pull request and push to `main` runs the full checks, then
-`npm run test:package`, then fetches the 0.5.0 and 0.6.0 baseline commits and
+`npm run test:package`, then fetches the 0.5.0, 0.6.0 and 0.7.0 baseline commits and
 runs `npm run test:update`, then cross-checks the archive with `sha256sum -c`
 and `unzip -l`. After all of that passes, the ZIP, checksum and report are
 saved as the workflow artifact **`refund-reconciler-beta`** (kept 14 days).
 GitHub delivers a workflow artifact as its own ZIP, so unzip the download once
-to get `refund-reconciler-beta-0.7.0.zip` and its checksum. This is a build
+to get `refund-reconciler-beta-0.8.0.zip` and its checksum. This is a build
 artifact for manual testing, not a release or a Web Store upload. In CI the
 report's `sourceCommit` is the pull request's head commit; `checkoutCommit`
 is the merge commit GitHub actually built.
@@ -188,10 +210,10 @@ developer tools.
 
 ### Install
 
-1. Get `refund-reconciler-beta-0.7.0.zip` from the person who built it.
+1. Get `refund-reconciler-beta-0.8.0.zip` from the person who built it.
    Optionally compare its SHA-256 with the `.sha256` file that came with
-   that same ZIP (Windows PowerShell: `Get-FileHash refund-reconciler-beta-0.7.0.zip`;
-   macOS: `shasum -a 256 refund-reconciler-beta-0.7.0.zip`).
+   that same ZIP (Windows PowerShell: `Get-FileHash refund-reconciler-beta-0.8.0.zip`;
+   macOS: `shasum -a 256 refund-reconciler-beta-0.8.0.zip`).
 2. **Unzip it into a folder you will keep**, for example
    `Documents/Refund Reconciler beta`. Chrome runs the extension from this
    folder, so don't delete or move it afterwards. The right folder is the one
@@ -201,10 +223,15 @@ developer tools.
 4. Click **Load unpacked** and choose that folder (the one containing
    `manifest.json`, not a folder above it and not the ZIP file).
 5. Click the puzzle-piece icon in the toolbar and pin **Refund Reconciler**.
-   Click its icon, then **Open dashboard**. **How to use Refund Reconciler**
-   at the top of the dashboard (also linked from the toolbar panel) explains
-   the workflow.
-6. **Protect your records:** choose a passphrase of at least 12 characters
+   Click its icon, then **Open dashboard** (before you agree, the panel offers
+   only **Open dashboard to review**). **How to use Refund Reconciler**
+   at the top of the dashboard explains the workflow.
+6. **Read how your data is handled:** the dashboard first shows **How Refund
+   Reconciler handles your data**. Read it and choose **Agree and continue**
+   to use the extension, or **Not now** (nothing is stored or changed, and
+   data features stay off). You can reread it later under **Data and
+   privacy** at the top of the dashboard.
+7. **Protect your records:** choose a passphrase of at least 12 characters
    (a few unrelated words work well), type it twice, and tick that you
    understand it cannot be recovered. Keep it somewhere safe: without it,
    your saved records can only be erased. You will need it again after
@@ -246,8 +273,11 @@ for an extension loaded this way.
   contents of the **same folder** with the new ZIP's contents and press the
   reload icon on the Refund Reconciler card in `chrome://extensions`. Your
   saved cases stay, because Chrome keeps data for the same installation.
-  After an update you unlock again. **Updating from 0.5.0 or 0.6.0:** the
-  dashboard first shows **Protect your existing records**; you can download a
+  After an update you unlock again. **Updating to 0.8.0** from any earlier
+  version first shows the data practices; your records are kept untouched
+  until you choose **Agree and continue**. **Updating from 0.7.0:** then
+  unlock with your existing passphrase. **Updating from 0.5.0 or 0.6.0:** the
+  dashboard then shows **Protect your existing records**; you can download a
   plaintext backup, then choose a passphrase, and your records are encrypted
   and checked field by field before the plaintext copy is removed. Older
   plaintext may remain in Chrome's own files.
@@ -261,9 +291,10 @@ for an extension loaded this way.
 These checks need a person using real desktop Chrome. Current status
 (details in [validation.md](validation.md)):
 
-- **Check 1 (toolbar grant):** **not run for 0.7.0.** The 0.7.0 popup
-  changed (it reads nothing until the records are unlocked), so it needs a
-  new owner-operated toolbar check. For context: 0.6.0 passed,
+- **Check 1 (toolbar grant):** **not run for 0.7.0 or 0.8.0.** The popup
+  changed (0.7.0: it reads nothing until the records are unlocked; 0.8.0:
+  nothing before agreement either), so it needs a new owner-operated toolbar
+  check. The 0.6.0 result does not cover 0.7.0 or 0.8.0. For context: 0.6.0 passed,
   **owner-reported** on 2026-10-10 in desktop Chrome 154.0.8037.98 (general
   outcome "Cannot propose a report from this selection"; dashboard stayed
   empty), not independently reproduced.
@@ -278,9 +309,10 @@ What automated testing does and does not show:
   access, because a real toolbar click cannot be automated.
 - **The extracted-ZIP smoke test** (`npm run test:package`) shows that the
   packaged extension loads from the archive and its local workflow works.
-- **The update checks** (`npm run test:update`) show that 0.5.0 and 0.6.0
-  updated in place to the beta ZIP keep their data and migrate it exactly
-  into the vault, in bundled Chromium.
+- **The update checks** (`npm run test:update`) show that 0.5.0, 0.6.0 and
+  0.7.0 updated in place to the beta ZIP require agreement first, keep their
+  data, and (0.5.0/0.6.0) migrate it exactly into the vault or (0.7.0) keep
+  the same vault and passphrase, in bundled Chromium.
 - **None** shows that a real toolbar click grants page access, or that
   today's Amazon wording is recognised. Opening the popup page directly in a
   tab is not a toolbar click either. (The owner-reported Check 1 above covered
@@ -301,10 +333,13 @@ has no telemetry and submits nothing.
 
 ### Check 1: the actual toolbar grant (no account or private data needed)
 
-1. Install the beta as above and pin its icon. Open the dashboard and
-   complete **Protect your records** with a throwaway passphrase (or unlock),
-   so the records are **unlocked**. (Optional first: while locked, the
-   toolbar panel should show only **Open dashboard to unlock**.)
+1. Install the beta as above and pin its icon. (Optional first, 0.8.0:
+   before agreeing, click the toolbar icon on any page; the panel should
+   show only **Open dashboard to review** and say nothing on the page was
+   read.) Open the dashboard, read the data practices and choose **Agree and
+   continue**, then complete **Protect your records** with a throwaway
+   passphrase (or unlock), so the records are **unlocked**. (Optional: while
+   locked, the toolbar panel should show only **Open dashboard to unlock**.)
 2. In a normal tab, open the public `https://www.amazon.com` home page (no
    need to sign in). Highlight a short piece of ordinary text, such as a
    product name.
@@ -350,16 +385,19 @@ Only if you have a real Amazon US return with a refund shown for one item.
 
 Only with a throwaway Chrome profile and made-up data, not your real cases.
 
-1. Load the previous version's folder (0.6.0, built from commit `60e330b`,
-   or 0.5.0 from `b323930`) with **Load unpacked**, load the synthetic demo
-   and create one made-up case, then download a JSON backup.
+1. Load the previous version's folder (0.7.0 built from commit `da47584`,
+   0.6.0 from `60e330b`, or 0.5.0 from `b323930`) with **Load unpacked**,
+   (0.7.0: set a throwaway passphrase), load the synthetic demo and create
+   one made-up case, then download a JSON backup.
 2. Replace that folder's contents with the new ZIP's contents and press the
    reload icon on the Refund Reconciler card in `chrome://extensions`.
 3. **Pass:** the card shows the new version, the extension ID on the card is
-   unchanged, and the dashboard shows **Protect your existing records**.
-   After choosing a throwaway passphrase it shows the same cases, and after
-   quitting and reopening Chrome it asks for the passphrase and then shows
-   them again.
+   unchanged, and the dashboard first shows the data practices. After
+   **Agree and continue** it shows **Protect your existing records** (0.5.0
+   or 0.6.0; choose a throwaway passphrase) or the locked screen (0.7.0; your
+   passphrase). It then shows the same cases, and after quitting and
+   reopening Chrome it asks for the passphrase (not for agreement again) and
+   then shows them again.
 
 Do not broaden permissions, edit the extension or change parser rules to
 make a check pass. A failure is useful information for the next milestone.
@@ -379,11 +417,16 @@ certification or a Web Store review.
     tab to read the text you highlighted and the page address.
   There are no host permissions, no content scripts and no background page
   scanning.
+- **You agree first.** Before any data feature, the dashboard shows how your
+  data is handled and asks for **Agree and continue**; only a small
+  nonprivate receipt (data-practices version and time) is stored for that.
+  **Not now** changes nothing. Reread it under **Data and privacy**.
 - **Capture reads only your selection** (at most 4,000 characters) and the
-  page address. While your records are unlocked, opening the toolbar panel
-  lets it see the tab's address to check that the page is supported (kept in
-  memory only); the selection is read only after you choose Capture. While
-  locked, the panel reads nothing from the page.
+  page address. Only after you have agreed and while your records are
+  unlocked does opening the toolbar panel see the tab's address to check that
+  the page is supported (kept in memory only); the selection is read only
+  after you choose Capture. Before agreement, or while locked, the panel
+  reads nothing from the page.
   Page HTML, cookies, screenshots and anything you didn't select are never
   read. Nothing is stored until you approve the preview, and only
   `amazon.com` / `www.amazon.com` pages are accepted.
@@ -404,8 +447,9 @@ certification or a Web Store review.
   extension cannot track or delete them.
 - **Deleting:** **Delete case…** removes a case and all its evidence;
   **Remove synthetic demo** removes only demo cases. While locked (for a
-  forgotten passphrase), or if saved data is unreadable, **Erase stored
-  data…** (type `ERASE`) removes all stored records and leaves only a
+  forgotten passphrase), before agreeing, or if saved data is unreadable,
+  **Erase stored data…** (type `ERASE`) removes all stored records and your
+  agreement, and leaves only a
   random, non-private marker that stops an old restore approval or session
   being reused. Removing the extension from Chrome
   deletes all of its saved data.

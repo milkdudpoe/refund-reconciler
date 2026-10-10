@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { ERASE_CONFIRMATION } from '../../src/background/messages';
 import { ERASE_KEY, GENERATION_KEY, LEGACY_STORE_KEY, SESSION_KEY, VAULT_KEY } from '../../src/persistence/storage';
-import { PHRASE, makeWorld, readLedger, setUp, storedStore, type World } from './vault-fakes';
+import { PHRASE, agree, makeWorld, readLedger, setUp, storedStore, type World, recordKeys } from './vault-fakes';
 
 const create = (caseId: string, expectedCents = 3500) => ({
   kind: 'mutate',
@@ -17,7 +17,7 @@ const receipt = (caseId: string, id: string, amountCents = 3500) => ({
 });
 
 async function unlockedWorld(): Promise<World> {
-  const w = makeWorld();
+  const w = await makeWorld();
   await setUp(w);
   return w;
 }
@@ -28,11 +28,11 @@ function rejectVaultWrites(w: World, on: boolean): void {
 
 describe('service worker handler (encrypted ledger)', () => {
   it('a fresh installation requires setup and refuses every change until then', async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     expect(await readLedger(w)).toEqual({ status: 'setup_required', erased: false });
     expect(await w.send(create('c1'))).toMatchObject({ ok: false, error: { code: 'vault_not_ready' } });
     expect(await w.send({ kind: 'mutate', command: { type: 'loadDemo' } })).toMatchObject({ ok: false, error: { code: 'vault_not_ready' } });
-    expect(w.local.data.size).toBe(0);
+    expect(recordKeys(w).length).toBe(0);
   });
 
   it('persists encrypted and reports success only after the write', async () => {
@@ -41,7 +41,7 @@ describe('service worker handler (encrypted ledger)', () => {
     expect(await w.send(create('c1'))).toEqual({ ok: true, outcome: 'applied', revision: 1 });
     expect((await storedStore(w)).cases).toHaveLength(1);
     // Nothing readable in persistent storage: only the vault envelope.
-    expect([...w.local.data.keys()]).toEqual([VAULT_KEY]);
+    expect(recordKeys(w)).toEqual([VAULT_KEY]);
     expect(JSON.stringify([...w.local.data.values()])).not.toMatch(/c1-a|Item|3500|schemaVersion/);
   });
 
@@ -79,7 +79,8 @@ describe('service worker handler (encrypted ledger)', () => {
 
   it('a read failure before writing reports that no change was attempted', async () => {
     const w = await unlockedWorld();
-    w.local.fault = (op) => (op.type === 'get' ? 'reject' : undefined);
+    // The records cannot be read (the consent receipt still can).
+    w.local.fault = (op) => (op.type === 'get' && op.keys.includes(VAULT_KEY) ? 'reject' : undefined);
     expect(await w.send(create('c1'))).toMatchObject({ ok: false, error: { code: 'storage_error', message: expect.stringContaining('no change was attempted') } });
     expect(await readLedger(w)).toMatchObject({ status: 'storage_error' });
   });
@@ -106,7 +107,7 @@ describe('service worker handler (encrypted ledger)', () => {
   });
 
   it('if storage cannot be restricted to trusted contexts, nothing is read, written, unlocked or kept in the session', async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     w.access.fail = true;
     expect(await readLedger(w)).toMatchObject({ status: 'storage_unavailable' });
     expect(await w.send({ kind: 'setup', passphrase: PHRASE, acknowledged: true })).toMatchObject({ ok: false, error: { code: 'storage_unavailable' } });
@@ -122,11 +123,11 @@ describe('service worker handler (encrypted ledger)', () => {
 
 describe('passphrase setup, unlock and Lock', () => {
   it('enforces the documented passphrase rules exactly, without trimming or normalising', async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     for (const bad of ['elevenchars', 'x'.repeat(1025), `${'a'.repeat(12)}\uD800`, 'é'.repeat(513)]) {
       expect(await w.send({ kind: 'setup', passphrase: bad, acknowledged: true })).toMatchObject({ ok: false });
     }
-    expect(w.local.data.size).toBe(0);
+    expect(recordKeys(w).length).toBe(0);
     // 12 code points (emoji are one code point each, two UTF-16 units) is enough.
     const emoji = '🔒🔒🔒🔒🔒🔒🔒🔒🔒🔒🔒🔒';
     expect(await w.send({ kind: 'setup', passphrase: emoji, acknowledged: true })).toMatchObject({ ok: true, outcome: 'unlocked' });
@@ -134,7 +135,7 @@ describe('passphrase setup, unlock and Lock', () => {
     // Leading/trailing spaces and composition are significant: these are different phrases.
     expect(await w.send({ kind: 'unlock', passphrase: ` ${emoji}` })).toMatchObject({ ok: false, error: { code: 'unlock_failed' } });
     expect(await w.send({ kind: 'unlock', passphrase: emoji })).toMatchObject({ ok: true, outcome: 'unlocked' });
-    const w2 = makeWorld();
+    const w2 = await makeWorld();
     await setUp(w2, 'café au lait twelve');
     await w2.send({ kind: 'lock' });
     expect(await w2.send({ kind: 'unlock', passphrase: 'café au lait twelve' })).toMatchObject({ ok: false, error: { code: 'unlock_failed' } });
@@ -209,15 +210,16 @@ describe('passphrase setup, unlock and Lock', () => {
     const [u2, e, r2] = await Promise.all([w.send({ kind: 'unlock', passphrase: PHRASE }), w.send({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION }), w.send(create('c9'))]);
     expect(u2).toMatchObject({ ok: true });
     expect(e).toMatchObject({ ok: true, outcome: 'erased' });
-    expect(r2).toMatchObject({ ok: false, error: { code: 'vault_not_ready' } });
+    // The erase also removed the agreement, so the change is refused at the consent gate.
+    expect(r2).toMatchObject({ ok: false, error: { code: 'consent_required' } });
     expect(w.session.data.has(SESSION_KEY)).toBe(false);
   });
 
   it('a session-storage failure during setup or unlock stops safely without keeping the key anywhere', async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     w.session.fault = () => 'reject';
     expect(await w.send({ kind: 'setup', passphrase: PHRASE, acknowledged: true })).toMatchObject({ ok: false, error: { code: 'session_unavailable' } });
-    expect(w.local.data.size).toBe(0);
+    expect(recordKeys(w).length).toBe(0);
     w.session.fault = null;
     await setUp(w);
     await w.send({ kind: 'lock' });
@@ -238,8 +240,11 @@ describe('erase', () => {
     const oldRecord = structuredClone(w.session.data.get(SESSION_KEY));
     await w.send({ kind: 'lock' });
     expect(await w.send({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION })).toMatchObject({ ok: true, outcome: 'erased' });
-    expect([...w.local.data.keys()]).toEqual([ERASE_KEY]);
+    expect(recordKeys(w)).toEqual([ERASE_KEY]);
     expect(w.local.data.get(ERASE_KEY)).toEqual({ format: 'refund-reconciler-erased', formatVersion: 1, epoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) });
+    // The erase removed the agreement too: the data practices are shown again before setup.
+    expect(await readLedger(w)).toEqual({ status: 'consent_required', reason: 'missing', version: 1 });
+    await agree(w);
     expect(await readLedger(w)).toEqual({ status: 'setup_required', erased: true });
 
     // Re-setup creates a new vault identity whose ledger carries the erase marker; an old session record is never accepted.
@@ -265,7 +270,9 @@ describe('erase', () => {
     w.local.fault = (op) => (op.type === 'set' ? 'reject' : undefined);
     expect(await w.send({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION })).toMatchObject({ ok: false, error: { code: 'erase_incomplete' } });
     w.local.fault = null;
-    expect(w.local.data.size).toBe(0);
+    expect(recordKeys(w).length).toBe(0);
+    expect(await readLedger(w)).toEqual({ status: 'consent_required', reason: 'missing', version: 1 });
+    await agree(w);
     expect(await readLedger(w)).toEqual({ status: 'setup_required', erased: false });
   });
 
@@ -275,7 +282,7 @@ describe('erase', () => {
       [LEGACY_STORE_KEY, { schemaVersion: 99, revision: 3 }],
       [VAULT_KEY, { format: 'refund-reconciler-vault', formatVersion: 1, junk: 'PRIVATE' }],
     ] as const) {
-      const w = makeWorld();
+      const w = await makeWorld();
       w.local.data.set(key, raw);
       const state = await readLedger(w);
       expect(['corrupt', 'unsupported_version', 'vault_unreadable']).toContain(state.status);

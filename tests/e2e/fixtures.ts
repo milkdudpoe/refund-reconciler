@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test as base, chromium, expect, type BrowserContext, type Page } from '@playwright/test';
-import { TEST_PHRASE, anyScreen, setupViaUi, unlockViaUi } from './vault-helpers';
+import { TEST_PHRASE, acceptViaUi, anyScreen, consentGate, setupViaUi, unlockViaUi } from './vault-helpers';
 
 export const DIST = resolve(import.meta.dirname, '../../dist');
 /** The plaintext key used by versions before 0.7.0 (read only for migration). */
@@ -51,16 +51,25 @@ export class ExtensionSession {
   }
 
   /**
-   * Opens a dashboard. By default it also completes "Protect your records"
-   * (fresh profile) or unlocks (after a browser restart) through the real UI
-   * with the synthetic TEST_PHRASE, as a user would. `{ unlock: false }`
-   * returns whatever screen the extension shows.
+   * Opens a dashboard. By default, if the data-practices screen is shown
+   * (a version with the consent gate, not yet agreed in this profile), it
+   * agrees through the real UI, then completes "Protect your records" (fresh
+   * profile) or unlocks (after a browser restart) with the synthetic
+   * TEST_PHRASE, as a user would. Earlier baseline versions have no such
+   * screen, so nothing is clicked for them. `{ accept: false }` stops at the
+   * data-practices screen; `{ unlock: false }` returns whatever screen follows
+   * agreement.
    */
-  async openDashboard(opts: { unlock?: boolean } = {}): Promise<Page> {
+  async openDashboard(opts: { unlock?: boolean; accept?: boolean } = {}): Promise<Page> {
     if (!this.context) throw new Error('not launched');
     const page = await this.context.newPage();
     await page.goto(this.dashboardUrl);
     await expect(anyScreen(page)).toBeVisible();
+    if (opts.accept === false) return page;
+    if (await consentGate(page).isVisible()) {
+      await acceptViaUi(page);
+      await expect(anyScreen(page)).toBeVisible();
+    }
     if (opts.unlock === false) return page;
     if (await page.getByTestId('vault-setup').isVisible()) await setupViaUi(page, TEST_PHRASE);
     else if (await page.getByTestId('vault-locked').isVisible()) await unlockViaUi(page, TEST_PHRASE);

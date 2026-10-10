@@ -1,8 +1,10 @@
 // Dashboard presentation. Reads the validated, decrypted ledger from the
 // service worker (pages never decrypt anything), renders it, and sends every
 // change to the service worker. It never computes money itself: all figures
-// come from the pure domain functions. While the ledger is not unlocked, only
-// the vault screens (src/ui/vault.ts) are shown and nothing private is kept.
+// come from the pure domain functions. Until the data practices are agreed to,
+// only the consent screen (src/ui/consent.ts) is shown; while the ledger is not
+// unlocked, only the vault screens (src/ui/vault.ts). In both, nothing private
+// is kept.
 
 import { centsToInput, formatUsd, moneyErrorMessage, parseMoney } from '../domain/money';
 import { buildTimeline, summarizeCase, type CaseSummary, type ItemSummary, type TimelineRow } from '../domain/reconcile';
@@ -14,6 +16,7 @@ import { buildCaseSummaryText } from '../export/summary';
 import { QUERY_MAX, STATUS_FILTERS, buildOverview, findCases, normalizeQuery, realCaseViews, type CaseView, type Overview, type StatusFilter } from '../domain/overview';
 import { buildBackup, countBackup, exportFilename, serializeBackup } from '../export/backup';
 import type { DashboardDeps } from './deps';
+import { createConsentScreen } from './consent';
 import { createRestoreController } from './restore';
 import { createVaultScreens } from './vault';
 import { h, replaceContent, syncChildren } from './dom';
@@ -99,13 +102,14 @@ type LoadResult = LedgerState;
 
 /**
  * States in which this browser session no longer has the records unlocked
- * (Lock, erase, restart, setup or migration pending). Then nothing decrypted
+ * (agreement to the data practices missing or obsolete, Lock, erase, restart,
+ * setup or migration pending). Then nothing decrypted
  * or private may stay in the page. A failed read or unreadable stored data
  * says nothing about the session, so open drafts are kept (as before) while
  * every export and change stays blocked.
  */
 function isLockedOut(s: LoadResult): boolean {
-  return s.status === 'locked' || s.status === 'setup_required' || s.status === 'migration_required' || s.status === 'migration_pending' || s.status === 'storage_unavailable';
+  return s.status === 'consent_required' || s.status === 'locked' || s.status === 'setup_required' || s.status === 'migration_required' || s.status === 'migration_pending' || s.status === 'storage_unavailable';
 }
 
 interface State {
@@ -159,7 +163,16 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
    */
   let storageGen = 0;
   const restore = createRestoreController({ deps, render: () => render(), announce: (text) => announce(text), storageGen: () => storageGen });
-  const vault = createVaultScreens({ deps, render: () => render(), announce: (text) => announce(text), setNotice: (tone, text) => setNotice(tone, text), reload: () => reload() });
+  const vault = createVaultScreens({ deps, render: () => render(), announce: (text) => announce(text), setNotice: (tone, text) => setNotice(tone, text), reload: async () => { await reload(); } });
+  const consent = createConsentScreen({
+    deps,
+    render: () => render(),
+    announce: (text) => announce(text),
+    setNotice: (tone, text) => setNotice(tone, text),
+    settle: () => settle(),
+    status: () => state.load.status,
+    renderErase: () => vault.renderErase(),
+  });
   /**
    * Incremented whenever decrypted data is dropped from this page (Lock,
    * erase, or any state that is not unlocked). Work started before can see it
@@ -188,15 +201,15 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   /** The real cases the latest list render was built from. */
   let resultViews: readonly CaseView[] = [];
   let countAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
-  async function reload(): Promise<void> {
+  /** Returns false if a newer read superseded this one (that read applies instead). */
+  async function reload(): Promise<boolean> {
     const seq = ++loadSeq;
     const gen = storageGen;
     const result = await deps.read();
-    if (seq !== loadSeq) return; // a newer load superseded this one
+    if (seq !== loadSeq) return false; // a newer load superseded this one
     if (isLockedOut(result)) dropPrivateData();
     const wasUnlocked = state.load.status === 'ok';
-    // A different state makes a plaintext backup still being prepared obsolete.
-    if (state.load.status !== result.status) vault.invalidateBackup();
+    noteTransition(result);
     state.load = result;
     if (result.status === 'ok' && !wasUnlocked) vault.reset();
     if (state.view.name === 'case' && result.status === 'ok') {
@@ -214,10 +227,33 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     if (becameStale) focusRefreshIfFocusLost();
     if (isLockedOut(result) && wasUnlocked) {
       // Locked or erased elsewhere: say so, and keep keyboard focus on the page.
-      announce(result.status === 'locked' ? 'Your records were locked. Enter your passphrase to unlock them.' : 'Your records are no longer unlocked.');
+      announce(
+        result.status === 'locked'
+          ? 'Your records were locked. Enter your passphrase to unlock them.'
+          : result.status === 'consent_required'
+            ? 'Agreement to the data practices is needed again. Your records were cleared from this page; they are unchanged.'
+            : 'Your records are no longer unlocked.',
+      );
       const active = document.activeElement;
       if (!(active instanceof HTMLElement) || active === document.body || !active.isConnected) root.querySelector<HTMLElement>('h2[tabindex="-1"]')?.focus();
     }
+    return true;
+  }
+
+  /** Housekeeping before `state.load` becomes `result`. */
+  function noteTransition(result: LoadResult): void {
+    // A different state makes a plaintext backup still being prepared obsolete.
+    if (state.load.status !== result.status) vault.invalidateBackup();
+    if (result.status === 'consent_required' && state.load.status !== 'consent_required') {
+      // A fresh disclosure: no half-typed passphrase or erase confirmation carries over.
+      consent.reset();
+      vault.reset();
+    }
+  }
+
+  /** Reads until the latest read has been applied (a few attempts), so the page shows the current state. */
+  async function settle(): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt++) if (await reload()) return;
   }
 
   /**
@@ -332,6 +368,12 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       // for the operation's own id.
       uncertainOpId = opId ?? null;
       const check = await deps.read();
+      if (epoch !== privacyEpoch) {
+        // Locked, erased or no longer agreed while checking: nothing of this form is kept any more.
+        setNotice('info', 'Your records were locked while a change was being checked, so its outcome is not known. Check before entering it again.');
+        await reload();
+        return false;
+      }
       if (!opId) {
         setNotice('error', 'Could not confirm whether this change was saved. The page now shows what is in saved data; check it before trying again.');
       } else if (check.status === 'ok' && storeHasId(check.store, opId)) {
@@ -571,6 +613,14 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       if (seq !== exportSeq || state.exportPanel !== panel) return;
       superseded = storageGen !== gen;
     } while (superseded && attempt < SNAPSHOT_READ_ATTEMPTS);
+    if (isLockedOut(result)) {
+      // Locked, erased or no longer agreed: nothing private stays in this page.
+      dropPrivateData();
+      noteTransition(result);
+      state.load = result;
+      render();
+      return;
+    }
     panel.snapshot = null;
     panel.text = '';
     panel.snapshotGen = gen;
@@ -708,6 +758,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     if (epoch !== privacyEpoch || state.exportPanel !== panel) return false;
     if (isLockedOut(now)) {
       dropPrivateData();
+      noteTransition(now);
       state.load = now;
       render();
       return false;
@@ -865,6 +916,8 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
         return h('section', { class: 'panel', 'aria-labelledby': 'locking-heading' }, h('h2', { id: 'locking-heading', tabindex: -1 }, 'Locking…'), h('p', { class: 'muted' }, 'Your records have been cleared from this page.'));
       case 'ok':
         break;
+      case 'consent_required':
+        return consent.render(load);
       default:
         return vault.render(load);
     }

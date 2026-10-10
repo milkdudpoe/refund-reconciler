@@ -312,4 +312,14 @@ and consent step, publisher inputs, store images and a new owner-operated
 toolbar check of the changed 0.7.0 popup are still open
 ([store/readiness.md](store/readiness.md)).
 
+Task 10 (0.8.0) adds the in-product disclosure and explicit agreement
+([consent.md](consent.md)): before any data feature, the dashboard explains
+the data practices and requires **Agree and continue**; the service worker
+refuses every data operation without a current, versioned, nonprivate
+receipt; the popup reads nothing from the page before agreement; **Data and
+privacy** rereads the text; the typed erase also removes the receipt. Ledger
+schema 1, backup format 1, vault format 1 and the permissions are unchanged.
+Publisher inputs, a hosted policy, store images and an owner-operated toolbar
+check of the 0.8.0 popup are still open.
+
 Until then this should not be presented as a validated or paid product.

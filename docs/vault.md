@@ -6,6 +6,12 @@ the user chooses. This page describes the storage format, the key and session
 lifecycle, migration from the plaintext storage of earlier versions, how
 failures are handled, and what the protection does **not** cover.
 
+From **0.8.0**, every vault operation (read, setup, unlock, migration,
+changes, restore) also requires a current agreement to the data practices,
+checked before any key derivation or decryption; see [consent.md](consent.md).
+Nothing in vault format 1, the KDF parameters or the session lifecycle
+changed.
+
 It describes behaviour that is implemented and tested (see
 [Evidence](#evidence)). It is not a security certification, not a claim of
 FIPS 140 validation, and not a statement that any store policy is met.
@@ -49,6 +55,7 @@ the KDF; format 1 accepts exactly these parameters and nothing else.
 | `storage.local` | `refundReconciler.vault` | The vault envelope below | Ciphertext only |
 | `storage.local` | `refundReconciler.migration` | `{ format: "refund-reconciler-migration", formatVersion: 1, phase: "candidate" \| "verified", vaultId }` while a migration is in progress | No |
 | `storage.local` | `refundReconciler.erased` | `{ format: "refund-reconciler-erased", formatVersion: 1, epoch }` after an explicit erase | No (a random id) |
+| `storage.local` | `refundReconciler.consent` | `{ format: "refund-reconciler-consent", formatVersion: 1, dataPracticesVersion, acceptedAt }` after **Agree and continue** (0.8.0; [consent.md](consent.md)) | No |
 | `storage.local` | `refundReconciler.store` | The **plaintext** schema-1 ledger of versions before 0.7.0. Read only for migration; removed after a verified migration | Yes (legacy) |
 | `storage.session` | `refundReconciler.session` | `{ format: "refund-reconciler-session", formatVersion: 1, vaultId, generation, key }` while unlocked | **Yes: the data key** (memory only) |
 | `storage.session` | `refundReconciler.sessionGeneration` | A random id changed by every Lock and erase | No |
@@ -204,6 +211,7 @@ Lock, unlock, setup, migration and erase.
 
 | State | Dashboard | Popup |
 | --- | --- | --- |
+| `consent_required` (0.8.0, checked first) | **How Refund Reconciler handles your data**, **Agree and continue** / **Not now**, **Erase stored data…** | **Open dashboard to review** |
 | `setup_required` | **Protect your records** | Open dashboard to set up |
 | `migration_required` / `migration_pending` | Migration screens (plaintext backup available) | Open dashboard to protect your records |
 | `locked` | Unlock, help, **Erase stored data…** | **Open dashboard to unlock** |
@@ -305,13 +313,15 @@ database-compaction workaround is attempted, and none is claimed.
   writes stay blocked.
 - **Erase stored data…** is available while locked (under **Forgot your
   passphrase?**), while unreadable, inconsistent or migration-blocked. It
-  requires typing `ERASE`. It revokes the session, removes the vault, the
-  plaintext ledger and the migration marker in one `remove()`, then writes a
-  fresh erase marker. A rejected removal is reported as "may be unchanged";
+  From 0.8.0 it is also available before agreement (on the data-practices
+  screen). It requires typing `ERASE`. It revokes the session, removes the
+  vault, the plaintext ledger, the migration marker and (0.8.0) the consent
+  receipt in one `remove()`, then writes a fresh erase marker, so a new start
+  shows the data practices again. A rejected removal is reported as "may be unchanged";
   a missing marker is reported as `erase_incomplete`, not as success. After
   an erase, earlier restore approvals cannot succeed: the new vault has a new
   id and a new ledger epoch.
-- There is **no recovery service and no passphrase change** in 0.7.0. A
+- There is **no recovery service and no passphrase change** (0.7.0 and 0.8.0). A
   forgotten passphrase means: erase, set a new passphrase, and restore a
   plaintext JSON backup saved earlier.
 

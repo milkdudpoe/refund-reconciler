@@ -12,6 +12,7 @@ import { countDownloads } from './export-helpers';
 import {
   LEGACY_KEY,
   downloadStarts,
+  consentGate,
   eraseTyped,
   holdNextReplyOfKind,
   instrumentDownloads,
@@ -19,6 +20,7 @@ import {
   migrateViaUi,
   releaseReplyOfKind,
   setupViaUi,
+  storedRecords,
   unlockViaUi,
   vaultScreen,
   waitForHeldReplyOfKind,
@@ -195,18 +197,19 @@ test.describe('a plaintext migration backup never starts after its state became 
     await waitForHeldReplyOfKind(a, 'readLegacy');
     expect(await downloadStarts(a)).toBe(1);
 
-    await eraseTyped(b);
-    await expect(vaultScreen(a, 'vault-setup')).toBeVisible();
+    // The erase also removed the agreement, so both views return to the data-practices screen.
+    await eraseTyped(b, { accept: false });
+    await expect(consentGate(a)).toBeVisible();
     expect(await a.evaluate(() => chrome.storage.local.get(null))).toEqual({ 'refundReconciler.erased': expect.objectContaining({ format: 'refund-reconciler-erased' }) });
 
     await releaseReplyOfKind(a, 'readLegacy');
-    await expect(vaultScreen(a, 'vault-setup')).toBeVisible();
+    await expect(consentGate(a)).toBeVisible();
     expect(await downloadStarts(a)).toBe(1);
     expect(downloads.count).toBe(1);
     await expect(a.getByTestId('vault-feedback')).toHaveCount(0);
     await expect(a.locator('#app')).not.toContainText(`${legacy.cases.length} cases`);
     await expect(a.locator('#app')).not.toContainText(CANARY);
-    await expect(a.getByRole('button', { name: 'Protect my records' })).toBeEnabled();
+    await expect(a.getByRole('button', { name: 'Agree and continue' })).toBeEnabled();
     expect(await a.evaluate(() => chrome.storage.local.get(null))).toEqual({ 'refundReconciler.erased': expect.anything() });
   });
 
@@ -220,7 +223,7 @@ test.describe('a plaintext migration backup never starts after its state became 
     await b.getByRole('button', { name: 'Lock now' }).click();
     await expect(vaultScreen(b, 'vault-locked')).toBeVisible();
     await expect(vaultScreen(a, 'vault-locked')).toBeVisible();
-    expect(Object.keys(await a.evaluate(() => chrome.storage.local.get(null)))).toEqual(['refundReconciler.vault']);
+    expect(Object.keys(await storedRecords(a))).toEqual(['refundReconciler.vault']);
 
     await releaseReplyOfKind(a, 'readLegacy');
     await expect(vaultScreen(a, 'vault-locked')).toBeVisible();

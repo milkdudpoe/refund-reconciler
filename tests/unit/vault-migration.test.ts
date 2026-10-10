@@ -6,14 +6,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { ERASE_CONFIRMATION } from '../../src/background/messages';
-import { LEGACY_STORE_KEY, MIGRATION_KEY, SESSION_KEY, VAULT_KEY } from '../../src/persistence/storage';
+import { CONSENT_KEY, LEGACY_STORE_KEY, MIGRATION_KEY, SESSION_KEY, VAULT_KEY } from '../../src/persistence/storage';
 import { richLegacyLedger } from '../shared/rich-ledger';
-import { PHRASE, makeWorld, readLedger, settle, storedStore, type Fault, type Op, type World } from './vault-fakes';
+import { PHRASE, agree, makeWorld, readLedger, settle, storedStore, type Fault, type Op, type World, recordKeys } from './vault-fakes';
 
 const migrate = (replaceCandidate = false, passphrase = PHRASE) => ({ kind: 'migrate', passphrase, acknowledged: true, replaceCandidate });
 
-function legacyWorld(): { w: World; legacy: ReturnType<typeof richLegacyLedger> } {
-  const w = makeWorld();
+async function legacyWorld(): Promise<{ w: World; legacy: ReturnType<typeof richLegacyLedger> }> {
+  const w = await makeWorld();
   const legacy = richLegacyLedger();
   w.local.data.set(LEGACY_STORE_KEY, structuredClone(legacy));
   return { w, legacy };
@@ -23,7 +23,7 @@ const describeOp = (o: Op) => `${o.area}.${o.type}(${o.keys.join(',')})`;
 
 describe('migration of an earlier version’s plaintext ledger', () => {
   it('is never silent: valid plaintext data requires migration and blocks ordinary use', async () => {
-    const { w, legacy } = legacyWorld();
+    const { w, legacy } = await legacyWorld();
     expect(await readLedger(w)).toEqual({ status: 'migration_required', stage: 'legacy', legacyCases: legacy.cases.length });
     for (const msg of [{ kind: 'mutate', command: { type: 'loadDemo' } }, { kind: 'mutate', command: { type: 'deleteCase', caseId: 'real-1' } }]) {
       expect(await w.send(msg)).toMatchObject({ ok: false, error: { code: 'vault_not_ready' } });
@@ -36,7 +36,7 @@ describe('migration of an earlier version’s plaintext ledger', () => {
   });
 
   it('even an erased (empty) earlier ledger is migrated with its marker, not replaced', async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     const erased = { schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: 'old-erase-epoch' };
     w.local.data.set(LEGACY_STORE_KEY, erased);
     expect(await readLedger(w)).toMatchObject({ status: 'migration_required', legacyCases: 0 });
@@ -45,10 +45,12 @@ describe('migration of an earlier version’s plaintext ledger', () => {
   });
 
   it('preserves every field exactly, verifies before removing the original, in a fixed order', async () => {
-    const { w, legacy } = legacyWorld();
+    const { w, legacy } = await legacyWorld();
     w.log.length = 0;
     expect(await w.send(migrate())).toMatchObject({ ok: true, outcome: 'unlocked' });
     expect(w.log.filter((o) => o.area === 'local' && o.type !== 'bytes').map(describeOp)).toEqual([
+      // The consent gate reads only the receipt before the records are touched.
+      `local.get(${CONSENT_KEY})`,
       `local.get(${[LEGACY_STORE_KEY, VAULT_KEY, MIGRATION_KEY, 'refundReconciler.erased'].join(',')})`,
       `local.set(${MIGRATION_KEY})`,
       `local.set(${VAULT_KEY})`,
@@ -57,7 +59,7 @@ describe('migration of an earlier version’s plaintext ledger', () => {
       `local.remove(${LEGACY_STORE_KEY})`,
       `local.remove(${MIGRATION_KEY})`,
     ]);
-    expect([...w.local.data.keys()]).toEqual([VAULT_KEY]);
+    expect(recordKeys(w)).toEqual([VAULT_KEY]);
     // Exact: ids, timestamps, sources, notes, references, voids, demo flags,
     // capture provenance and parser versions, revision, lastRestore, ledgerEpoch.
     expect(await storedStore(w)).toEqual(legacy);
@@ -72,21 +74,21 @@ describe('migration of an earlier version’s plaintext ledger', () => {
 
   it('unreadable or unsupported plaintext data is kept intact with recovery information, never migrated', async () => {
     for (const raw of [{ schemaVersion: 1, revision: 'x', cases: [] }, { schemaVersion: 7, cases: [] }]) {
-      const w = makeWorld();
+      const w = await makeWorld();
       w.local.data.set(LEGACY_STORE_KEY, raw);
       expect(['corrupt', 'unsupported_version']).toContain((await readLedger(w)).status);
       expect(await w.send(migrate())).toMatchObject({ ok: false, error: { code: 'wrong_state' } });
       expect(await w.send({ kind: 'readLegacy' })).toMatchObject({ ok: false });
       expect(w.local.data.get(LEGACY_STORE_KEY)).toEqual(raw);
-      expect(w.local.data.size).toBe(1);
+      expect(recordKeys(w).length).toBe(1);
     }
   });
 
   it('insufficient room for both copies keeps the original and writes nothing (no unlimitedStorage)', async () => {
-    const { w, legacy } = legacyWorld();
+    const { w, legacy } = await legacyWorld();
     w.local.quotaBytes = JSON.stringify(legacy).length + 2000;
     expect(await w.send(migrate())).toMatchObject({ ok: false, error: { code: 'insufficient_space', message: expect.stringContaining('intact') } });
-    expect([...w.local.data.keys()]).toEqual([LEGACY_STORE_KEY]);
+    expect(recordKeys(w)).toEqual([LEGACY_STORE_KEY]);
     expect(w.local.data.get(LEGACY_STORE_KEY)).toEqual(legacy);
   });
 
@@ -105,7 +107,7 @@ describe('migration of an earlier version’s plaintext ledger', () => {
   for (const step of STEPS) {
     for (const fault of ['reject', 'hang', 'commit-hang'] as Fault[]) {
       it(`a ${fault} at "${step}" never loses records and recovers after a restart`, async () => {
-        const { w, legacy } = legacyWorld();
+        const { w, legacy } = await legacyWorld();
         const seen: Op[] = [];
         let fired = false;
         const inject = (o: Op): Fault | undefined => {
@@ -160,13 +162,13 @@ describe('migration of an earlier version’s plaintext ledger', () => {
           await w.send({ kind: 'lock' });
           await w.send({ kind: 'unlock', passphrase: PHRASE });
         }
-        expect([...w.local.data.keys()]).toEqual([VAULT_KEY]);
+        expect(recordKeys(w)).toEqual([VAULT_KEY]);
       });
     }
   }
 
   it('a lost reply after a completed migration is resolved by re-reading the state, not by migrating again', async () => {
-    const { w, legacy } = legacyWorld();
+    const { w, legacy } = await legacyWorld();
     await w.send(migrate());
     w.restartWorker();
     expect(await readLedger(w)).toMatchObject({ status: 'ok' });
@@ -178,7 +180,7 @@ describe('migration of an earlier version’s plaintext ledger', () => {
   });
 
   it('a pending candidate is never replaced without an explicit choice, and an explicit restart keeps the original', async () => {
-    const { w, legacy } = legacyWorld();
+    const { w, legacy } = await legacyWorld();
     w.local.fault = (o) => (o.type === 'get' && w.local.data.has(VAULT_KEY) && o.keys.length === 3 ? 'reject' : undefined);
     expect(await w.send(migrate())).toMatchObject({ ok: false, error: { code: 'migration_unverified' } });
     w.local.fault = null;
@@ -192,7 +194,7 @@ describe('migration of an earlier version’s plaintext ledger', () => {
   });
 
   it('a candidate that disagrees with the original is blocked; neither copy is preferred or removed', async () => {
-    const { w } = legacyWorld();
+    const { w } = await legacyWorld();
     w.local.fault = (o) => (o.type === 'get' && w.local.data.has(VAULT_KEY) && o.keys.length === 3 ? 'reject' : undefined);
     await w.send(migrate());
     w.local.fault = null;
@@ -209,7 +211,7 @@ describe('migration of an earlier version’s plaintext ledger', () => {
   });
 
   it('an unreadable candidate beside an intact original allows starting again', async () => {
-    const { w, legacy } = legacyWorld();
+    const { w, legacy } = await legacyWorld();
     w.local.data.set(MIGRATION_KEY, { format: 'refund-reconciler-migration', formatVersion: 1, phase: 'candidate', vaultId: 'v-1' });
     w.local.data.set(VAULT_KEY, { format: 'refund-reconciler-vault', formatVersion: 1, damaged: true });
     expect(await readLedger(w)).toMatchObject({ status: 'migration_required', stage: 'candidate_unreadable' });
@@ -218,7 +220,7 @@ describe('migration of an earlier version’s plaintext ledger', () => {
   });
 
   it('plaintext beside a completed vault, or a damaged marker, is an inconsistent state that changes nothing until erased', async () => {
-    const { w, legacy } = legacyWorld();
+    const { w, legacy } = await legacyWorld();
     await w.send(migrate());
     w.local.data.set(LEGACY_STORE_KEY, legacy);
     expect(await readLedger(w)).toMatchObject({ status: 'inconsistent', legacyReadable: true });
@@ -227,6 +229,8 @@ describe('migration of an earlier version’s plaintext ledger', () => {
     w.local.data.set(MIGRATION_KEY, { junk: true });
     expect(await readLedger(w)).toMatchObject({ status: 'inconsistent' });
     expect(await w.send({ kind: 'eraseAll', confirm: ERASE_CONFIRMATION })).toMatchObject({ ok: true, outcome: 'erased' });
+    expect(await readLedger(w)).toEqual({ status: 'consent_required', reason: 'missing', version: 1 });
+    await agree(w);
     expect(await readLedger(w)).toEqual({ status: 'setup_required', erased: true });
   });
 });

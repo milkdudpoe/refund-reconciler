@@ -13,11 +13,14 @@ compatibility testing are later work.
 
 1. On an `https://www.amazon.com/…` or `https://amazon.com/…` page, highlight
    the refund line for **one item**, for example `Refund issued: $35.00`.
-2. Click the Refund Reconciler toolbar button. If your records are
-   **unlocked** (0.7.0, see [vault.md](vault.md)), the popup offers
-   **Capture selected refund text** and **Open dashboard**. If they are
-   locked, or setup or migration is pending, it only offers to open the
-   dashboard (**Open dashboard to unlock**) and reads nothing from the page.
+2. Click the Refund Reconciler toolbar button. If you have agreed to the
+   data practices (0.8.0, see [consent.md](consent.md)) and your records are
+   **unlocked** (0.7.0, see [vault.md](vault.md)), the popup looks up the
+   active tab's address (kept in memory) to check whether the page is
+   supported, and offers **Capture selected refund text** and **Open
+   dashboard**. Before agreement (**Open dashboard to review**), or while
+   locked, or while setup or migration is pending, it only offers to open the
+   dashboard and makes no tab look-up, selection read or script injection.
 3. Choose **Capture**. The popup shows a preview, marked *not saved yet*. It
    lists the excerpt, source page, detected issued amount, order number and
    date, the amounts it did **not** treat as issued, and why a proposal could
@@ -96,7 +99,9 @@ content scripts declared in the manifest, and no background scanning.
   `setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })` before handling any
   request (and refuses to work if it cannot), so code running in web pages,
   including our own collector, cannot read or write the ledger or the
-  unlocked key. The ledger itself is encrypted (0.7.0). The service worker also ignores messages from
+  unlocked key. The ledger itself is encrypted (0.7.0), and without a current
+  agreement to the data practices the worker refuses every data request
+  (0.8.0). The service worker also ignores messages from
   non-extension pages. Every change still goes through its serialised queue.
 - **No network.** No requests, no telemetry, no external model calls, and no
   logging of excerpts or account data.

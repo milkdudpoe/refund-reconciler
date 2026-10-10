@@ -3,10 +3,12 @@
 // change goes to the service worker, and every reply is validated here.
 
 import {
+  isConsentResponse,
   isResponse,
   isVaultResponse,
   parseLegacyReadResponse,
   parseReadResponse,
+  type ConsentResponse,
   type LegacyReadResponse,
   type Request,
   type Response,
@@ -30,8 +32,10 @@ export interface AppDeps {
   subscribe: (onChange: () => void) => void;
 }
 
-/** Dashboard-only browser bindings for exports. Neither reads nor writes the ledger. */
+/** Dashboard-only browser bindings: agreement to the data practices, and exports (which neither read nor write the ledger). */
 export interface DashboardDeps extends AppDeps {
+  /** Agreement to the displayed data practices. A lost reply is `outcome_unknown`: re-read the state to find out. */
+  acceptDataPractices: (version: number) => Promise<ConsentResponse>;
   /** Resolves only once the clipboard write has completed; rejects if it was refused. */
   copyText: (text: string) => Promise<void>;
   /** Asks the browser to download `text` as a file. Only initiates the download. */
@@ -115,6 +119,7 @@ export function chromeDeps(): AppDeps {
         if (LOCAL_KEYS.some((k) => k in changes)) onChange();
       });
       // Lock, unlock and erase may change no local key; the worker announces them (no data) on this channel.
+      // Changes to the consent receipt (agreement, erase, or damage) arrive through the local-area listener above.
       const channel = new BroadcastChannel(VAULT_CHANNEL);
       channel.onmessage = (ev: MessageEvent) => {
         if ((ev.data as { type?: unknown } | null)?.type === 'vault-changed') onChange();
@@ -126,6 +131,16 @@ export function chromeDeps(): AppDeps {
 export function dashboardDeps(): DashboardDeps {
   return {
     ...chromeDeps(),
+    async acceptDataPractices(version) {
+      try {
+        const res: unknown = await chrome.runtime.sendMessage({ kind: 'acceptDataPractices', version });
+        if (isConsentResponse(res)) return res;
+        return { ok: false, error: { code: 'outcome_unknown', message: 'The extension did not return a valid response.' } };
+      } catch (err) {
+        // It may have been stored before the reply was lost: re-read the state.
+        return { ok: false, error: { code: 'outcome_unknown', message: describe(err) } };
+      }
+    },
     copyText: (text) => navigator.clipboard.writeText(text),
     requestDownload: requestBlobDownload,
   };

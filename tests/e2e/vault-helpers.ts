@@ -13,7 +13,7 @@
 // and validates it itself. Reading decrypts the stored bytes as stored, so a
 // deliberately corrupt seeded value reads back unchanged.
 
-import { expect, type Page, type Worker } from '@playwright/test';
+import { expect, type BrowserContext, type Page, type Worker } from '@playwright/test';
 
 export const TEST_PHRASE = 'synthetic e2e passphrase 0001';
 export const VAULT_KEY = 'refundReconciler.vault';
@@ -62,10 +62,25 @@ export async function ledgerStatus(page: Page): Promise<string> {
 
 export const vaultScreen = (page: Page, id: 'vault-setup' | 'vault-locked' | 'vault-migrate' | 'vault-pending' | 'vault-unreadable' | 'vault-inconsistent') => page.getByTestId(id);
 
+export const CONSENT_KEY = 'refundReconciler.consent';
+
+/** The data-practices screen shown before agreement (fresh, obsolete or damaged agreement). */
+export const consentGate = (page: Page) => page.getByTestId('consent-gate');
+
+/** Reads the data practices and chooses Agree and continue through the real UI. */
+export async function acceptViaUi(page: Page): Promise<void> {
+  await expect(consentGate(page)).toBeVisible();
+  await expect(consentGate(page).getByRole('heading', { name: 'How Refund Reconciler handles your data' })).toBeVisible();
+  await page.getByRole('button', { name: 'Agree and continue' }).click();
+  await expect(consentGate(page)).toHaveCount(0, { timeout: 15_000 });
+}
+
 /** Any settled dashboard screen. */
 export function anyScreen(page: Page) {
   return page
-    .getByRole('heading', { name: 'Your cases' })
+    .getByTestId('consent-gate')
+    .or(page.getByTestId('consent-deferred'))
+    .or(page.getByRole('heading', { name: 'Your cases' }))
     .or(page.getByTestId('unreadable'))
     .or(page.getByTestId('storage-error'))
     .or(page.getByTestId('vault-setup'))
@@ -104,8 +119,12 @@ export async function unlockViaUi(page: Page, phrase = TEST_PHRASE): Promise<voi
   await expect(page.getByRole('heading', { name: 'Your cases' }).or(page.getByTestId('vault-unreadable'))).toBeVisible({ timeout: 15_000 });
 }
 
-/** Explicit typed erase through the real UI (any screen that offers it). */
-export async function eraseTyped(page: Page): Promise<void> {
+/**
+ * Explicit typed erase through the real UI (any screen that offers it). The
+ * erase removes the agreement too, so the fresh data-practices screen must
+ * follow; by default the helper then agrees again and expects setup.
+ */
+export async function eraseTyped(page: Page, opts: { accept?: boolean } = {}): Promise<void> {
   const open = page.getByRole('button', { name: 'Erase stored data…' });
   const forgot = page.getByText('Forgot your passphrase?');
   await expect(open.or(forgot).first()).toBeVisible();
@@ -115,6 +134,10 @@ export async function eraseTyped(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: 'Permanently erase' })).toBeDisabled();
   await page.getByLabel('Type ERASE to confirm').fill('ERASE');
   await page.getByRole('button', { name: 'Permanently erase' }).click();
+  await expect(consentGate(page)).toBeVisible();
+  await expect(consentGate(page)).toHaveAttribute('data-reason', 'missing');
+  if (opts.accept === false) return;
+  await acceptViaUi(page);
   await expect(vaultScreen(page, 'vault-setup')).toBeVisible();
 }
 
@@ -174,3 +197,29 @@ export async function instrumentDownloads(page: Page): Promise<void> {
   });
 }
 export const downloadStarts = (page: Page) => page.evaluate(() => (window as unknown as { __downloadStarts: number }).__downloadStarts);
+
+/** Counts tab look-ups and script injections in extension pages (installed before page scripts run). Test code only. */
+export async function instrumentTabAccess(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    const c = chrome as unknown as { tabs?: Record<string, unknown>; scripting?: Record<string, unknown> };
+    if (!c.tabs || !c.scripting) return;
+    const w = window as unknown as { __tabAccess: string[] };
+    w.__tabAccess = [];
+    for (const [ns, fn] of [['tabs', 'query'], ['tabs', 'get'], ['scripting', 'executeScript']] as const) {
+      const obj = c[ns]!;
+      const real = (obj[fn] as (...a: unknown[]) => unknown).bind(obj);
+      obj[fn] = (...args: unknown[]) => {
+        w.__tabAccess.push(`${ns}.${fn}`);
+        return real(...args);
+      };
+    }
+  });
+}
+export const tabAccess = (p: Page) => p.evaluate(() => (window as unknown as { __tabAccess?: string[] }).__tabAccess ?? ['not instrumented']);
+export const resetTabAccess = (p: Page) => p.evaluate(() => { (window as unknown as { __tabAccess: string[] }).__tabAccess = []; });
+
+/** chrome.storage.local without the nonprivate consent receipt, which is not part of the records. */
+export async function storedRecords(page: Page): Promise<Record<string, unknown>> {
+  const all = await page.evaluate(() => chrome.storage.local.get(null));
+  return Object.fromEntries(Object.entries(all).filter(([k]) => k !== CONSENT_KEY));
+}
