@@ -14,6 +14,7 @@ import {
   gateClipboard,
   holdNextRead,
   openSummary,
+  overridePageReads,
   pasteClipboard,
   releaseHeldRead,
   restoreClipboard,
@@ -303,5 +304,182 @@ test.describe('clipboard completion is bound to the copied preview', () => {
     await expect(a.getByTestId('export-feedback')).toContainText('Copied');
     expect(await pasteClipboard(a)).toBe(text);
     expect(await storedRaw(a)).toEqual(before);
+  });
+});
+
+// Task 03.2: a storage change must lock a ready export at event time, before
+// its revalidation read resolves. Each test holds the dashboard's
+// change-triggered read (after the real API has read it); observing that held
+// read proves the page has already processed the storage-change event.
+test.describe('ready exports lock immediately on a storage change', () => {
+  async function expectLockedWhileChecking(page: Page, kind: 'summary' | 'backup'): Promise<void> {
+    await expect(page.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'checking');
+    await expect(page.getByTestId('export-stale')).toContainText('earlier, unverified snapshot');
+    if (kind === 'summary') {
+      await expect(page.getByRole('button', { name: 'Copy text' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Download text' })).toBeDisabled();
+    } else {
+      await expect(page.getByRole('button', { name: 'Download JSON' })).toBeDisabled();
+    }
+  }
+
+  test('ready summary, changed case: export is refused before the revalidation read resolves', async ({ session }) => {
+    const { a, b } = await twoDashboards(session, 'EVT-1');
+    await openSummary(a);
+    const earlier = await a.getByTestId('export-text').inputValue();
+    const downloads = countDownloads(a);
+
+    await holdNextRead(a);
+    await recordForItem(b, 'Chair', 'Confirm money received', '30');
+    const afterB = await storedRaw(b);
+    await waitForHeldRead(a); // A has received the event; its read is held
+    await expectLockedWhileChecking(a, 'summary');
+    await a.getByRole('button', { name: 'Download text' }).click({ force: true });
+    await expect(a.getByTestId('export-text')).toHaveValue(earlier); // the preview is not replaced
+    // The dashboard behind the panel has not re-read yet either.
+    await expect(itemCard(a, 'Chair').getByTestId('item-net')).toHaveText('$25.00');
+
+    await releaseHeldRead(a);
+    await expect(a.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'changed');
+    await expect(a.getByRole('button', { name: 'Download text' })).toBeDisabled();
+    await a.getByRole('button', { name: 'Refresh preview' }).click();
+    await expect(a.getByTestId('export-text')).toHaveValue(/Confirmed net received: \$55\.00/);
+    const file = await downloadVia(a, 'Download text');
+    expect(file.text).toContain('Confirmed net received: $55.00');
+    expect(file.text).toBe(await a.getByTestId('export-text').inputValue());
+    expect(downloads.count).toBe(1);
+    expect(await storedRaw(a)).toEqual(afterB);
+  });
+
+  test('ready summary, deletion: the deleted case is never exportable while or after the read resolves', async ({ session }) => {
+    const { a, b } = await twoDashboards(session, 'EVT-DEL');
+    await openSummary(a);
+    const downloads = countDownloads(a);
+
+    await holdNextRead(a);
+    await b.getByRole('button', { name: 'Delete case…' }).click();
+    await b.getByRole('button', { name: 'Permanently delete' }).click();
+    await waitForHeldRead(a);
+    await expectLockedWhileChecking(a, 'summary');
+
+    await releaseHeldRead(a);
+    await expect(a.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'deleted');
+    await expect(a.getByTestId('export-stale')).toContainText('deleted from saved data');
+    await expect(a.getByRole('button', { name: 'Copy text' })).toBeDisabled();
+    await expect(a.getByRole('button', { name: 'Download text' })).toBeDisabled();
+    await a.getByRole('button', { name: 'Refresh preview' }).click();
+    await expect(a.getByTestId('export-missing')).toContainText('no longer exists in saved data');
+    expect(downloads.count).toBe(0);
+  });
+
+  test('ready JSON confirmation: Download JSON is blocked before the read resolves; the refreshed file is complete', async ({ session }) => {
+    const a = await session.openDashboard();
+    await createCase(a, { orderRef: 'EVT-JSON-1', items: [{ label: 'Desk', amount: '80' }] });
+    await a.getByRole('button', { name: '← All cases' }).click();
+    const b = await session.openDashboard();
+    await a.getByRole('button', { name: 'Download all data (JSON)…' }).click();
+    await expect(a.getByTestId('export-real-count')).toHaveText('1');
+    const downloads = countDownloads(a);
+
+    await holdNextRead(a);
+    await createCase(b, { orderRef: 'EVT-JSON-2', items: [{ label: 'Shelf', amount: '20' }] });
+    const afterB = await storedRaw(b);
+    await waitForHeldRead(a);
+    await expectLockedWhileChecking(a, 'backup');
+    await expect(a.getByTestId('export-real-count')).toHaveText('1'); // the snapshot is unchanged, just locked
+
+    await releaseHeldRead(a);
+    await expect(a.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'changed');
+    await a.getByRole('button', { name: 'Refresh snapshot' }).click();
+    await expect(a.getByTestId('export-real-count')).toHaveText('2');
+    const backup = JSON.parse((await downloadVia(a, 'Download JSON')).text);
+    expect(backup.store).toEqual(afterB);
+    expect(backup.store.cases).toHaveLength(2);
+    expect(downloads.count).toBe(1);
+    expect(await storedRaw(a)).toEqual(afterB);
+  });
+
+  test('a real copy settling during revalidation names the earlier, unverified snapshot and its details choice', async ({ session }) => {
+    const { a, b } = await twoDashboards(session, 'EVT-CLIP');
+    await recordForItem(a, 'Chair', 'Confirm money received', '1', { note: 'PRIVATE-EVT-NOTE' });
+    await openSummary(a);
+    await a.getByLabel(/Include evidence details/).check();
+    const withNote = await a.getByTestId('export-text').inputValue();
+    expect(withNote).toContain('Note: PRIVATE-EVT-NOTE');
+
+    await gateClipboard(a);
+    await a.getByRole('button', { name: 'Copy text' }).click();
+    await waitForPendingCopy(a); // the real write has happened; completion is held
+    await holdNextRead(a);
+    await recordForItem(b, 'Chair', 'Confirm money received', '30');
+    const afterB = await storedRaw(b);
+    await waitForHeldRead(a);
+    await expect(a.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'checking');
+
+    await settleClipboard(a, 'resolve'); // completes while revalidation is still held
+    const feedback = a.getByTestId('export-feedback');
+    await expect(feedback).toContainText('Copied the earlier, unverified snapshot shown below (evidence details included)');
+    await expect(a.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'checking');
+    await expect(a.getByRole('button', { name: 'Copy text' })).toBeDisabled();
+    await expect(a.getByRole('button', { name: 'Download text' })).toBeDisabled();
+    await expect(a.getByLabel(/Include evidence details/)).toBeDisabled();
+    await expect(a.getByLabel(/Include evidence details/)).toBeChecked();
+    await expect(a.getByTestId('export-text')).toHaveValue(withNote);
+    expect(await pasteClipboard(a)).toBe(withNote);
+
+    await releaseHeldRead(a);
+    await expect(a.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'changed');
+    await expect(a.getByRole('button', { name: 'Download text' })).toBeDisabled();
+    expect(await storedRaw(a)).toEqual(afterB);
+  });
+
+  test('an unrelated change re-enables only after the latest read; a failed or older read never does', async ({ session }) => {
+    const a = await session.openDashboard();
+    await createCase(a, { orderRef: 'EVT-X', items: [{ label: 'Chair', amount: '100' }] });
+    await recordForItem(a, 'Chair', 'Confirm money received', '25');
+    await a.getByRole('button', { name: '← All cases' }).click();
+    await createCase(a, { orderRef: 'EVT-Y', items: [{ label: 'Lamp', amount: '40' }] });
+    await a.getByRole('button', { name: '← All cases' }).click();
+    await a.getByTestId('case-row').filter({ hasText: 'EVT-X' }).click();
+    const b = await openCaseIn(session, 'EVT-Y');
+    await openSummary(a);
+    const earlier = await a.getByTestId('export-text').inputValue();
+
+    // 1. A change to another case: locked while checking, re-enabled once the latest read proves case X unchanged.
+    await holdNextRead(a);
+    await recordForItem(b, 'Lamp', 'Confirm money received', '5');
+    await waitForHeldRead(a);
+    await expectLockedWhileChecking(a, 'summary');
+    await releaseHeldRead(a);
+    await expect(a.getByTestId('export-stale')).toHaveCount(0);
+    await expect(a.getByRole('button', { name: 'Download text' })).toBeEnabled();
+    await expect(a.getByTestId('export-text')).toHaveValue(earlier);
+    expect((await downloadVia(a, 'Download text')).text).toBe(earlier);
+
+    // 2. Successive changes: the first read (X unchanged) is held, the second read fails.
+    await holdNextRead(a);
+    await recordForItem(b, 'Lamp', 'Confirm money received', '5');
+    await waitForHeldRead(a);
+    await overridePageReads(a, 'reject');
+    await b.getByRole('button', { name: '← All cases' }).click();
+    await b.getByTestId('case-row').filter({ hasText: 'EVT-X' }).click();
+    await recordForItem(b, 'Chair', 'Confirm money received', '30');
+    const afterB = await storedRaw(b);
+    await expect(a.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'unverified');
+    // The older held read (which would show X unchanged) is released late: it must not restore currentness.
+    await releaseHeldRead(a);
+    await expect(a.getByTestId('export-stale')).toHaveAttribute('data-freshness', 'unverified');
+    await expect(a.getByRole('button', { name: 'Download text' })).toBeDisabled();
+    await expect(a.getByRole('button', { name: 'Copy text' })).toBeDisabled();
+    await expect(a.getByTestId('export-text')).toHaveValue(earlier);
+
+    // Recovery once reads work again.
+    await overridePageReads(a, 'real');
+    await a.getByRole('button', { name: 'Refresh preview' }).click();
+    await expect(a.getByTestId('export-stale')).toHaveCount(0);
+    await expect(a.getByTestId('export-text')).toHaveValue(/Confirmed net received: \$55\.00/);
+    const file = await downloadVia(a, 'Download text');
+    expect(file.text).toBe(await a.getByTestId('export-text').inputValue());
+    expect(await storedRaw(a)).toEqual(afterB);
   });
 });

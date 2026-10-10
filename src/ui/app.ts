@@ -59,8 +59,12 @@ interface VoidDraft {
   error: string;
 }
 
-/** Whether the snapshot held by an open export panel still matches saved data. */
-type Freshness = 'current' | 'changed' | 'deleted' | 'unverified';
+/**
+ * Whether the snapshot held by an open export panel still matches saved data.
+ * `checking`: a storage change arrived after the snapshot was read and has not
+ * been verified yet. Like the other non-current states it blocks new exports.
+ */
+type Freshness = 'current' | 'checking' | 'changed' | 'deleted' | 'unverified';
 
 interface ExportPanel {
   kind: 'summary' | 'backup';
@@ -146,12 +150,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
     if (result.status === 'ok') closeCommittedDrafts(result.store);
     const becameStale = updateExportFreshness(result, gen);
     render();
-    if (becameStale) {
-      const active = document.activeElement;
-      if (!(active instanceof HTMLElement) || active === document.body || (active instanceof HTMLButtonElement && active.disabled)) {
-        document.getElementById('export-refresh')?.focus();
-      }
-    }
+    if (becameStale) focusRefreshIfFocusLost();
   }
 
   function storeHasId(data: StoreData, id: string): boolean {
@@ -489,31 +488,64 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   }
 
   /**
-   * Marks an open panel's snapshot as out of date when saved data changes.
-   * `readGen` is the storage generation when that dashboard read started; a
-   * read older than the snapshot says nothing about it and is ignored. Once
-   * stale, a snapshot stays stale until the user refreshes it, so a late or
-   * out-of-order read can never roll it back to current. Returns true if it
-   * just became stale.
+   * Called synchronously when a storage change event arrives, before the
+   * revalidation read starts. The event does not say what changed, but it does
+   * mean a ready snapshot can no longer be assumed current, so new exports are
+   * blocked at once. The visible text and any copy in progress are untouched.
+   */
+  function invalidateExportOnChange(): void {
+    const panel = state.exportPanel;
+    if (!panel || panel.phase !== 'ready' || !panel.snapshot || panel.freshness !== 'current') return;
+    panel.freshness = 'checking';
+    if (!panel.copying) panel.feedback = null;
+    announce('Saved data changed. Checking whether the export preview is still current; export is paused.');
+    render();
+    focusRefreshIfFocusLost();
+  }
+
+  function focusRefreshIfFocusLost(): void {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active === document.body || (active instanceof HTMLButtonElement && active.disabled)) {
+      document.getElementById('export-refresh')?.focus();
+    }
+  }
+
+  /**
+   * Refines an open panel's freshness from a dashboard read. `readGen` is the
+   * storage generation when that read started. A read older than the snapshot
+   * says nothing about it. While `checking`, only a read for the latest
+   * observed generation may decide: unchanged data restores `current`;
+   * anything else (changed, deleted, failed) is final until the user refreshes,
+   * so a late, failed or out-of-order read can never roll a snapshot back to
+   * current. Returns true if the snapshot just became stale.
    */
   function updateExportFreshness(result: LoadResult, readGen: number): boolean {
     const panel = state.exportPanel;
     if (!panel || panel.phase !== 'ready' || !panel.snapshot) return false;
-    if (panel.freshness !== 'current' || readGen < panel.snapshotGen) return false;
+    if (readGen < panel.snapshotGen) return false;
+    if (panel.freshness === 'checking') {
+      if (readGen !== storageGen) return false; // a newer change is still being read
+    } else if (panel.freshness !== 'current') {
+      return false;
+    }
+    let next: Freshness;
     if (result.status !== 'ok') {
-      panel.freshness = 'unverified';
+      next = 'unverified';
     } else if (panel.kind === 'summary') {
       const now = result.store.cases.find((c) => c.id === panel.caseId);
-      panel.freshness = !now ? 'deleted' : JSON.stringify(now) === JSON.stringify(snapshotCase(panel)) ? 'current' : 'changed';
+      next = !now ? 'deleted' : JSON.stringify(now) === JSON.stringify(snapshotCase(panel)) ? 'current' : 'changed';
     } else {
-      panel.freshness = JSON.stringify(result.store) === JSON.stringify(panel.snapshot.store) ? 'current' : 'changed';
+      next = JSON.stringify(result.store) === JSON.stringify(panel.snapshot.store) ? 'current' : 'changed';
     }
-    if (panel.freshness !== 'current') {
-      if (!panel.copying) panel.feedback = null;
-      announce('Saved data changed. The export preview shows an earlier snapshot; refresh it before exporting.');
-      return true;
+    const wasChecking = panel.freshness === 'checking';
+    panel.freshness = next;
+    if (next === 'current') {
+      if (wasChecking) announce('Checked: saved data for this export has not changed. Export is available again.');
+      return false;
     }
-    return false;
+    if (!panel.copying) panel.feedback = null;
+    announce('Saved data changed. The export preview shows an earlier snapshot; refresh it before exporting.');
+    return true;
   }
 
   function exportable(panel: ExportPanel): boolean {
@@ -576,7 +608,9 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
       setExportFeedback(
         panel,
         'info',
-        `Copied the earlier snapshot shown below (${which}) to the clipboard. Saved data changed after it was read, so it may be out of date; refresh before relying on it.`,
+        panel.freshness === 'checking'
+          ? `Copied the earlier, unverified snapshot shown below (${which}) to the clipboard. Saved data changed after it was read and has not been checked yet, so it may be out of date; refresh before relying on it.`
+          : `Copied the earlier snapshot shown below (${which}) to the clipboard. Saved data changed after it was read, so it may be out of date; refresh before relying on it.`,
       );
     }
   }
@@ -744,10 +778,12 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
         : 'Saved data changed after this snapshot was read. Copy and download are disabled until you refresh the snapshot.',
       deleted: 'This case was deleted from saved data after this preview was made. The text below is an earlier snapshot of a case that no longer exists. Copy and download are disabled.',
       unverified: 'Saved data could not be re-read after a change, so this snapshot cannot be confirmed as current. Copy and download are disabled until a refresh succeeds.',
+      checking:
+        'Saved data changed after this snapshot was read. Checking whether it is still current… Until then the text below is an earlier, unverified snapshot and copy and download are paused.',
     };
     return panel.freshness === 'current'
       ? null
-      : h('p', { class: 'notice notice-error', role: 'alert', 'data-testid': 'export-stale' }, text[panel.freshness]);
+      : h('p', { class: 'notice notice-error', role: 'alert', 'data-testid': 'export-stale', 'data-freshness': panel.freshness }, text[panel.freshness]);
   }
 
   function snapshotLine(panel: ExportPanel): Node | null {
@@ -1369,6 +1405,7 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
 
   deps.subscribe(() => {
     storageGen += 1;
+    invalidateExportOnChange();
     void reload();
   });
   if (opts.startInCreate) openCreate();

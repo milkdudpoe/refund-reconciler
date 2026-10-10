@@ -106,13 +106,25 @@ that one immutable snapshot, so what you see is what is exported.
   consecutive reads, the last result is shown only as an earlier snapshot with
   copy/download disabled until you refresh. A failed read stays blocked; an
   older result is never turned into a current one.
-- **Changes after a read.** If saved data changes while the panel is open (in
-  this or another dashboard), the panel is marked as an earlier snapshot and
-  copy/download are disabled until you choose **Refresh**. If the case was
-  deleted, the panel says so, and a refresh reports that the case no longer
-  exists. Dashboard reads that started before the snapshot's own read are
-  ignored, and once marked stale a snapshot stays stale until an explicit
-  refresh, so late or out-of-order reads cannot roll it back to current.
+- **Changes after a read.** The moment a storage change event reaches the
+  dashboard, before its revalidation read starts, a ready panel is marked as
+  an earlier, unverified snapshot ("Checking whether it is still current…")
+  and new Copy/Download are refused. The event does not say what changed, only
+  that the snapshot needs checking. The visible text is not replaced, and a
+  copy already in progress keeps its exact text, detail choice and locked
+  controls. When the revalidation read for the **latest** observed change
+  returns:
+  - if the data behind the export is unchanged (for a summary: that case; for
+    the JSON export: the whole store), the snapshot is current again and
+    export is re-enabled;
+  - if it changed, the case was deleted, or the read failed, the panel says so
+    and stays locked until you choose **Refresh** (a refresh of a deleted case
+    reports that it no longer exists).
+
+  Reads that started before the snapshot's own read, or before a later change
+  event, never decide; once marked changed, deleted or unverified, a snapshot
+  stays so until an explicit refresh. Late, failed or out-of-order reads
+  therefore cannot roll it back to current.
 
 ## Errors
 
@@ -128,9 +140,10 @@ that one immutable snapshot, so what you see is what is exported.
   presses are refused, so the preview cannot change under a pending copy.
   "Copied" is shown only after the write resolves and names whether evidence
   details were included. If saved data changed meanwhile, the message says the
-  earlier snapshot was copied and the stale warning stays. If the panel was
-  closed or reopened, a late completion is ignored and the new panel is
-  unaffected. Nothing is written to the clipboard without a new click.
+  earlier snapshot was copied (or, while the change is still being checked,
+  the earlier, unverified snapshot) and the warning and export lock stay. If
+  the panel was closed or reopened, a late completion is ignored and the new
+  panel is unaffected. Nothing is written to the clipboard without a new click.
 - **Clipboard refused:** the panel says the text was not copied, re-enables
   the controls and selects the full preview for manual copying; a later Copy
   can succeed. No permission is added.
@@ -168,6 +181,9 @@ covers interleavings with deterministic gates: a page's next
 `chrome.storage.local.get` result is held only after the real API has read it,
 while a second dashboard changes or deletes data through the real service
 worker; clipboard writes really happen and only their completion is held.
+Observing a held change-triggered read proves the page has already processed
+the storage-change event, so the event-time lock is asserted before any
+revalidation result is delivered.
 
 ## Limitations
 
