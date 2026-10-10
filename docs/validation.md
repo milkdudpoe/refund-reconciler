@@ -16,6 +16,42 @@ or Chrome Web Store approval.
 | Real Amazon refund wording (optional) | **untested** | — |
 | Update in place through the `chrome://extensions` UI (optional) | **untested** | — |
 
+## Task 10.1: recovery wording and uncertain agreement (2026-10-10)
+
+Independent review of the Task 10 head `ebf2722` (against the CI ZIP) found:
+
+1. **Wording:** the shared disclosure said cases could be deleted "with or
+   without agreeing". Only the typed **Erase stored data…** works without
+   agreement; deleting a case needs agreement and unlocked records (the
+   worker correctly refused `deleteCase` while gated). The shared text in
+   `src/consent/practices.ts` now states both conditions separately; README,
+   beta guide, policy drafts and consent.md match. No worker exception was
+   added. Data-practices version stays 1 (a clarification, not a new
+   practice).
+2. **False confirmation:** after a lost `acceptDataPractices` reply, any
+   fresh state other than `consent_required` or `storage_error` was reported
+   as "the current state confirms it", including `storage_unavailable`.
+   `src/ui/consent.ts` now confirms only from a freshly applied read whose
+   state the worker reports only after the gate passed (an explicit list);
+   otherwise it says the agreement cannot be confirmed (or, after a definite
+   `accepted` reply, that it was stored but storage cannot be checked).
+
+Regressions (`tests/e2e/consent.spec.ts`, disclosed page-side fault injection
+at `chrome.runtime.sendMessage`; the worker and storage are real): an
+agreement lost before delivery followed by `storage_unavailable` (no success
+claim, no data features, no receipt; a later real read shows the gate); a
+definite agreement followed by `storage_unavailable`; a committed agreement
+with a lost reply confirmed by a genuine fresh read. The first two **failed on
+the `ebf2722` UI code** and pass with the fix. Deletion: the unit and browser
+tests now also assert that `deleteCase` is refused while gated and that the
+control is absent.
+
+Local run on the Task 10.1 working tree before commit (Linux container): one
+complete `npm run check`: typecheck, lint, **385** unit tests, **118**
+browser tests (115 + 3), the extracted-ZIP smoke test (1) and the three
+update checks (3), all passed; `git diff --check` clean. CI for the final
+head is recorded in PR #10.
+
 ## Task 10: 0.8.0 data-practices disclosure and agreement (2026-10-10)
 
 What changed ([consent.md](consent.md)): an in-product disclosure with

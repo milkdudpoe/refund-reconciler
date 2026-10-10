@@ -131,6 +131,7 @@ describe('the consent gate in the service worker', () => {
     const w = await makeWorld();
     await setUp(w);
     await w.send({ kind: 'mutate', command: { type: 'loadDemo' } });
+    await w.send(gatedRequests()[5]!); // create case c1
     const store = await storedStore(w);
     // A future data-practices change (here simulated by a receipt for another version).
     w.local.data.set(CONSENT_KEY, { ...RECEIPT, dataPracticesVersion: 2 });
@@ -139,7 +140,9 @@ describe('the consent gate in the service worker', () => {
     w.log.length = 0;
     const crypto = spyOnCrypto();
     expect(await readLedger(w)).toEqual({ status: 'consent_required', reason: 'obsolete', version: 1 });
-    for (const req of gatedRequests({ revision: store.revision, stored: true, epoch: store.ledgerEpoch ?? null })) {
+    // Deleting a saved case also needs agreement (and an unlocked vault); only the typed erase does not.
+    const deleteSaved = { kind: 'mutate', command: { type: 'deleteCase', caseId: 'c1' } };
+    for (const req of [...gatedRequests({ revision: store.revision, stored: true, epoch: store.ledgerEpoch ?? null }), deleteSaved]) {
       expect(await w.send(req), JSON.stringify(req)).toMatchObject({ ok: false, error: { code: 'consent_required' } });
     }
     expect(crypto.calls()).toBe(0);
@@ -152,6 +155,7 @@ describe('the consent gate in the service worker', () => {
     expect(parseConsent(w.local.data.get(CONSENT_KEY))).toMatchObject({ status: 'accepted' });
     expect(w.local.data.get(VAULT_KEY)).toEqual(before[VAULT_KEY]);
     expect(await storedStore(w)).toEqual(store);
+    expect(store.cases.some((c: { id: string }) => c.id === 'c1')).toBe(true);
   });
 
   it('earlier plaintext records are neither read nor migrated before agreement; agreement leads to migration', async () => {

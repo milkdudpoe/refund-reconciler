@@ -118,7 +118,13 @@ version the page does not display) and validated acceptance replies
 (`isConsentResponse`). A lost acceptance reply is `outcome_unknown` on the
 page, which re-reads the state: if the agreement is now current it continues;
 otherwise it says the agreement "could not be confirmed and is not recorded
-now".
+now". Agreement counts as confirmed only when a fresh read was applied and
+shows a state the worker reports only after the gate passed (setup,
+migration, locked, unlocked or a records problem). After a lost reply, a
+`storage_error` or `storage_unavailable` state (or no fresh read at all) is
+reported as "not confirmed whether your agreement was stored"; after a
+definite `accepted` reply it is reported as "stored, but storage can't be
+checked right now". Neither claims data features are available.
 
 ## Views stay consistent
 
@@ -151,6 +157,11 @@ messages say so.
   included, in place and is reported. Earlier restore approvals still cannot
   apply (new vault identity and erase marker).
 - **Lock** does not revoke the agreement.
+- **Deleting individual cases** (Delete case…) is a ledger change: it needs a
+  current agreement and unlocked records, like every other change. Without
+  agreement the worker refuses it (`consent_required`) and the control is not
+  shown. Only the typed erase of everything works without agreeing or knowing
+  the passphrase.
 - Nothing is erased automatically, and existing records are never shown as an
   empty ledger while agreement is pending.
 

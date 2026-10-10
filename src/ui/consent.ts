@@ -23,8 +23,8 @@ export interface ConsentHost {
   render: () => void;
   announce: (text: string) => void;
   setNotice: (tone: Tone, text: string) => void;
-  /** Re-reads the state until the latest read has been applied, then re-renders. */
-  settle: () => Promise<void>;
+  /** Re-reads the state until the latest read has been applied, then re-renders. False if no fresh read was applied. */
+  settle: () => Promise<boolean>;
   /** The status the dashboard currently shows. */
   status: () => string;
   /** The typed Erase stored data… control (available without agreeing). */
@@ -36,6 +36,23 @@ export interface ConsentScreen {
   /** Back to the disclosure with no message (when the state changes underneath). */
   reset(): void;
 }
+
+/**
+ * States the service worker reports only after the consent gate passed: the
+ * agreement is current. Anything else (storage_error, storage_unavailable, or
+ * a transitional page state) does not confirm it.
+ */
+const PASSED_GATE: ReadonlySet<string> = new Set<Exclude<LedgerState['status'], 'consent_required' | 'storage_error' | 'storage_unavailable'>>([
+  'ok',
+  'setup_required',
+  'migration_required',
+  'migration_pending',
+  'locked',
+  'vault_unreadable',
+  'inconsistent',
+  'corrupt',
+  'unsupported_version',
+]);
 
 const REASON_TEXT: Record<ConsentState['reason'], string | null> = {
   missing: null,
@@ -86,11 +103,11 @@ export function createConsentScreen(host: ConsentHost): ConsentScreen {
       return;
     }
     // Advance only from a fresh read of the current state, never from the reply.
-    await host.settle();
+    const fresh = await host.settle();
     if (op !== mine) return;
     op = null;
     const now = host.status();
-    if (now === 'consent_required') {
+    if (fresh && now === 'consent_required') {
       say(
         res.ok ? 'info' : 'error',
         res.ok
@@ -101,12 +118,15 @@ export function createConsentScreen(host: ConsentHost): ConsentScreen {
       focus('consent-heading');
       return;
     }
-    if (now === 'storage_error') {
+    if (!fresh || !PASSED_GATE.has(now)) {
+      // No fresh state that shows the gate passed (for example storage could not be
+      // read or restricted): never claim the agreement is confirmed, and never
+      // claim it was rejected either. Data features stay unavailable.
       host.setNotice(
         'error',
         res.ok
-          ? 'Your agreement was stored, but saved data can’t be read right now.'
-          : 'The extension’s reply was lost, and saved data can’t be read right now, so it is not confirmed whether your agreement was stored.',
+          ? 'Your agreement was stored, but this browser’s extension storage can’t be checked right now, so data features stay unavailable. Try again later.'
+          : 'The extension’s reply was lost and its storage can’t be checked right now, so it is not confirmed whether your agreement was stored. Data features stay unavailable; try again later.',
       );
       host.render();
       return;

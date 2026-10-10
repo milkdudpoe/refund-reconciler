@@ -444,9 +444,14 @@ test.describe('capture and recovery', () => {
   test('typed erase works while agreement is pending, removes records and receipt, and returns to a fresh disclosure; deferring keeps records', async ({ session }) => {
     const page = await session.openDashboard();
     await createCase(page, { orderRef: 'CONSENT-DEFER', items: [{ label: `${CANARY} fan`, amount: '15' }] });
+    const caseId = ((await decryptedRaw(page)) as { cases: { id: string }[] }).cases[0]!.id;
     await setReceipt(session, { format: 'refund-reconciler-consent', formatVersion: 1, dataPracticesVersion: 2, acceptedAt: '2026-10-01T00:00:00.000Z' });
     await expect(consentGate(page)).toHaveAttribute('data-reason', 'obsolete');
     const stored = await local(page);
+    // Individual case deletion needs agreement and unlocked records: no control, and the worker refuses it.
+    await expect(page.getByRole('button', { name: 'Delete case…' })).toHaveCount(0);
+    expect(await sendRaw(page, { kind: 'mutate', command: { type: 'deleteCase', caseId } })).toMatchObject({ ok: false, error: { code: 'consent_required' } });
+    expect(await local(page)).toEqual(stored);
 
     // Deferring and closing keep the records.
     await page.getByRole('button', { name: 'Not now' }).click();
@@ -464,6 +469,85 @@ test.describe('capture and recovery', () => {
     expect(Object.keys(await local(again))).toEqual(['refundReconciler.erased']);
     await acceptViaUi(again);
     await expect(vaultScreen(again, 'vault-setup')).toContainText('Stored data was erased');
+  });
+});
+
+type FaultWindow = Window & {
+  __faults?: { accept: 'pass' | 'lose-before-delivery' | 'lose-after-delivery'; unavailableReads: boolean };
+};
+
+/**
+ * Disclosed fault injection at the page's runtime boundary (test code only):
+ * wraps this dashboard's chrome.runtime.sendMessage so that the next
+ * acceptDataPractices can be lost before delivery (never sent to the worker) or
+ * after delivery (the real worker handles it, the page sees a failure), and so
+ * that read replies can be replaced by the valid protocol state
+ * storage_unavailable. The worker and storage are real and unchanged.
+ */
+async function injectFaults(page: Page, faults: NonNullable<FaultWindow['__faults']>): Promise<void> {
+  await page.evaluate((f) => {
+    const w = window as FaultWindow;
+    const first = w.__faults === undefined;
+    w.__faults = f;
+    if (!first) return;
+    const rt = chrome.runtime as unknown as { sendMessage: (m: unknown) => Promise<unknown> };
+    const inner = rt.sendMessage.bind(chrome.runtime);
+    rt.sendMessage = async (m: unknown) => {
+      const kind = (m as { kind?: string } | null)?.kind;
+      const cfg = w.__faults!;
+      if (kind === 'acceptDataPractices' && cfg.accept !== 'pass') {
+        const mode = cfg.accept;
+        cfg.accept = 'pass';
+        if (mode === 'lose-after-delivery') await inner(m);
+        throw new Error('Synthetic lost message');
+      }
+      if (kind === 'read' && cfg.unavailableReads) return { ok: true, ledger: { status: 'storage_unavailable', error: 'Synthetic storage restriction failure' } };
+      return inner(m);
+    };
+  }, faults);
+}
+
+test.describe('uncertain agreement outcomes', () => {
+  test('an agreement lost before delivery, then unavailable storage, is never reported as confirmed', async ({ session }) => {
+    const page = await session.openDashboard({ accept: false });
+    await injectFaults(page, { accept: 'lose-before-delivery', unavailableReads: true });
+    await page.getByRole('button', { name: 'Agree and continue' }).click();
+    await expect(page.getByTestId('vault-unavailable')).toBeVisible();
+    const notice = page.getByTestId('notice');
+    await expect(notice).toContainText('not confirmed whether your agreement was stored');
+    await expect(notice).not.toContainText('confirms it');
+    await expect(page.locator('body')).not.toContainText('Your agreement is stored');
+    await expect(vaultScreen(page, 'vault-setup')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create case' })).toHaveCount(0);
+    expect(await local(page)).toEqual({});
+    // Once storage reads normally again, the real state shows the agreement was not stored.
+    await injectFaults(page, { accept: 'pass', unavailableReads: false });
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(consentGate(page)).toHaveAttribute('data-reason', 'missing');
+  });
+
+  test('a definite agreement followed by unavailable storage says it was stored but cannot be checked, without data features', async ({ session }) => {
+    const page = await session.openDashboard({ accept: false });
+    await injectFaults(page, { accept: 'pass', unavailableReads: true });
+    await page.getByRole('button', { name: 'Agree and continue' }).click();
+    await expect(page.getByTestId('vault-unavailable')).toBeVisible();
+    const notice = page.getByTestId('notice');
+    await expect(notice).toContainText('was stored, but this browser’s extension storage can’t be checked right now');
+    await expect(notice).toContainText('data features stay unavailable');
+    await expect(vaultScreen(page, 'vault-setup')).toHaveCount(0);
+    expect(Object.keys(await local(page))).toEqual([CONSENT_KEY]);
+    await injectFaults(page, { accept: 'pass', unavailableReads: false });
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(vaultScreen(page, 'vault-setup')).toBeVisible();
+  });
+
+  test('a committed agreement whose reply was lost is confirmed only by a fresh read that shows the gate passed', async ({ session }) => {
+    const page = await session.openDashboard({ accept: false });
+    await injectFaults(page, { accept: 'lose-after-delivery', unavailableReads: false });
+    await page.getByRole('button', { name: 'Agree and continue' }).click();
+    await expect(vaultScreen(page, 'vault-setup')).toBeVisible();
+    await expect(page.getByTestId('notice')).toContainText('the current state confirms it');
+    expect(Object.keys(await local(page))).toEqual([CONSENT_KEY]);
   });
 });
 

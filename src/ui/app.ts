@@ -252,8 +252,9 @@ export function startApp(root: HTMLElement, statusRegion: HTMLElement, deps: Das
   }
 
   /** Reads until the latest read has been applied (a few attempts), so the page shows the current state. */
-  async function settle(): Promise<void> {
-    for (let attempt = 0; attempt < 5; attempt++) if (await reload()) return;
+  async function settle(): Promise<boolean> {
+    for (let attempt = 0; attempt < 5; attempt++) if (await reload()) return true;
+    return false;
   }
 
   /**

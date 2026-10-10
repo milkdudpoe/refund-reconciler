@@ -142,7 +142,9 @@ any other purpose.
 Records are kept until you delete them, remove the extension, or the Chrome
 profile is deleted or lost.
 
-- **Delete case…** permanently removes a case and all its records.
+- **Delete case…** permanently removes a case and all its records. It is
+  available after you have agreed to the data practices and unlocked your
+  records.
 - **Remove synthetic demo** removes the demo records.
 - If your records are locked (for example because you forgot the
   passphrase), stored data cannot be read, or you have not agreed to the

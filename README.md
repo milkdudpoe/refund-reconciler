@@ -273,7 +273,7 @@ ordinary **unencrypted** plaintext that the extension cannot track or delete. No
 is used.
 
 **What is deleted:**
-- *Delete case…* → *Permanently delete* removes that case, its items and all
+- *Delete case…* → *Permanently delete* (after agreeing and unlocking) removes that case, its items and all
   its evidence from storage.
 - *Remove synthetic demo* removes only the demo cases.
 - If stored data is locked, unreadable, inconsistent or from an unsupported

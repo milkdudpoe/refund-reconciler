@@ -445,7 +445,7 @@ certification or a Web Store review.
 - **Backups, summaries and copied text are plaintext.** They are created only
   when you click Copy or Download while unlocked, are not encrypted, and the
   extension cannot track or delete them.
-- **Deleting:** **Delete case…** removes a case and all its evidence;
+- **Deleting:** after you agree and unlock, **Delete case…** removes a case and all its evidence;
   **Remove synthetic demo** removes only demo cases. While locked (for a
   forgotten passphrase), before agreeing, or if saved data is unreadable,
   **Erase stored data…** (type `ERASE`) removes all stored records and your

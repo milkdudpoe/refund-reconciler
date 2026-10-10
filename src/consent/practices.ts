@@ -79,7 +79,8 @@ export const DATA_PRACTICES: DataPractices = {
       title: 'Your choices',
       points: [
         'Not now keeps any existing records unchanged; data features stay unavailable until you agree.',
-        'You can delete cases, or erase all stored data with the typed Erase stored data… control, at any time, with or without agreeing.',
+        'After agreeing and unlocking your records, you can delete individual cases.',
+        'Without agreeing or knowing your passphrase, you can still remove all stored records at once with Erase stored data… after typing the confirmation. This cannot be undone.',
         'Agreeing does not capture or save anything. Each capture still needs your approval and Save; closing or discarding it before Save writes nothing, and once you press Save, closing the panel does not undo a save that already completed.',
         'You can reread this under Data and privacy in the dashboard. If these practices change, you will be asked again.',
       ],
