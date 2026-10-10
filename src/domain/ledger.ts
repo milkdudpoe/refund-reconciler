@@ -14,6 +14,9 @@ import {
   type VoidEntryCommand,
 } from './types';
 import { currentExpectation } from './reconcile';
+import { PARSER_VERSION, analyzeExcerpt } from '../capture/parse';
+import { assessOrder, orderContextOf } from '../capture/order';
+import { orderFromSourcePath } from '../capture/source';
 
 const MANUAL_SOURCE = 'Manual entry';
 
@@ -50,7 +53,56 @@ function fingerprint(caseId: string, e: Omit<Entry, 'recordedAt'> | RecordEntryC
   const amount = 'amountCents' in e ? e.amountCents : undefined;
   const reference = 'reference' in e ? e.reference : undefined;
   const target = 'targetEntryId' in e ? e.targetEntryId : undefined;
-  return JSON.stringify([caseId, e.kind, e.itemId, amount, e.occurredOn, e.source, e.note, reference ?? null, target ?? null]);
+  const c = 'capture' in e ? e.capture : undefined;
+  // Provenance is part of identity: reusing a capture id with a different
+  // excerpt, source or time is a conflict, never a silent overwrite.
+  const capture = c
+    ? [c.sourceOrigin, c.sourcePath, c.capturedAt, c.excerpt, c.parserVersion, c.approvedAmountText, c.detectedOrderRef, c.itemApplicabilityConfirmed]
+    : null;
+  return JSON.stringify([caseId, e.kind, e.itemId, amount, e.occurredOn, e.source, e.note, reference ?? null, target ?? null, capture]);
+}
+
+/**
+ * Re-checks a captured merchant report against the pure parser before it is
+ * stored, so only an unambiguous, item-applicable issued amount from the
+ * approved excerpt can be saved, and never into a demo case or a case for a
+ * different known order.
+ */
+function checkCapture(caseRecord: CaseRecord, input: RecordEntryCommand['entry']): ApplyResult | null {
+  const capture = input.capture;
+  if (!capture) return null;
+  if (caseRecord.isDemo) return err('invalid', 'Captured evidence cannot be saved to a synthetic demo case. Choose one of your own cases.');
+  if (input.kind !== 'merchant_report') return err('invalid', 'Only merchant reports can be captured.');
+  if (capture.parserVersion !== PARSER_VERSION) return err('invalid', 'This capture was read by a different parser version. Capture the text again.');
+  const analysis = analyzeExcerpt(capture.excerpt);
+  const expectedOrder = analysis.orderRef.status === 'found' ? analysis.orderRef.value : null;
+  const expectedDate = analysis.date.status === 'found' ? analysis.date.value : null;
+  if (
+    analysis.excerpt !== capture.excerpt ||
+    analysis.issued === null ||
+    analysis.issued.cents !== input.amountCents ||
+    analysis.issued.amountText !== capture.approvedAmountText ||
+    expectedOrder !== capture.detectedOrderRef ||
+    expectedDate !== input.occurredOn
+  ) {
+    return err('invalid', 'The captured excerpt does not support exactly this issued amount. Nothing was saved.');
+  }
+  // Same rule as the popup: the excerpt's order and the source page's order
+  // (kept in sourcePath) must not contradict each other or the chosen case.
+  const order = assessOrder(
+    orderContextOf(capture.detectedOrderRef === null ? [] : [capture.detectedOrderRef]),
+    orderFromSourcePath(capture.sourcePath),
+    caseRecord.orderRef,
+  );
+  if (!order.ok) {
+    return err(
+      'invalid',
+      order.block === 'case_mismatch'
+        ? 'The captured page or text names a different order than this case. Nothing was saved.'
+        : 'The captured page and text name conflicting orders. Nothing was saved.',
+    );
+  }
+  return null;
 }
 
 function createCase(store: StoreData, cmd: CreateCaseCommand, now: string, isDemo = false, source = MANUAL_SOURCE): ApplyResult {
@@ -119,6 +171,8 @@ function recordEntry(store: StoreData, cmd: RecordEntryCommand, now: string): Ap
       ? unchanged(store, 'duplicate')
       : err('conflict', 'This entry id was already recorded with different details. Nothing was overwritten.');
   }
+  const captureProblem = checkCapture(caseRecord, input);
+  if (captureProblem) return captureProblem;
 
   // Same external transaction/observation reference among active entries of the same kind.
   if (input.reference !== null && input.kind !== 'expectation') {
@@ -138,7 +192,8 @@ function recordEntry(store: StoreData, cmd: RecordEntryCommand, now: string): Ap
     if (currentExpectation(caseRecord, input.itemId) === input.amountCents) return unchanged(store, 'unchanged');
     entry = { id: input.id, kind: 'expectation', itemId: input.itemId, amountCents: input.amountCents, recordedAt: now, occurredOn: input.occurredOn, source: input.source, note: input.note };
   } else {
-    entry = { id: input.id, kind: input.kind, itemId: input.itemId, amountCents: input.amountCents ?? 0, recordedAt: now, occurredOn: input.occurredOn, source: input.source, note: input.note, reference: input.reference };
+    const evidence = { id: input.id, kind: input.kind, itemId: input.itemId, amountCents: input.amountCents ?? 0, recordedAt: now, occurredOn: input.occurredOn, source: input.source, note: input.note, reference: input.reference };
+    entry = evidence.kind === 'merchant_report' && input.capture ? { ...evidence, kind: 'merchant_report', capture: input.capture } : evidence;
   }
   return commit(store, replaceCase(store, { ...caseRecord, updatedAt: now, entries: [...caseRecord.entries, entry] }));
 }

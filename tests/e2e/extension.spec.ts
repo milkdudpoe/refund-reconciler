@@ -1,10 +1,10 @@
 import { STORE_KEY, createCase, expect, itemCard, recordForItem, test } from './fixtures';
 
-test('loads as an MV3 extension with only the storage permission and a truthful empty state', async ({ session }) => {
+test('loads as an MV3 extension with only storage, activeTab and scripting, and a truthful empty state', async ({ session }) => {
   const page = await session.openDashboard();
   const manifest = await page.evaluate(() => chrome.runtime.getManifest());
   expect(manifest.manifest_version).toBe(3);
-  expect(manifest.permissions).toEqual(['storage']);
+  expect(manifest.permissions).toEqual(['storage', 'activeTab', 'scripting']);
   expect(manifest.host_permissions).toBeUndefined();
   expect(manifest.content_scripts).toBeUndefined();
 
@@ -14,9 +14,9 @@ test('loads as an MV3 extension with only the storage permission and a truthful 
   const stored = await page.evaluate(() => chrome.storage.local.get(null));
   expect(stored).toEqual({});
 
-  // The toolbar action is wired to open the dashboard (the toolbar itself cannot be clicked from Playwright).
-  const [worker] = session.context!.serviceWorkers();
-  expect(await worker!.evaluate(() => chrome.action.onClicked.hasListeners())).toBe(true);
+  // The toolbar action opens the popup (Capture / Open dashboard); the toolbar itself cannot be clicked from Playwright.
+  expect(manifest.action?.default_popup).toBe('popup.html');
+  await expect(page.locator('.scope')).toContainText('manual entry plus explicitly approved selected-text capture');
 });
 
 test('partial refund: one of two $35 items confirmed leaves $35 unresolved (acceptance 1)', async ({ session }) => {

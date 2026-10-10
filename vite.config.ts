@@ -16,6 +16,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         dashboard: resolve(import.meta.dirname, 'dashboard.html'),
+        popup: resolve(import.meta.dirname, 'popup.html'),
         background: resolve(import.meta.dirname, 'src/background/service-worker.ts'),
       },
       output: {

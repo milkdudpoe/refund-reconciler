@@ -2,12 +2,12 @@
   "manifest_version": 3,
   "name": "Refund Reconciler (local preview)",
   "short_name": "Refund Reconciler",
-  "version": "0.1.0",
-  "description": "Track return/refund evidence per item and see what still needs review. Local-only preview; no automatic capture.",
+  "version": "0.2.0",
+  "description": "Track return/refund evidence per item. Manual entry plus user-approved capture of selected Amazon US refund text. Local only.",
   "minimum_chrome_version": "120",
-  "permissions": ["storage"],
+  "permissions": ["storage", "activeTab", "scripting"],
   "background": { "service_worker": "background.js", "type": "module" },
-  "action": { "default_title": "Open Refund Reconciler" },
+  "action": { "default_title": "Refund Reconciler", "default_popup": "popup.html" },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"
   }

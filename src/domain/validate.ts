@@ -2,9 +2,11 @@
 // chrome.storage.local and messages sent to the service worker. TypeScript
 // types alone are not trusted here.
 
-import { MAX_INPUT_CENTS, isCents } from './money';
+import { MAX_INPUT_CENTS, isCents, parseMoney } from './money';
+import { SUPPORTED_ORIGINS, isValidSourcePath } from '../capture/source';
 import {
   SCHEMA_VERSION,
+  type CaptureProvenance,
   type CaseRecord,
   type Command,
   type Entry,
@@ -22,7 +24,13 @@ export const LIMITS = {
   orderRefMax: 100,
   reasonMax: 500,
   itemsPerCase: 50,
+  excerptMax: 4000,
+  amountTextMax: 32,
+  parserVersionMax: 40,
 } as const;
+
+/** Source recorded on every merchant report captured from selected page text. */
+export const CAPTURE_SOURCE = 'Amazon page selection (captured)';
 
 export type Validation<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -114,6 +122,40 @@ function array(v: unknown, path: string): unknown[] {
   return v;
 }
 
+// ---- Capture provenance (optional on merchant reports) ----
+
+const PROVENANCE_KEYS = ['sourceOrigin', 'sourcePath', 'capturedAt', 'excerpt', 'parserVersion', 'approvedAmountText', 'detectedOrderRef', 'itemApplicabilityConfirmed'];
+
+/**
+ * Validates provenance and ties it to its entry: the approved amount text must
+ * appear in the excerpt and parse to exactly the entry's amount.
+ */
+function parseProvenance(v: unknown, path: string, amountCents: number, source: string): CaptureProvenance {
+  const o = obj(v, path);
+  exactKeys(o, PROVENANCE_KEYS, path);
+  for (const k of PROVENANCE_KEYS) if (!(k in o)) fail(`${path}.${k}`, 'missing');
+  const sourceOrigin = literal(o.sourceOrigin, SUPPORTED_ORIGINS, `${path}.sourceOrigin`);
+  const sourcePath = o.sourcePath === null ? null : text(o.sourcePath, `${path}.sourcePath`, 300, { allowEmpty: false });
+  if (sourcePath !== null && !isValidSourcePath(sourcePath)) fail(`${path}.sourcePath`, 'expected a sanitised path');
+  const excerpt = text(o.excerpt, `${path}.excerpt`, LIMITS.excerptMax, { allowEmpty: false });
+  const approvedAmountText = text(o.approvedAmountText, `${path}.approvedAmountText`, LIMITS.amountTextMax, { allowEmpty: false });
+  const approved = parseMoney(approvedAmountText.replace(/^US\$/, '$').replace(/^\$\s/, '$'));
+  if (!approved.ok || approved.cents !== amountCents) fail(`${path}.approvedAmountText`, 'does not match the entry amount');
+  if (!excerpt.includes(approvedAmountText)) fail(`${path}.approvedAmountText`, 'not found in the excerpt');
+  if (o.itemApplicabilityConfirmed !== true) fail(`${path}.itemApplicabilityConfirmed`, 'must be true');
+  if (source !== CAPTURE_SOURCE) fail(`${path}`, 'captured reports use the capture source label');
+  return {
+    sourceOrigin,
+    sourcePath,
+    capturedAt: isoTimestamp(o.capturedAt, `${path}.capturedAt`),
+    excerpt,
+    parserVersion: text(o.parserVersion, `${path}.parserVersion`, LIMITS.parserVersionMax, { allowEmpty: false }),
+    approvedAmountText,
+    detectedOrderRef: nullableText(o.detectedOrderRef, `${path}.detectedOrderRef`, LIMITS.orderRefMax),
+    itemApplicabilityConfirmed: true,
+  };
+}
+
 // ---- Stored data ----
 
 function parseItem(v: unknown, path: string): ItemRecord {
@@ -143,14 +185,20 @@ function parseEntry(v: unknown, path: string): Entry {
     case 'expectation':
       exactKeys(o, [...ENTRY_BASE_KEYS, 'amountCents'], path);
       return { ...base, kind, amountCents: nullableCents(o.amountCents, `${path}.amountCents`) };
-    case 'merchant_report':
+    case 'merchant_report': {
+      // `capture` is optional, so entries written before capture existed stay valid.
+      exactKeys(o, [...ENTRY_BASE_KEYS, 'amountCents', 'reference', 'capture'], path);
+      const amountCents = cents(o.amountCents, `${path}.amountCents`, { positive: false });
+      const entry = { ...base, kind, amountCents, reference: nullableText(o.reference, `${path}.reference`, LIMITS.referenceMax) };
+      return 'capture' in o ? { ...entry, capture: parseProvenance(o.capture, `${path}.capture`, amountCents, base.source) } : entry;
+    }
     case 'receipt':
     case 'recharge':
       exactKeys(o, [...ENTRY_BASE_KEYS, 'amountCents', 'reference'], path);
       return {
         ...base,
         kind,
-        amountCents: cents(o.amountCents, `${path}.amountCents`, { positive: kind !== 'merchant_report' }),
+        amountCents: cents(o.amountCents, `${path}.amountCents`, { positive: true }),
         reference: nullableText(o.reference, `${path}.reference`, LIMITS.referenceMax),
       };
     case 'void':
@@ -256,7 +304,7 @@ function parseCommandUnsafe(v: unknown): Command {
     case 'recordEntry': {
       exactKeys(o, ['type', 'caseId', 'entry'], 'command');
       const e = obj(o.entry, 'command.entry');
-      exactKeys(e, ['id', 'kind', 'itemId', 'amountCents', 'occurredOn', 'source', 'note', 'reference'], 'command.entry');
+      exactKeys(e, ['id', 'kind', 'itemId', 'amountCents', 'occurredOn', 'source', 'note', 'reference', 'capture'], 'command.entry');
       const kind = literal(e.kind, ['expectation', 'merchant_report', 'receipt', 'recharge'], 'command.entry.kind');
       const amountCents =
         kind === 'expectation'
@@ -264,20 +312,22 @@ function parseCommandUnsafe(v: unknown): Command {
           : cents(e.amountCents, 'command.entry.amountCents', { positive: kind !== 'merchant_report' });
       const reference = nullableText(e.reference, 'command.entry.reference', LIMITS.referenceMax);
       if (kind === 'expectation' && reference !== null) fail('command.entry.reference', 'not used for expectations');
-      return {
-        type,
-        caseId: id(o.caseId, 'command.caseId'),
-        entry: {
-          id: id(e.id, 'command.entry.id'),
-          kind,
-          itemId: id(e.itemId, 'command.entry.itemId'),
-          amountCents,
-          occurredOn: nullableDate(e.occurredOn, 'command.entry.occurredOn'),
-          source: text(e.source, 'command.entry.source', LIMITS.sourceMax, { allowEmpty: false }).trim(),
-          note: text(e.note, 'command.entry.note', LIMITS.noteMax, { allowEmpty: true }).trim(),
-          reference: reference?.trim() ?? null,
-        },
+      const source = text(e.source, 'command.entry.source', LIMITS.sourceMax, { allowEmpty: false }).trim();
+      const entry = {
+        id: id(e.id, 'command.entry.id'),
+        kind,
+        itemId: id(e.itemId, 'command.entry.itemId'),
+        amountCents,
+        occurredOn: nullableDate(e.occurredOn, 'command.entry.occurredOn'),
+        source,
+        note: text(e.note, 'command.entry.note', LIMITS.noteMax, { allowEmpty: true }).trim(),
+        reference: reference?.trim() ?? null,
       };
+      if (!('capture' in e)) return { type, caseId: id(o.caseId, 'command.caseId'), entry };
+      if (kind !== 'merchant_report' || amountCents === null) fail('command.entry.capture', 'only merchant reports can carry capture provenance');
+      if (entry.reference !== null) fail('command.entry.reference', 'captured reports carry no reference');
+      const capture = parseProvenance(e.capture, 'command.entry.capture', amountCents, source);
+      return { type, caseId: id(o.caseId, 'command.caseId'), entry: { ...entry, capture } };
     }
     case 'voidEntry':
       exactKeys(o, ['type', 'caseId', 'voidEntryId', 'targetEntryId', 'reason'], 'command');

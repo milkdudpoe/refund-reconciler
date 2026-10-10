@@ -14,18 +14,27 @@ export const STORE_KEY = 'refundReconciler.store';
 export class ExtensionSession {
   context: BrowserContext | null = null;
   extensionId = '';
+  /** Runs after each launch once the service worker is up, before any page opens (installs fixture routes). */
+  onLaunch: ((context: BrowserContext) => Promise<void>) | null = null;
 
-  constructor(readonly userDataDir: string) {}
+  constructor(
+    readonly userDataDir: string,
+    /** The unpacked extension to load: the production dist/ unless a test copy is given. */
+    readonly extensionDir: string = DIST,
+  ) {}
 
   async launch(): Promise<void> {
     if (!existsSync(join(DIST, 'manifest.json'))) throw new Error('dist/ is missing; run `npm run build` first.');
     this.context = await chromium.launchPersistentContext(this.userDataDir, {
       channel: 'chromium',
-      args: [`--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`],
+      args: [`--disable-extensions-except=${this.extensionDir}`, `--load-extension=${this.extensionDir}`],
     });
     let [worker] = this.context.serviceWorkers();
     worker ??= await this.context.waitForEvent('serviceworker');
     this.extensionId = new URL(worker.url()).host;
+    // The worker can be reported before Chrome has bound the extension APIs in it.
+    await expect.poll(() => worker.evaluate(() => typeof chrome.storage?.local), { timeout: 10_000 }).toBe('object');
+    await this.onLaunch?.(this.context);
   }
 
   async close(): Promise<void> {
