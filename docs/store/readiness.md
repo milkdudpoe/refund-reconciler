@@ -73,7 +73,8 @@ described in [capture.md](../capture.md) never reach `dist/` or the ZIP
 | F4 | Toolbar click: tab address | URL of the active tab, which is visible only because the click grants `activeTab` | **When the popup opens**, before Capture is clicked | Popup memory: the URL is reduced to a supported origin or `null` | No | No | `src/popup/main.ts` `sourceTab()` (`chrome.tabs.query`); `src/popup/popup.ts` `startPopup` → `checkSourceUrl` |
 | F5 | Capture: selection | Selected text (≤4,000 chars; longer selections are not returned) and the document's `location.href` | User clicks **Capture selected refund text** | Popup memory (`Preview`) | No, not until F6 | No | `src/capture/acquire.ts` `acquireSelection` / `chromeAcquireDeps` (`chrome.scripting.executeScript`, main frame, isolated world); `src/capture/collector.ts` `collectSelection` (refuses editable fields; reads nothing else) |
 | F6 | Capture approval | Normalised excerpt, origin, sanitised path (tracking segments, fragment and every query parameter except one valid `orderID` dropped), capture time, parser version, approved amount text, detected order number, merchant-report amount and date | User selects a case and item, ticks the item-applicability box, then **Save merchant report** | Service worker | Yes, inside the merchant-report entry (`capture`) | No | `src/popup/popup.ts` `approve`, `save`; `src/capture/source.ts` `analyzeSourceUrl`; `src/domain/types.ts` `CaptureProvenance` |
-| F7 | Discard/close | The F5 preview | User chooses **Discard**/**Cancel** or closes the popup | — | Nothing is written | No | `src/popup/popup.ts` `cancel` (in-memory phase reset) |
+| F7a | Discard/close **before Save** | The unsubmitted F5 preview | User chooses **Discard**/**Cancel** or closes the popup before pressing **Save merchant report** | — | Nothing is written. The notice reads "Capture discarded. Nothing was saved." | No | `src/popup/popup.ts` `cancel` (`op === null` branch; in-memory phase reset); e2e "finding 4: stopping an uncertain save makes no claim; an unsubmitted cancel and unreadable cases stay accurate" in `tests/e2e/capture-hardening.spec.ts` |
+| F7b | Close or **Stop waiting** **after Save** | The approved F6 report, already sent to the service worker | User presses **Save merchant report**, then the reply is lost or delayed and the user chooses **Stop waiting** or closes the popup | Service worker | **Possibly yes.** Closing or stopping does not cancel the request, and the worker may already have committed it. The popup says the report "may already have been saved" and points the user to the dashboard. A retry reuses the same operation ID, so the report cannot be recorded twice | No | `src/popup/popup.ts` `save` (`outcome_unknown` → `uncertain`), `cancel` (`op !== null` branch), `renderSubmitted`; same e2e test (one stored merchant report after a lost reply and **Stop waiting**) |
 | F8 | Synthetic demo | Built-in fake cases (`isDemo: true`) | User clicks **Load synthetic demo** | Storage | Yes, until **Remove synthetic demo** | No | `src/domain/demo.ts` `buildDemoCases`; `src/domain/ledger.ts` `loadDemo`/`removeDemo` |
 | F9 | Case summary | Plain text of one case. Order reference, item descriptions, amounts, dates, sources, capture origin and path, and detected order number are always included. Notes, references and excerpts appear only when the user opts in | User opens **Prepare case summary…**, then **Copy** or **Download** | Dashboard memory; clipboard via `navigator.clipboard.writeText`; file via a blob download | Outside the extension: on the clipboard or in a user-saved file | Only if the user shares it | `src/export/summary.ts` `buildCaseSummaryText` (`includeDetails`); `src/ui/app.ts` `copyExport`, `downloadExport`; `src/ui/deps.ts` `dashboardDeps`, `requestBlobDownload` |
 | F10 | JSON backup | The entire validated store: every case (demo cases included), entry, void and capture excerpt, plus `lastRestore` and `ledgerEpoch` | User clicks **Download all data (JSON)…**, then Download or Copy | As F9 | A plain-text, unencrypted user file | Only if the user shares it | `src/export/backup.ts` `buildBackup`, `serializeBackup`, `exportFilename` (the filename uses no stored text) |
@@ -409,9 +410,19 @@ so that the disclosure text can describe the final storage behaviour.
   Interrupted at any step, the next start resumes safely: plaintext only →
   restart migration; plaintext and a matching vault → finish the removal; a
   mismatch → stop, show both as read-only, and never pick one silently.
-  Until migration finishes, writes are blocked. Old plaintext may remain in
-  Chrome's on-disk files after the key is removed, and the copy must not
-  claim otherwise.
+  Until migration finishes, writes are blocked.
+
+  Migration protects the **current** ledger and every later write. It does
+  **not** retroactively protect historical plaintext. Bytes written by 0.6.0
+  can remain in Chrome's on-disk extension storage files after the plaintext
+  key is removed. Review evidence (reported in the Task 08.1 review, not
+  reproduced here): in a fresh temporary Windows profile, a synthetic note
+  saved through the unchanged 0.6.0 dashboard was still present in the
+  extension storage's `000003.log` after its ledger key had been removed
+  through `chrome.storage.local` and the browser had been closed, although
+  the API no longer returned it. Earlier plaintext JSON backups and
+  summaries are also unaffected by migration. The product copy and the
+  privacy policy must say both things, and must not claim secure wiping.
 - **Legacy restore.** Plaintext backups in format version 1, including Task
   03–07 files, still restore into an empty, unlocked ledger. They are
   encrypted when written. Restore receipts and staleness checks keep
@@ -432,21 +443,61 @@ so that the disclosure text can describe the final storage behaviour.
   come back field-for-field identical.
 - **Erase while locked;** a restore from a legacy backup into an encrypted
   empty ledger; corrupt-vault handling with no automatic reset.
-- **E2E (bundled Chromium):** set up, lock and unlock; a synthetic canary
-  string entered in a note does **not** appear in raw `chrome.storage.local`
-  contents or the profile's extension storage files after migration and new
-  writes; a service-worker restart keeps the session unlocked; a browser
-  restart requires unlocking.
+- **E2E: fresh encrypted installation (bundled Chromium).** Use a new
+  temporary profile and enable encryption **before** any ledger data exists.
+  Only then enter a synthetic canary string in a note and make further
+  writes. Check that:
+  - raw `chrome.storage.local` contents hold only the vault record, with no
+    plaintext ledger key, no canary and no unwrapped data key;
+  - after the browser is closed, the canary and the session's exported data
+    key (read from `chrome.storage.session` inside the test, in the
+    encodings the code could store it in) are absent from the profile's
+    persistent extension-storage files for this extension;
+  - the data key is not in `chrome.storage.local` or other persistent
+    storage.
+
+  Scope: this shows that a ledger which began encrypted never writes this
+  canary or the data key in plaintext to those files. It is **not** a
+  general secure-erasure guarantee, and it says nothing about data written
+  before encryption, other profiles or exported files.
+- **E2E: legacy migration (bundled Chromium, or the update harness).**
+  Start from a 0.6.0 ledger that already contains the rich synthetic data
+  and a canary, then migrate. Check that:
+  - every field of the original ledger is identical after decryption,
+    including `revision`, `lastRestore` and `ledgerEpoch`;
+  - the plaintext key is removed only after the vault has been written,
+    read back and verified, which a storage spy confirms by checking the
+    order of operations;
+  - after migration, `chrome.storage.local` returns no plaintext ledger;
+  - a canary added **after** migration is never written in plaintext
+    (checked through the API and in newly written storage records).
+
+  This test must **not** require older plaintext bytes, including the
+  pre-migration canary, to vanish from Chrome's database or log files. Such
+  retention is expected and disclosed (see *Migration without losing
+  history* above).
+- **E2E: sessions.** Lock and unlock work; a service-worker restart keeps the
+  session unlocked; a browser restart requires unlocking.
 - **Update check:** extend `npm run test:update` so 0.6.0 is updated to the
   new version with the rich ledger, migrated, and checked for the same case
   states and backup.
 
 ### Acceptance criteria for Task 09
 
-1. No ledger content is stored in plaintext in `chrome.storage.local` after
-   setup, which the canary test proves on the production build.
-2. Every record from a 0.6.0 ledger survives migration unchanged, and every
-   interruption point is covered by a test.
+1. **Fresh encrypted installation:** in a profile where encryption is
+   enabled before any data exists, no plaintext ledger and no unwrapped data
+   key are written to persistent extension storage. The fresh-installation
+   canary test proves this on the production build, through the API and in
+   the relevant storage files, within the scope stated with that test. It is
+   not presented as secure erasure.
+2. **Legacy migration:** every record and field of a 0.6.0 ledger is
+   identical after decryption. The plaintext key is removed only after
+   encrypted persistence has been verified, and all later writes are
+   encrypted. Every interruption and failure point is covered by a test,
+   with no data loss and no duplicate. The test does not require historical
+   plaintext bytes to disappear from Chrome's files. User-facing copy and
+   the privacy policy state that pre-migration plaintext on disk and earlier
+   plaintext backups or summaries are not retroactively protected.
 3. Locked, unlocked, suspended, restart, wrong-passphrase, corrupt,
    rejected-write and erase-while-locked states behave as designed, and none
    of them resets data automatically.

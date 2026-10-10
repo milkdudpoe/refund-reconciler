@@ -49,7 +49,8 @@
   <li>When you click the Refund Reconciler toolbar button, Chrome temporarily lets the extension see the address of the tab you are on. The extension uses it only to check whether the page is supported. It is not saved.</li>
   <li>When you then choose <strong>Capture selected refund text</strong>, the extension reads the text you highlighted (up to 4,000 characters) and the page's address. It does not read the rest of the page, form fields, passwords, cookies or other tabs, and it takes no screenshots.</li>
   <li>The extension shows you a preview. <strong>Nothing is saved unless you approve it.</strong> If you approve, it saves the highlighted text, the page's address (shortened: tracking parts and all query parameters except a single order number are removed), the capture time, the amount text you approved and any order number found, together with the merchant report.</li>
-  <li>If you discard the preview or close the panel, nothing is saved.</li>
+  <li>If you discard or close a preview <strong>before</strong> choosing <strong>Save merchant report</strong>, nothing is saved.</li>
+  <li>Once you choose <strong>Save merchant report</strong>, the approved report is sent to be saved. Closing the panel or choosing <strong>Stop waiting</strong> afterwards does not undo that save. If the panel could not confirm the outcome, open the case in the dashboard to check whether the report was recorded before you capture the same text again. If it was recorded and you do not want it, void it there or delete the case.</li>
 </ul>
 <p><strong>Backup files you choose to restore.</strong> If you use <strong>Restore from JSON</strong>, the file you pick is read on your device and its records are saved into the extension.</p>
 <p><strong>Synthetic demo.</strong> If you choose <strong>Load synthetic demo</strong>, made-up example records are saved until you remove them.</p>

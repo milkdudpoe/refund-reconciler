@@ -53,7 +53,14 @@ works only on `https://amazon.com` and `https://www.amazon.com`:
   (shortened: tracking parts and all query parameters except a single
   order number are removed), the capture time, the amount text you
   approved and any order number found, together with the merchant report.
-- If you discard the preview or close the panel, nothing is saved.
+- If you discard or close a preview **before** choosing **Save merchant
+  report**, nothing is saved.
+- Once you choose **Save merchant report**, the approved report is sent to
+  be saved. Closing the panel or choosing **Stop waiting** afterwards does
+  not undo that save. If the panel could not confirm the outcome, open the
+  case in the dashboard to check whether the report was recorded before you
+  capture the same text again. If it was recorded and you do not want it,
+  void it there or delete the case.
 
 **Backup files you choose to restore.** If you use **Restore from JSON**,
 the file you pick is read on your device and its records are saved into the
