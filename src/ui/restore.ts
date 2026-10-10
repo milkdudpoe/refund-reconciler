@@ -9,7 +9,7 @@ import type { CaseRecord, StoreData } from '../domain/types';
 import { parseBackupEnvelope, type ParsedBackup } from '../domain/validate';
 import type { RestoreExpectation } from '../domain/restore';
 import { MAX_BACKUP_BYTES, countBackup } from '../export/backup';
-import { loadStore, type LoadResult } from '../persistence/storage';
+import type { LedgerState } from '../vault/state';
 import type { AppDeps } from './deps';
 import { h } from './dom';
 import { KIND_LABEL, formatTimestamp } from './labels';
@@ -81,6 +81,13 @@ export interface RestoreController {
   isOpen(): boolean;
   /** Call synchronously when a storage change event arrives, after the generation was incremented. */
   onStorageChange(): void;
+  /**
+   * Discards the panel at once (on Lock or erase): the chosen file's contents,
+   * the preview and any approval. Late results of reads or of a restore
+   * already sent are ignored. A restore the worker already committed is not
+   * undone.
+   */
+  reset(): void;
   render(): Node | null;
 }
 
@@ -227,8 +234,18 @@ export function createRestoreController(host: RestoreHost): RestoreController {
 
   // ---- Destination eligibility ----
 
-  function classify(result: LoadResult): Destination {
+  function classify(result: LedgerState): Destination {
     switch (result.status) {
+      case 'locked':
+        return { kind: 'blocked', reason: 'Your records are locked. Unlock them first.' };
+      case 'setup_required':
+      case 'migration_required':
+      case 'migration_pending':
+        return { kind: 'blocked', reason: 'Your records must be protected with a passphrase first.' };
+      case 'vault_unreadable':
+      case 'inconsistent':
+        return { kind: 'blocked', reason: 'This browser’s saved data could not be read.' };
+      case 'storage_unavailable':
       case 'storage_error':
         return { kind: 'blocked', reason: `Chrome reported an error while reading this browser’s saved data (${result.error}).` };
       case 'corrupt':
@@ -249,14 +266,14 @@ export function createRestoreController(host: RestoreHost): RestoreController {
     const seq = ++destSeq;
     p.dest = { kind: 'checking' };
     host.render();
-    let result: LoadResult;
+    let result: LedgerState;
     let gen: number;
     let superseded: boolean;
     let attempt = 0;
     do {
       attempt += 1;
       gen = host.storageGen();
-      result = await loadStore(deps.area);
+      result = await deps.read();
       if (!current(p) || seq !== destSeq || p.phase !== 'preview') return;
       superseded = host.storageGen() !== gen;
     } while (superseded && attempt < READ_ATTEMPTS);
@@ -326,7 +343,7 @@ export function createRestoreController(host: RestoreHost): RestoreController {
     const seq = ++verifySeq;
     for (let attempt = 1; attempt <= READ_ATTEMPTS; attempt++) {
       const gen = host.storageGen();
-      const result = await loadStore(deps.area);
+      const result = await deps.read();
       if (!current(p) || p.done !== done || seq !== verifySeq || (done.freshness as CompletionFreshness) === 'changed') return;
       if (result.status === 'ok' && !matchesRestore(result.store, done)) {
         done.freshness = 'changed';
@@ -408,7 +425,7 @@ export function createRestoreController(host: RestoreHost): RestoreController {
    */
   async function recheckUncertain(p: Panel, op: Operation): Promise<'done' | 'absent' | 'withdrawn' | 'unreadable' | 'superseded'> {
     const seq = ++checkSeq;
-    const result = await loadStore(deps.area);
+    const result = await deps.read();
     if (!current(p) || p.op !== op || p.phase !== 'uncertain' || seq !== checkSeq) return 'superseded';
     if (result.status === 'ok' && result.store.lastRestore?.operationId === op.id) {
       const receipt = result.store.lastRestore;
@@ -800,5 +817,13 @@ export function createRestoreController(host: RestoreHost): RestoreController {
     );
   }
 
-  return { open, isOpen: () => panel !== null, onStorageChange, render };
+  function reset(): void {
+    panel = null;
+    fileSeq++;
+    destSeq++;
+    checkSeq++;
+    verifySeq++;
+  }
+
+  return { open, isOpen: () => panel !== null, onStorageChange, render, reset };
 }

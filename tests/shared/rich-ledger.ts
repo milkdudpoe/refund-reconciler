@@ -81,3 +81,26 @@ export function richLedger(): Record<string, unknown> & { revision: number; case
   raw.cases[0].updatedAt = '2026-10-03T00:00:00.000Z';
   return raw;
 }
+
+/**
+ * The rich ledger as a complete earlier-version plaintext record: with an
+ * erase marker (ledgerEpoch) and a restore receipt, as 0.5.0/0.6.0 wrote them.
+ * Used to prove migration preserves every field exactly.
+ */
+export function richLegacyLedger(): Record<string, unknown> & { revision: number; cases: Record<string, unknown>[] } {
+  const raw = richLedger();
+  return {
+    ...raw,
+    revision: raw.revision + 3,
+    ledgerEpoch: 'synthetic-erase-epoch-0001',
+    lastRestore: {
+      operationId: 'synthetic-restore-op-0001',
+      payloadSha256: 'ab'.repeat(32),
+      restoredAt: '2026-10-04T00:00:00.000Z',
+      restoredRevision: raw.revision + 1,
+      sourceExportedAt: '2026-10-03T12:00:00.000Z',
+      sourceRevision: 41,
+      caseCount: raw.cases.length,
+    },
+  };
+}

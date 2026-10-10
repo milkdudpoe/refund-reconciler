@@ -4,6 +4,7 @@
 // not from a toolbar gesture.
 
 import type { Page } from '@playwright/test';
+import { overridePageReads } from './export-helpers';
 import { createCase } from './fixtures';
 import {
   ORDER_A,
@@ -30,14 +31,29 @@ async function caseIdFor(session: Parameters<typeof storedRaw>[0], orderRef: str
   return { caseId: c.id, items: c.items };
 }
 
-/** Makes the popup's own chrome.storage.local.get fail (the service worker is unaffected). */
+/** Makes the popup's own reads of saved data fail (the service worker is unaffected). */
 async function setPopupReadsBroken(popup: Page, broken: boolean): Promise<void> {
-  await popup.evaluate((b) => {
-    const area = chrome.storage.local as unknown as { get: unknown };
-    const w = window as unknown as { __realGet?: unknown };
-    w.__realGet ??= area.get;
-    area.get = b ? () => Promise.reject(new Error('Simulated popup read failure')) : w.__realGet;
-  }, broken);
+  await overridePageReads(popup, broken ? 'reject' : 'real');
+}
+
+/** Lets this many more popup reads through, then makes every later one fail. */
+async function breakPopupReadsAfter(popup: Page, allowed: number): Promise<void> {
+  await popup.evaluate((n) => {
+    const w = window as unknown as { __readsLeft?: number };
+    if (w.__readsLeft === undefined) {
+      const rt = chrome.runtime as unknown as { sendMessage: (m: unknown) => Promise<unknown> };
+      const inner = rt.sendMessage.bind(chrome.runtime);
+      rt.sendMessage = (m: unknown) => {
+        if ((m as { kind?: string }).kind !== 'read') return inner(m);
+        if (w.__readsLeft! > 0) {
+          w.__readsLeft! -= 1;
+          return inner(m);
+        }
+        return Promise.reject(new Error('Simulated popup read failure'));
+      };
+    }
+    w.__readsLeft = n;
+  }, allowed);
 }
 
 test('finding 1: malformed amount tokens are never proposed and add no observation', async ({ granted }) => {
@@ -200,6 +216,8 @@ test('finding 3: a pending save is locked to its approved target; the result and
     const gate = new Promise<void>((resolve) => { w.__release = resolve; });
     (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: unknown) => {
       const reply = await original(message);
+      // Only the save's reply is held; reads of saved data pass.
+      if ((message as { kind?: string }).kind === 'read') return reply;
       await gate;
       return reply;
     };
@@ -240,6 +258,8 @@ test('finding 3: an uncertain save stays locked, and a retry resends the identic
     w.__sent = [];
     w.__fail = true;
     (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = (message: unknown) => {
+      // Reads of saved data are not saves: they pass and are not recorded.
+      if ((message as { kind?: string }).kind === 'read') return w.__realSend(message);
       w.__sent.push(JSON.stringify(message));
       return w.__fail ? Promise.reject(new Error('Simulated channel failure')) : w.__realSend(message);
     };
@@ -281,6 +301,7 @@ test('finding 4: committed write, lost reply and failed popup reads make no fals
     const original = chrome.runtime.sendMessage.bind(chrome.runtime) as (m: unknown) => Promise<unknown>;
     w.__realSend = chrome.runtime.sendMessage;
     (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: unknown) => {
+      if ((message as { kind?: string }).kind === 'read') return original(message);
       await original(message); // the real worker commits the write
       throw new Error('Simulated lost reply');
     };
@@ -312,17 +333,24 @@ test('finding 4: stopping an uncertain save makes no claim; an unsubmitted cance
   await selectBlock(page, 'issued-70');
   const popup = await openPopup(granted, windowId);
 
-  // Unsubmitted preview while cases can't be read: says only that.
+  // 0.7.0: if the popup cannot confirm that the records are unlocked, it reads nothing from the page.
   await setPopupReadsBroken(popup, true);
-  // A change from another view makes the popup re-read saved data, which now fails.
+  await capture(popup);
+  await expect(popup.getByTestId('capture-failed')).toContainText('Nothing was read from the page');
+  await expect(popup.getByTestId('excerpt')).toHaveCount(0);
+  await setPopupReadsBroken(popup, false);
+
+  // Unsubmitted preview while cases can't be read: the unlock check at Capture passes, and the
+  // case-list read just after the selection is read fails.
   await dash.getByRole('button', { name: '← All cases' }).click();
   await createCase(dash, { items: [{ label: 'Another item', amount: '5' }] });
-  await capture(popup);
+  await breakPopupReadsAfter(popup, 1);
+  await popup.getByRole('button', { name: 'Try again' }).click();
   await expect(popup.getByTestId('cases-unreadable')).toContainText('Saved cases can’t be read right now');
   await expect(popup.getByTestId('cases-unreadable')).not.toContainText(/Nothing was saved/);
   await popup.getByRole('button', { name: 'Cancel' }).click();
   await expect(popup.getByTestId('notice')).toHaveText('Capture discarded. Nothing was saved.');
-  await setPopupReadsBroken(popup, false);
+  await breakPopupReadsAfter(popup, Number.MAX_SAFE_INTEGER);
 
   // Submitted, committed by the worker, reply lost and popup reads failing; then the user stops waiting.
   await capture(popup);
@@ -330,6 +358,7 @@ test('finding 4: stopping an uncertain save makes no claim; an unsubmitted cance
   await popup.evaluate(() => {
     const original = chrome.runtime.sendMessage.bind(chrome.runtime) as (m: unknown) => Promise<unknown>;
     (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: unknown) => {
+      if ((message as { kind?: string }).kind === 'read') return original(message);
       await original(message);
       throw new Error('Simulated lost reply');
     };

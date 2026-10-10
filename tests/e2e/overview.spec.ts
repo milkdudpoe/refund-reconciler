@@ -5,7 +5,7 @@
 
 import { readFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
-import { STORE_KEY, createCase, expect, recordForItem, test } from './fixtures';
+import { createCase, expect, recordForItem, test } from './fixtures';
 import { overridePageReads, seed, storedRaw } from './export-helpers';
 import { approveButton, chooseBackup, envelopeOf, expectEligible, openRestore, scratchDir, writeBackupFile } from './restore-helpers';
 import { MIXED_TOTALS, mixedLedger } from '../shared/overview-ledger';
@@ -323,12 +323,12 @@ test('acceptance 6: no real cases, demo only, no matches and unreadable storage 
 
   // Corrupt, then unsupported, storage: no overview, no totals, no empty state.
   await seed(a, { schemaVersion: 1, revision: 3, cases: [{ id: 'broken' }] });
-  await expect(a.getByTestId('unreadable')).toBeVisible();
+  await expect(a.getByTestId('vault-unreadable')).toBeVisible();
   await expect(a.getByTestId('overview')).toHaveCount(0);
   await expect(a.getByTestId('empty-state')).toHaveCount(0);
   await expect(a.getByTestId('no-matches')).toHaveCount(0);
   await seed(a, { schemaVersion: 99, revision: 1, cases: [] });
-  await expect(a.getByRole('heading', { name: 'Stored data uses an unsupported version' })).toBeVisible();
+  await expect(a.getByRole('heading', { name: 'Your encrypted records use an unsupported version' })).toBeVisible();
   await expect(a.getByTestId('overview')).toHaveCount(0);
 
   // Valid data again: genuine recovery, with the earlier search still applied.
@@ -391,8 +391,9 @@ test('acceptance 7: filtering writes nothing, and the JSON backup still contains
 
 test('acceptance 2: an unrepresentable cross-case total is shown as unavailable while every case stays usable', async ({ session }) => {
   const a = await session.openDashboard();
-  // A ledger this large exceeds chrome.storage.local's quota, so this page's reads return it instead.
-  await a.evaluate((key) => {
+  // A ledger this large exceeds chrome.storage.local's quota, so this page's read replies return it instead
+  // (a disclosed fake of the service worker's unlocked read reply; the page still validates it).
+  await a.evaluate(() => {
     const max = 100_000_000_000;
     const at = '2026-01-01T00:00:00.000Z';
     const big = (id: string) => {
@@ -402,8 +403,10 @@ test('acceptance 2: an unrepresentable cross-case total is shown as unavailable 
     };
     const small = { id: 'small', retailer: 'amazon_us', orderRef: 'SMALL-1', currency: 'USD', isDemo: false, createdAt: at, updatedAt: '2026-02-01T00:00:00.000Z', items: [{ id: 'small-i', label: 'Small item', createdAt: at }], entries: [{ id: 'small-exp', kind: 'expectation', itemId: 'small-i', amountCents: 1234, recordedAt: at, occurredOn: null, source: 'Test', note: '' }] };
     const store = { schemaVersion: 1, revision: 9, cases: [big('big-1'), big('big-2'), small] };
-    (chrome.storage.local as unknown as { get: unknown }).get = () => Promise.resolve({ [key]: store });
-  }, STORE_KEY);
+    const rt = chrome.runtime as unknown as { sendMessage: (m: unknown) => Promise<unknown> };
+    const real = rt.sendMessage.bind(chrome.runtime);
+    rt.sendMessage = (m: unknown) => ((m as { kind?: string }).kind === 'read' ? Promise.resolve({ ok: true, ledger: { status: 'ok', isNew: false, vaultId: 'synthetic-vault', store } }) : real(m));
+  });
   // Any storage change makes the dashboard re-read.
   await a.getByRole('button', { name: 'Load synthetic demo' }).click();
   await expect(a.getByTestId('overview-unresolved')).toHaveText('Total unavailable', { timeout: 20_000 });

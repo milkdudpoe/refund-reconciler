@@ -1,4 +1,8 @@
 import { STORE_KEY, createCase, expect, itemCard, recordForItem, test } from './fixtures';
+import { overridePageReads, seed } from './export-helpers';
+import { VAULT_KEY, decryptedRaw, eraseTyped, setupViaUi } from './vault-helpers';
+
+const EMPTY_LEDGER = { schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) };
 
 test('loads as an MV3 extension with only storage, activeTab and scripting, and a truthful empty state', async ({ session }) => {
   const page = await session.openDashboard();
@@ -11,8 +15,10 @@ test('loads as an MV3 extension with only storage, activeTab and scripting, and 
   await expect(page.getByTestId('empty-state')).toContainText('No cases yet.');
   await expect(page.getByTestId('empty-state')).toContainText('Nothing is captured');
   await expect(page.getByTestId('demo-cases')).toHaveCount(0);
+  // Only the encrypted vault is stored: no plaintext ledger key.
   const stored = await page.evaluate(() => chrome.storage.local.get(null));
-  expect(stored).toEqual({});
+  expect(Object.keys(stored)).toEqual([VAULT_KEY]);
+  expect(await decryptedRaw(page)).toEqual(EMPTY_LEDGER);
 
   // The toolbar action opens the popup (Capture / Open dashboard); the toolbar itself cannot be clicked from Playwright.
   expect(manifest.action?.default_popup).toBe('popup.html');
@@ -98,7 +104,7 @@ test('rejects malformed money input and saves nothing (acceptance 8)', async ({ 
     await expect(amount).toHaveAttribute('aria-invalid', 'true');
     await expect(page.getByTestId('notice')).toContainText('Nothing was saved');
   }
-  expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual({});
+  expect(await decryptedRaw(page)).toEqual(EMPTY_LEDGER);
   await amount.fill('0.10');
   await page.getByRole('button', { name: 'Save case' }).click();
   await recordForItem(page, 'Shoes', 'Confirm money received', '0.10');
@@ -132,6 +138,11 @@ test('saved data survives reload and a full browser restart (acceptance 10)', as
 
   await session.close();
   await session.launch();
+  // A browser restart locks the records: the passphrase is needed again.
+  page = await session.openDashboard({ unlock: false });
+  await expect(page.getByTestId('vault-locked')).toBeVisible();
+  await expect(page.getByTestId('case-row')).toHaveCount(0);
+  await page.close();
   page = await session.openDashboard();
   await page.getByTestId('case-row').filter({ hasText: 'PERSIST-1' }).click();
   await expect(itemCard(page, 'Toaster').getByTestId('item-status')).toHaveText('Partially confirmed');
@@ -143,14 +154,14 @@ test('a failed save is reported, keeps the form, and changes nothing (acceptance
   // Fill chrome.storage.local to just under its 10 MB quota so the next write really fails.
   await page.evaluate(async () => {
     const quota = chrome.storage.local.QUOTA_BYTES;
-    await chrome.storage.local.set({ filler: 'x'.repeat(quota - 'filler'.length - 2 - 64) });
+    const used = await chrome.storage.local.getBytesInUse(null);
+    await chrome.storage.local.set({ filler: 'x'.repeat(quota - used - 'filler'.length - 2 - 64) });
   });
   await createCase(page, { items: [{ label: 'Blender', amount: '80' }] });
   await expect(page.getByTestId('notice')).toContainText('Storage rejected the change, so it was not saved');
   await expect(page.getByTestId('notice')).toContainText('Your input is kept');
   await expect(page.getByLabel('Item 1 description')).toHaveValue('Blender');
-  const stored = await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY);
-  expect(stored).toEqual({});
+  expect(await decryptedRaw(page)).toEqual(EMPTY_LEDGER);
 
   await page.evaluate(() => chrome.storage.local.remove('filler'));
   await page.getByRole('button', { name: 'Save case' }).click();
@@ -158,49 +169,61 @@ test('a failed save is reported, keeps the form, and changes nothing (acceptance
   await expect(itemCard(page, 'Blender')).toBeVisible();
 });
 
-test('unsupported stored data is shown, not reset, and only erased on explicit confirmation (acceptance 10)', async ({ session }) => {
-  let page = await session.openDashboard();
+test('unsupported earlier-version data is shown, not reset or migrated, and only erased on typed confirmation (acceptance 10)', async ({ session }) => {
+  // Plaintext data left by an earlier build, in a profile that never set up a vault.
+  let page = await session.openDashboard({ unlock: false });
   const future = { schemaVersion: 99, revision: 5, cases: [{ note: 'from a newer build' }] };
   await page.evaluate(([key, value]) => chrome.storage.local.set({ [key as string]: value }), [STORE_KEY, future] as const);
   await page.close();
-  page = await session.openDashboard();
+  page = await session.openDashboard({ unlock: false });
 
   await expect(page.getByTestId('unreadable')).toContainText('unsupported version');
   await expect(page.getByTestId('unreadable')).toContainText('will not reset, repair or overwrite this data, and new changes are blocked');
   await expect(page.getByTestId('unreadable')).not.toContainText('Nothing has been changed');
   await expect(page.getByLabel(/Raw stored data/)).toHaveValue(/from a newer build/);
   await expect(page.getByRole('button', { name: 'Create case' })).toHaveCount(0);
-  // A write attempted directly against the service worker is refused too.
-  const res = await page.evaluate(() =>
-    chrome.runtime.sendMessage({ kind: 'mutate', command: { type: 'loadDemo' } }),
-  );
-  expect(res).toMatchObject({ ok: false, error: { code: 'storage_unsupported' } });
+  await expect(page.getByTestId('vault-setup')).toHaveCount(0);
+  // A write or a setup attempted directly against the service worker is refused too.
+  expect(await page.evaluate(() => chrome.runtime.sendMessage({ kind: 'mutate', command: { type: 'loadDemo' } }))).toMatchObject({ ok: false, error: { code: 'storage_unsupported' } });
+  expect(await page.evaluate(() => chrome.runtime.sendMessage({ kind: 'setup', passphrase: 'synthetic e2e passphrase 0001', acknowledged: true }))).toMatchObject({ ok: false, error: { code: 'wrong_state' } });
   expect((await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY]).toEqual(future);
 
   await page.getByRole('button', { name: 'Erase stored data…' }).click();
   await page.getByRole('button', { name: 'Cancel' }).click();
   expect((await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY]).toEqual(future);
+  // The erase needs the typed confirmation; a wrong word keeps it disabled.
   await page.getByRole('button', { name: 'Erase stored data…' }).click();
-  await page.getByRole('button', { name: 'Permanently erase' }).click();
+  await page.getByLabel('Type ERASE to confirm').fill('erase');
+  await expect(page.getByRole('button', { name: 'Permanently erase' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await eraseTyped(page);
+  // Only after explicit confirmation: nothing of the old data remains, only a nonprivate erase marker.
+  const after = await page.evaluate(() => chrome.storage.local.get(null));
+  expect(after).toEqual({ 'refundReconciler.erased': { format: 'refund-reconciler-erased', formatVersion: 1, epoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) } });
+  await setupViaUi(page);
   await expect(page.getByTestId('empty-state')).toBeVisible();
-  // Only after explicit confirmation: nothing of the old data remains, only an empty ledger with an opaque erase marker.
-  expect((await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY]).toEqual({
-    schemaVersion: 1,
-    revision: 0,
-    cases: [],
-    ledgerEpoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/),
-  });
+  expect(await decryptedRaw(page)).toEqual({ ...EMPTY_LEDGER, ledgerEpoch: (after['refundReconciler.erased'] as { epoch: string }).epoch });
 });
 
-test('corrupt stored data is reported without being overwritten', async ({ session }) => {
-  let page = await session.openDashboard();
+test('corrupt stored data is reported without being overwritten, whether plaintext or inside the vault', async ({ session }) => {
+  let page = await session.openDashboard({ unlock: false });
   const corrupt = { schemaVersion: 1, revision: 1, cases: [{ id: 'c', amountCents: 1.5 }] };
   await page.evaluate(([key, value]) => chrome.storage.local.set({ [key as string]: value }), [STORE_KEY, corrupt] as const);
   await page.close();
-  page = await session.openDashboard();
+  page = await session.openDashboard({ unlock: false });
   await expect(page.getByTestId('unreadable')).toContainText('could not be read');
   await expect(page.getByTestId('unreadable')).toContainText('will not reset, repair or overwrite this data');
   expect((await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY]).toEqual(corrupt);
+  await eraseTyped(page);
+  await setupViaUi(page);
+
+  // Authenticated ciphertext whose ledger fails validation is unreadable, never a new empty ledger.
+  await seed(page, corrupt);
+  await expect(page.getByTestId('vault-unreadable')).toContainText('cannot be read');
+  await expect(page.getByTestId('vault-unreadable')).toContainText('not treated as an empty ledger');
+  await expect(page.getByRole('button', { name: 'Create case' })).toHaveCount(0);
+  expect(await page.evaluate(() => chrome.runtime.sendMessage({ kind: 'mutate', command: { type: 'loadDemo' } }))).toMatchObject({ ok: false, error: { code: 'storage_unreadable' } });
+  expect(await decryptedRaw(page)).toEqual(corrupt);
 });
 
 test('two open dashboards do not lose each other’s updates', async ({ session }) => {
@@ -217,10 +240,7 @@ test('two open dashboards do not lose each other’s updates', async ({ session 
   await expect(b.getByTestId('timeline-entry').filter({ hasText: 'You confirmed $30.00 received' })).toHaveCount(2);
 
   // Simultaneous writes from both pages are serialised by the service worker; none is lost.
-  const caseId = await a.evaluate(async (key) => {
-    const s = (await chrome.storage.local.get(key))[key] as { cases: { id: string }[] };
-    return s.cases[0]!.id;
-  }, STORE_KEY);
+  const caseId = ((await decryptedRaw(a)) as { cases: { id: string }[] }).cases[0]!.id;
   const itemId = await a.getByTestId('item').getAttribute('data-item-id');
   const send = (page: typeof a, id: string) =>
     page.evaluate(
@@ -251,9 +271,12 @@ test('deleting a case requires confirmation and removes its stored data', async 
   await page.getByRole('button', { name: 'Permanently delete' }).click();
   await expect(page.getByTestId('notice')).toHaveText('Case deleted.');
   await expect(page.getByTestId('case-row')).toHaveCount(1);
+  const ledger = JSON.stringify(await decryptedRaw(page));
+  expect(ledger).not.toContain('Secret label');
+  expect(ledger).toContain('Keep me');
+  // Neither label is readable in persistent storage.
   const raw = JSON.stringify(await page.evaluate(() => chrome.storage.local.get(null)));
-  expect(raw).not.toContain('Secret label');
-  expect(raw).toContain('Keep me');
+  expect(raw).not.toContain('Keep me');
 });
 
 test('synthetic demo is opt-in and visibly separate from real cases', async ({ session }) => {
@@ -327,7 +350,9 @@ test('a committed receipt whose reply is lost is shown as saved, not as a draft 
   await page.evaluate(() => {
     const original = chrome.runtime.sendMessage.bind(chrome.runtime) as (m: unknown) => Promise<unknown>;
     (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: unknown) => {
-      await original(message);
+      const reply = await original(message);
+      // Only the change's reply is lost; the page's reads still work.
+      if ((message as { kind?: string }).kind === 'read') return reply;
       throw new Error('Simulated lost reply');
     };
   });
@@ -353,7 +378,9 @@ test('an unconfirmed receipt keeps its input and a retry reuses the same ID, rec
   await page.evaluate(() => {
     const w = window as unknown as { __realSend: unknown };
     w.__realSend = chrome.runtime.sendMessage;
-    (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = () => Promise.reject(new Error('Simulated channel failure'));
+    const real = chrome.runtime.sendMessage.bind(chrome.runtime) as (m: unknown) => Promise<unknown>;
+    (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = (m: unknown) =>
+      (m as { kind?: string }).kind === 'read' ? real(m) : Promise.reject(new Error('Simulated channel failure'));
   });
   await itemCard(page, 'Monitor').getByRole('button', { name: 'Confirm money received' }).click();
   const form = page.getByTestId('entry-form');
@@ -372,8 +399,8 @@ test('an unconfirmed receipt keeps its input and a retry reuses the same ID, rec
   });
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('notice')).toHaveText('Entry saved.');
-  const stored = await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY);
-  const entries = (stored[STORE_KEY] as { cases: { id: string; entries: { id: string; kind: string; itemId: string; amountCents: number; occurredOn: null; source: string; note: string; reference: null }[] }[] }).cases[0]!;
+  const stored = await decryptedRaw(page);
+  const entries = (stored as { cases: { id: string; entries: { id: string; kind: string; itemId: string; amountCents: number; occurredOn: null; source: string; note: string; reference: null }[] }[] }).cases[0]!;
   const receipt = entries.entries.find((e) => e.kind === 'receipt')!;
   const again = await page.evaluate(
     ([caseId, entry]) => chrome.runtime.sendMessage({ kind: 'mutate', command: { type: 'recordEntry', caseId, entry } }),
@@ -384,21 +411,15 @@ test('an unconfirmed receipt keeps its input and a retry reuses the same ID, rec
   await expect(itemCard(page, 'Monitor').getByTestId('item-net')).toHaveText('$70.00');
 });
 
-// Scoped fault injection: only this dashboard page's chrome.storage.local.get
-// fails. The service worker (a separate context) keeps its real storage access.
+// Scoped fault injection: only this dashboard page's reads (its read requests
+// to the service worker) fail. Its changes and the worker are unaffected.
 async function setDashboardReadsBroken(page: import('@playwright/test').Page, broken: boolean): Promise<void> {
-  await page.evaluate((b) => {
-    const area = chrome.storage.local as unknown as { get: unknown };
-    const w = window as unknown as { __realGet?: unknown };
-    w.__realGet ??= area.get;
-    area.get = b ? () => Promise.reject(new Error('Simulated read failure')) : w.__realGet;
-  }, broken);
+  await overridePageReads(page, broken ? 'reject' : 'real');
 }
 
 async function workerReceipts(session: { context: import('@playwright/test').BrowserContext | null }) {
-  const [worker] = session.context!.serviceWorkers();
-  const stored = await worker!.evaluate((key) => chrome.storage.local.get(key), STORE_KEY);
-  const data = stored[STORE_KEY] as { cases: { entries: { kind: string; amountCents: number }[] }[] };
+  const worker = session.context!.serviceWorkers().at(-1)!;
+  const data = (await decryptedRaw(worker)) as { cases: { entries: { kind: string; amountCents: number }[] }[] };
   return data.cases.flatMap((c) => c.entries.filter((e) => e.kind === 'receipt'));
 }
 
@@ -439,7 +460,9 @@ test('a committed save with a lost reply while dashboard reads fail stays uncert
     const original = runtime.sendMessage.bind(chrome.runtime);
     w.__realSend = runtime.sendMessage;
     runtime.sendMessage = async (message: unknown) => {
-      await original(message); // reaches the real service worker, which writes storage
+      // Reads go to the (separately broken) read path; a change reaches the real worker and loses its reply.
+      if ((message as { kind?: string }).kind === 'read') return original(message);
+      await original(message);
       throw new Error('Simulated lost reply');
     };
   });

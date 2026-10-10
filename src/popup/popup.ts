@@ -2,6 +2,12 @@
 // the Amazon US tab the popup was opened on. Nothing is written until the user
 // explicitly approves a preview; closing or cancelling discards it. Every
 // page-derived value is rendered as literal text.
+//
+// Capture is available only while the ledger is unlocked. Until the service
+// worker confirms that, the popup does not look up the tab's address, read
+// any selection or inject anything; it only offers to open the dashboard.
+// The state is checked again when Capture is pressed and after the selection
+// is read, and a Lock or erase in another view discards any preview.
 
 import { acquireSelection, type AcquireDeps, type AcquireProblem } from '../capture/acquire';
 import { EXCERPT_MAX_CHARS, analyzeExcerpt, type ExcerptAnalysis, type NotIssuedReason, type UnsupportedReason } from '../capture/parse';
@@ -12,14 +18,14 @@ import { summarizeItem } from '../domain/reconcile';
 import type { CaptureOrigin, CaseRecord, RecordEntryCommand, StoreData } from '../domain/types';
 import type { Request } from '../background/messages';
 import { CAPTURE_SOURCE } from '../domain/validate';
-import { loadStore, type LoadResult } from '../persistence/storage';
+import type { LedgerState } from '../vault/state';
 import type { AppDeps } from '../ui/deps';
 import { h, replaceContent } from '../ui/dom';
 import { ITEM_STATUS_LABEL } from '../ui/labels';
 
 export interface PopupDeps extends AppDeps {
   acquire: AcquireDeps;
-  /** The tab the toolbar UI was opened on, resolved once when the popup opens. */
+  /** The tab the toolbar UI was opened on. Called at most once, and only after an unlocked read. */
   sourceTab(): Promise<{ id: number | null; url: string | undefined }>;
   openDashboard(hash: string): void;
   now(): string;
@@ -117,18 +123,39 @@ function caseTitle(c: CaseRecord): string {
 }
 
 export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: PopupDeps): void {
-  let load: LoadResult | { status: 'loading' } = { status: 'loading' };
+  let load: LedgerState | { status: 'loading' } = { status: 'loading' };
   let phase: Phase = { name: 'idle' };
   let notice: { tone: 'success' | 'error' | 'info'; text: string } | null = null;
-  /** Fixed for the life of this popup. */
+  /** Fixed for the life of this popup once resolved. */
   let source: { id: number | null; origin: string | null } | null = null;
-  const sourceReady = deps.sourceTab().then((tab) => {
-    const check = checkSourceUrl(tab.url);
-    source = { id: tab.id, origin: check.ok ? check.origin : null };
-  });
+  let sourceReady: Promise<void> | null = null;
+  /** Incremented whenever the ledger is seen not unlocked; work started before cannot show its result. */
+  let privacyEpoch = 0;
+
+  /** Looks up the tab's address once, and only while unlocked. */
+  function acquireSourceTab(): Promise<void> {
+    sourceReady ??= deps.sourceTab().then((tab) => {
+      const check = checkSourceUrl(tab.url);
+      source = { id: tab.id, origin: check.ok ? check.origin : null };
+    });
+    return sourceReady;
+  }
+
+  /** Sets the latest state; anything private is discarded unless the ledger is unlocked. */
+  function applyLoad(next: LedgerState): void {
+    load = next;
+    if (next.status !== 'ok' && next.status !== 'storage_error' && (phase.name !== 'idle' || notice !== null)) {
+      privacyEpoch += 1;
+      // The preview holds the selected text; a saved/failed phase names an item. Discard both.
+      phase = { name: 'idle' };
+      notice = null;
+      statusRegion.textContent = 'Your records are locked. Nothing from the page was kept.';
+    }
+    if (next.status === 'ok') void acquireSourceTab();
+  }
 
   async function reload(): Promise<void> {
-    load = await loadStore(deps.area);
+    applyLoad(await deps.read());
     // While a save is in flight its own reply decides. Afterwards, the
     // operation's id appearing in saved data means an uncertain save committed.
     if (phase.name === 'preview') {
@@ -155,10 +182,31 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
     notice = null;
     phase = { name: 'reading' };
     render();
-    await sourceReady;
+    // Checked again at the moment Capture is pressed: nothing is read or injected unless unlocked now.
+    const epoch = privacyEpoch;
+    const before = await deps.read();
+    applyLoad(before);
+    if (before.status === 'storage_error' && epoch === privacyEpoch) {
+      phase = { name: 'failed', message: 'Saved data can’t be read right now, so it can’t be checked that your records are unlocked. Nothing was read from the page.' };
+      render();
+      return;
+    }
+    if (before.status !== 'ok' || epoch !== privacyEpoch) {
+      phase = { name: 'idle' };
+      render();
+      return;
+    }
+    await acquireSourceTab();
     const result = await acquireSelection(deps.acquire, source?.id ?? null, source?.origin ?? null);
-    // Fresh case list for the assignment step.
-    load = await loadStore(deps.area);
+    // Fresh case list for the assignment step; a Lock meanwhile discards the selection unseen.
+    const after = await deps.read();
+    if (epoch !== privacyEpoch) return;
+    applyLoad(after);
+    if (after.status !== 'ok' && after.status !== 'storage_error') {
+      phase = { name: 'idle' };
+      render();
+      return;
+    }
     if (!result.ok) {
       phase = { name: 'failed', message: ACQUIRE_MESSAGE[result.problem] };
       render();
@@ -268,12 +316,20 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
     op.state = 'sending';
     p.op = op;
     render();
+    const epoch = privacyEpoch;
     const res = await deps.send(op.request);
+    if (epoch !== privacyEpoch) {
+      // Locked meanwhile: the preview is gone; say only what is known.
+      setNotice(res.ok ? 'success' : 'info', res.ok ? 'The report was saved before your records were locked.' : res.error.code === 'outcome_unknown' ? 'Your records were locked while the report was being saved, so its outcome is not known. Check in the dashboard after unlocking.' : 'Your records were locked; the report was not saved.');
+      render();
+      return;
+    }
     if (!res.ok && res.error.code === 'outcome_unknown') {
       // Never treat a lost reply as failure: look for this operation's own id.
       op.state = 'uncertain';
-      const check = await loadStore(deps.area);
-      load = check;
+      const check = await deps.read();
+      if (epoch !== privacyEpoch) return;
+      applyLoad(check);
       if (check.status === 'ok' && storeHasEntry(check.store, p.opId)) {
         markSaved(op, true);
       } else {
@@ -311,7 +367,27 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
     return h('button', { type: 'button', on: { click: () => deps.openDashboard(hash) } }, label);
   }
 
+  function renderLocked(state: Exclude<LedgerState, { status: 'ok' | 'storage_error' }>): Node {
+    const [text, label] =
+      state.status === 'locked'
+        ? ['Your records are locked. Unlock them in the dashboard to capture or record refund evidence.', 'Open dashboard to unlock']
+        : state.status === 'setup_required'
+          ? ['Protect your records with a passphrase in the dashboard before capturing anything.', 'Open dashboard to set up']
+          : state.status === 'migration_required' || state.status === 'migration_pending'
+            ? ['Your existing records must be encrypted before they can be used. Continue in the dashboard.', 'Open dashboard to protect your records']
+            : ['Stored records need attention. Open the dashboard for details.', 'Open dashboard'];
+    return h(
+      'div',
+      { 'data-testid': 'popup-locked', 'data-state': state.status },
+      h('p', {}, text),
+      h('p', { class: 'muted small' }, 'Nothing on this page has been read.'),
+      h('div', { class: 'actions' }, h('button', { type: 'button', class: 'primary', on: { click: () => deps.openDashboard('') } }, label)),
+    );
+  }
+
   function renderBody(): Node {
+    if (load.status === 'loading') return h('p', { class: 'muted' }, 'Checking whether your records are unlocked…');
+    if (load.status !== 'ok' && load.status !== 'storage_error') return renderLocked(load);
     switch (phase.name) {
       case 'idle':
       case 'reading':

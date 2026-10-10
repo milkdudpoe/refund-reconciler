@@ -3,8 +3,10 @@
 A local Chrome extension (Manifest V3) that helps you see which return/refund
 records are unresolved or contradictory, item by item.
 
-> **Status: beta 0.6.0 (Task 06), a local preview, not a validated
-> product.** You can enter evidence manually, or highlight a refund line on an
+> **Status: beta 0.7.0 (Task 09), a local preview, not a validated
+> product.** The saved ledger is **encrypted** with a key protected by a
+> passphrase you choose (see [docs/vault.md](docs/vault.md)); there is no
+> recovery service, and exports stay unencrypted. You can enter evidence manually, or highlight a refund line on an
 > Amazon US page and approve a previewed merchant-report snapshot (see
 > [docs/capture.md](docs/capture.md)). You can copy or download a plain-text
 > case summary to use when contacting support yourself, download a JSON copy
@@ -17,7 +19,9 @@ records are unresolved or contradictory, item by item.
 > against synthetic fixtures, not real Amazon refund wording. The owner
 > reported (2026-10-10, desktop Chrome 154) that a real toolbar click on the
 > public amazon.com home page gave access, refused ordinary selected text and
-> saved nothing; this was not independently reproduced. Real refund wording
+> saved nothing; this was not independently reproduced, and it was 0.6.0:
+> the 0.7.0 popup, which reads nothing while locked, still needs a new
+> owner-operated toolbar check. Real refund wording
 > and updating through Chrome's extensions UI remain **untested** (see
 > [docs/validation.md](docs/validation.md)).
 > There is no automatic reconciliation, whole-page extraction or history
@@ -45,14 +49,14 @@ npm run build       # Vite build of the extension into dist/
 npm run test:e2e    # build, then Playwright tests against the real unpacked extension
 npm run package:beta  # fresh build + verified beta ZIP in artifacts/beta/ (see docs/beta.md)
 npm run test:package  # package:beta, then smoke-test the extracted ZIP in Chromium
-npm run test:update   # package:beta, then update 0.5.0 (built from its own source) in place to that ZIP
+npm run test:update   # package:beta, then update 0.5.0 and 0.6.0 (each built from its own source) in place to that ZIP
 npm run icons       # re-render public/icons/*.png from assets-src/*.svg (after editing the SVGs)
 npm run check       # typecheck, lint, unit, browser, package and update tests
 ```
 
 ## Beta package
 
-`npm run package:beta` writes `artifacts/beta/refund-reconciler-beta-0.6.0.zip`
+`npm run package:beta` writes `artifacts/beta/refund-reconciler-beta-0.7.0.zip`
 (manifest at the ZIP root, production files only), its `.sha256` checksum and
 a `.report.json` inventory with the source commit. The archive is read back
 and verified before it is kept; CI saves all three as the
@@ -65,10 +69,37 @@ explanation are in [docs/beta.md](docs/beta.md).
 **Chrome Web Store drafts (not a release).** [docs/store/](docs/store/readiness.md)
 holds a readiness assessment, listing text, a draft privacy policy and draft
 dashboard privacy answers. They are unpublished drafts with pending publisher
-fields. The assessment identifies unresolved privacy and security questions
-(unencrypted stored financial evidence, and in-product consent before
-capture) that block submission; see
+fields. 0.7.0 implements the at-rest encryption the assessment recommended;
+in-product disclosure and consent before capture, publisher inputs, a hosted
+policy and store images are still pending and block submission; see
 [docs/store/readiness.md](docs/store/readiness.md).
+
+## Protect, unlock and lock your records
+
+The first time you open the dashboard, **Protect your records** asks for a
+passphrase (at least 12 characters, used exactly as typed) and a ticked
+acknowledgment that it cannot be recovered. Nothing can be created, captured
+or restored before that. The saved ledger is then encrypted
+(PBKDF2-HMAC-SHA-256 with 600,000 iterations wraps a random AES-256-GCM key;
+details in [docs/vault.md](docs/vault.md)).
+
+- You need the passphrase again after Chrome restarts, after the extension is
+  reloaded or updated, and after **Lock now** (top of the dashboard). Lock
+  clears every open dashboard and the popup at once.
+- While locked, the dashboard shows only **Unlock**, help and recovery, and
+  the toolbar popup only offers **Open dashboard to unlock**; it does not look
+  at the page.
+- **Forgot your passphrase?** There is no recovery service and no reset.
+  **Erase stored data…** (type `ERASE`) removes the stored records; then set
+  a new passphrase and restore a JSON backup you saved earlier.
+- **Updating from 0.5.0 or 0.6.0:** your existing records stay exactly as
+  they are until you choose a passphrase on **Protect your existing
+  records**. You can first download them as a plaintext JSON backup. The
+  encrypted copy is checked against them field by field before the plaintext
+  copy is removed. Older plaintext may remain in Chrome's own files, and
+  backups you saved earlier stay readable.
+- Encryption does not protect records while they are unlocked, against
+  malware on the computer, or with an easily guessed passphrase.
 
 ## Install the unpacked extension (developers)
 
@@ -84,8 +115,9 @@ Testers using a built ZIP: see [docs/beta.md](docs/beta.md#for-testers-install-a
 
 ## Capture a refund line from Amazon US
 
-Highlight the refund line for one item on an `https://www.amazon.com` page
-(for example `Refund issued: $35.00`), click the toolbar button, and choose
+While your records are unlocked, highlight the refund line for one item on
+an `https://www.amazon.com` page (for example `Refund issued: $35.00`), click
+the toolbar button, and choose
 **Capture selected refund text**. Check the preview, choose the case and item
 yourself, confirm the amount applies to that item, and choose **Save merchant
 report**. Nothing is stored before you save. The supported wording, the
@@ -148,8 +180,9 @@ all data (JSON):
 - You see a preview (export time, versions, counts, the case list, demo
   labels; notes, references and excerpts collapsed) before anything is saved.
   Choosing or previewing a file writes nothing.
-- **Only into an empty ledger.** Any existing case, including synthetic demo
-  cases, blocks restore; corrupt or unreadable saved data blocks it too.
+- **Only into an empty, unlocked ledger.** Any existing case, including
+  synthetic demo cases, blocks restore; locked, corrupt or unreadable saved
+  data blocks it too. On a new installation, set a passphrase first.
   Restore never merges, replaces, deletes or clears existing cases. Delete
   cases yourself first if you really want to replace them.
 - Restore writes every original case, item and entry unchanged (ids, times,
@@ -170,7 +203,7 @@ Retry, erase and compatibility details, and exactly what was tested, are in
 
 | Permission | Why |
 | --- | --- |
-| `storage` | Saves your cases in `chrome.storage.local` in this browser profile. |
+| `storage` | Saves your encrypted ledger in `chrome.storage.local`, and the unlocked key in memory-only `chrome.storage.session`, in this browser profile. |
 | `activeTab` | Clicking the toolbar button grants temporary access to the current tab only; it ends when you leave the page. |
 | `scripting` | After you choose Capture, runs one bundled function in that tab to read the selected text and page URL. |
 
@@ -178,10 +211,12 @@ No host permissions, no `tabs` permission, no declared content scripts, no
 background scanning, network requests, analytics, remote code or model calls.
 All JavaScript is bundled into `dist/`. Only `https://amazon.com` and
 `https://www.amazon.com` pages can be captured. Page code cannot access the
-ledger, because the service worker restricts `chrome.storage.local` to trusted
-extension contexts.
+ledger, because the service worker restricts `chrome.storage.local` and
+`chrome.storage.session` to trusted extension contexts (and refuses to work
+if it cannot).
 
-**What is stored:** one key, `refundReconciler.store`, containing your cases:
+**What is stored:** the encrypted vault `refundReconciler.vault`, whose
+ciphertext contains your cases:
 optional order reference, item descriptions, expected amounts, and every
 merchant report, receipt confirmation, recharge, void and expected-amount edit
 you enter (amounts, optional dates, references, sources, notes and the time
@@ -190,9 +225,16 @@ you approved (at most 4,000 characters), the page origin and a sanitised path
 (tracking segments, fragments and all query parameters except a valid order
 ID are dropped), the capture time, the parser version and the approved amount
 text. The page's HTML, cookies, screenshots and anything you did not select
-are never collected. Nothing from a capture is stored until you approve it. Data stays in this browser profile and is **not
-encrypted** by the extension; anyone with access to the profile can read it.
-It is not synced (`chrome.storage.sync` is not used).
+are never collected. Nothing from a capture is stored until you approve it. Data stays in this browser profile,
+**encrypted** under a key protected by your passphrase; the passphrase is
+never stored. Next to the ciphertext are only nonprivate records: the vault
+format, KDF parameters and IVs, a migration progress marker while a migration
+runs, and a random erase marker after an erase. While unlocked, the data key
+is kept in memory-only `chrome.storage.session` (cleared when Chrome
+restarts or the extension is reloaded or updated). Versions before 0.7.0
+stored the ledger in plaintext under `refundReconciler.store`; that key is
+read only to migrate it and is removed after a verified migration. It is not
+synced (`chrome.storage.sync` is not used).
 
 **Restore:** a backup file is read only after you choose it in the file
 input, kept in the open panel's memory, and written only when you choose
@@ -200,19 +242,21 @@ Restore (into an empty ledger). Its text is shown as text only and is never
 executed or logged.
 
 **Exports:** case summaries and JSON data copies are created only when you
-click Copy or Download. Downloaded files are ordinary unencrypted files that
-the extension cannot track or delete. No `downloads` or clipboard permission
+click Copy or Download while unlocked. Downloaded files and copied text are
+ordinary **unencrypted** plaintext that the extension cannot track or delete. No `downloads` or clipboard permission
 is used.
 
 **What is deleted:**
 - *Delete case…* → *Permanently delete* removes that case, its items and all
   its evidence from storage.
 - *Remove synthetic demo* removes only the demo cases.
-- If stored data is unreadable or from an unsupported version, the dashboard
-  shows it read-only and blocks changes. *Erase stored data…* → *Permanently
-  erase* replaces everything with an empty ledger that keeps only a random
-  erase marker (`ledgerEpoch`, no user data), so restore approvals made before
+- If stored data is locked, unreadable, inconsistent or from an unsupported
+  version, the dashboard blocks changes. *Erase stored data…* → type `ERASE`
+  → *Permanently erase* removes the vault, any plaintext ledger and the
+  migration marker, revokes the session, and leaves only a random erase
+  marker (no user data), so restore approvals and session keys from before
   the erase can never apply afterwards; nothing is erased automatically.
+  There is no "erase all" for unlocked, readable data.
 - Removing the extension from Chrome deletes all of its stored data.
 
 ## Project layout
@@ -221,8 +265,9 @@ is used.
 src/domain/       pure model, money parsing, derivations, overview/finder, ledger, restore decision, runtime validation
 src/capture/      source checks, page collector, acquisition, deterministic excerpt parser
 src/export/       pure case-summary text, JSON backup envelope, size bound and payload digest
-src/persistence/  chrome.storage.local read/write (validated, never auto-reset)
-src/background/   service worker: message validation + serialised writes
+src/vault/        encrypted envelope format, WebCrypto boundary, passphrase rules, ledger states
+src/persistence/  storage keys and the chrome.storage bindings used by the service worker
+src/background/   service worker: message validation, the vault (setup, unlock, Lock, migration, erase), serialised reads and writes
 src/ui/           dashboard (plain TS + CSS, text-only rendering)
 src/popup/        toolbar popup: Open dashboard, capture preview and approval
 public/manifest.json, public/icons/   manifest and generated PNG icons
@@ -232,11 +277,13 @@ tests/unit/       Vitest
 tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,
                   synthetic Amazon-like fixtures served in-browser, no network)
 tests/package/    smoke test of the extracted beta ZIP
-docs/             product scope, data model, capture, export, restore, beta
+docs/             product scope, data model, vault, capture, export, restore, beta
 ```
 
 See [docs/product-scope-and-data-model.md](docs/product-scope-and-data-model.md)
-for the derivation rules, limitations and next milestone, and
+for the derivation rules, limitations and next milestone,
+[docs/vault.md](docs/vault.md) for the encrypted storage format, key
+lifecycle, migration and threat model, and
 [docs/capture.md](docs/capture.md) for the capture flow, parser patterns and
 what was or was not verified, [docs/export.md](docs/export.md) for the
 summary and backup formats, [docs/restore.md](docs/restore.md) for

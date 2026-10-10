@@ -4,7 +4,7 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BASELINE_COMMIT, BASELINE_VERSION, FETCH_HINT } from '../update/baseline';
+import { BASELINES, BASELINE_050, BASELINE_060, fetchHint } from '../update/baseline';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
@@ -18,28 +18,39 @@ function stepIndex(workflow: string, step: string): number {
 }
 
 describe('update check wiring', () => {
-  it('pins an immutable full commit id and the previous production version', () => {
-    expect(BASELINE_COMMIT).toMatch(/^[0-9a-f]{40}$/);
-    expect(BASELINE_VERSION).toBe('0.5.0');
+  it('pins immutable full commit ids of the two earlier production versions', () => {
+    expect(BASELINES.map((b) => b.version)).toEqual(['0.5.0', '0.6.0']);
+    expect(BASELINE_050.commit).toBe('b323930f7d9580f426e7e8fee39b4242143c4844');
+    expect(BASELINE_060.commit).toBe('60e330b12d195908a44ad341a73e34678a5a697d');
+    for (const b of BASELINES) expect(b.commit).toMatch(/^[0-9a-f]{40}$/);
   });
 
-  it('CI fetches that exact commit and then runs npm run test:update, in LF and CRLF checkouts', async () => {
+  it('CI fetches every baseline commit before each npm run test:update, in LF and CRLF checkouts', async () => {
     const ci = await readFile(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
     const lf = ci.replace(/\r\n/g, '\n');
     for (const text of [lf, lf.replace(/\n/g, '\r\n')]) {
-      const fetchAt = stepIndex(text, `run: ${FETCH_HINT}`);
-      const runAt = stepIndex(text, 'run: npm run test:update');
-      expect(fetchAt).toBeGreaterThan(0);
-      expect(runAt).toBeGreaterThan(fetchAt);
+      const lines = text.split(/\r?\n/);
+      const runs = lines.flatMap((l, i) => (l.trim().replace(/^- /, '') === 'run: npm run test:update' ? [i] : []));
+      // Ubuntu and Windows jobs both run the check.
+      expect(runs).toHaveLength(2);
+      for (const b of BASELINES) {
+        const fetches = lines.flatMap((l, i) => (l.trim().replace(/^- /, '') === `run: ${fetchHint(b)}` ? [i] : []));
+        expect(fetches, b.version).toHaveLength(2);
+        expect(fetches[0]!).toBeLessThan(runs[0]!);
+        expect(fetches[1]!).toBeGreaterThan(runs[0]!);
+        expect(fetches[1]!).toBeLessThan(runs[1]!);
+      }
+      expect(stepIndex(text, 'run: npm run test:update')).toBeGreaterThan(0);
     }
   });
 
   it('matches whole logical lines only', () => {
-    const steps = `      - name: x\r\n        run: ${FETCH_HINT}\r\n      - run: npm run test:update\r\n`;
-    expect(stepIndex(steps, `run: ${FETCH_HINT}`)).toBe(1);
+    const hint = fetchHint(BASELINE_060);
+    const steps = `      - name: x\r\n        run: ${hint}\r\n      - run: npm run test:update\r\n`;
+    expect(stepIndex(steps, `run: ${hint}`)).toBe(1);
     expect(stepIndex(steps, 'run: npm run test:update')).toBe(2);
-    expect(stepIndex(`        run: ${FETCH_HINT} extra\n`, `run: ${FETCH_HINT}`)).toBe(-1);
-    expect(stepIndex(`        run: ${FETCH_HINT.replace(BASELINE_COMMIT, BASELINE_COMMIT.slice(0, 7))}\n`, `run: ${FETCH_HINT}`)).toBe(-1);
+    expect(stepIndex(`        run: ${hint} extra\n`, `run: ${hint}`)).toBe(-1);
+    expect(stepIndex(`        run: ${hint.replace(BASELINE_060.commit, BASELINE_060.commit.slice(0, 7))}\n`, `run: ${hint}`)).toBe(-1);
   });
 
   it('npm run test:update packages the beta first and uses its own Playwright config', async () => {

@@ -1,11 +1,10 @@
 # Chrome Web Store listing (draft)
 
-> **Draft, not submitted.** This text describes beta 0.6.0 as it is built
+> **Draft, not submitted.** This text describes beta 0.7.0 as it is built
 > today. Do not submit it until the open items in
-> [readiness.md](readiness.md) are resolved, especially encryption at rest
-> and in-product consent. Once those are implemented, update the text below,
-> including every "not encrypted" statement. No customers, testimonials,
-> pricing, affiliations or results are claimed.
+> [readiness.md](readiness.md) are resolved, especially the in-product
+> disclosure and consent step (encryption at rest is implemented in 0.7.0).
+> No customers, testimonials, pricing, affiliations or results are claimed.
 
 ## Name
 
@@ -21,8 +20,8 @@ manifest.
 > money you confirmed. Stored in your browser, never sent.
 
 Length: 127 characters (counted with a script). The current manifest `description` is different
-("Beta: manually record refund evidence for each returned item and track
-what is still unresolved, kept locally in this browser."; 126 characters).
+("Beta: manually record refund evidence per returned item and track what is
+unresolved, kept locally and encrypted by passphrase."; 127 characters).
 If the dashboard takes the summary from the manifest, this text can only be
 used after a later manifest change. Whether it does was **not verified**,
 because no developer account was used.
@@ -58,9 +57,10 @@ between items.
 
 **Optional: capture a refund line from an Amazon US page (preview)**
 
-On `amazon.com` or `www.amazon.com`, you can highlight the refund line for
-one item, click the toolbar button and choose **Capture selected refund
-text**. The extension reads only the highlighted text and the page address,
+While your records are unlocked, on `amazon.com` or `www.amazon.com`, you
+can highlight the refund line for one item, click the toolbar button and
+choose **Capture selected refund text**. The extension reads only the
+highlighted text and the page address,
 and shows a preview of the amount it found. Nothing is saved until you
 choose the case and item, confirm that the amount is for that one item, and
 approve. If you approve, it saves the highlighted text and a shortened page
@@ -79,21 +79,27 @@ manually instead.
   and captured text are left out unless you include them.
 - **Download all data (JSON)** saves a complete backup file. **Restore from
   JSON** brings a backup back into a dashboard that has no cases.
-- Backups and summaries are ordinary, unencrypted files. Keep them safe.
+- Backups, summaries and copied text are ordinary, unencrypted plaintext.
+  Keep them safe.
 
 **Where your data is kept**
 
 Everything stays in this Chrome profile, in the extension's local storage.
 There is no account, server, sync, analytics or advertising, and the
-developer receives none of your data. Stored records are **not encrypted**
-in this version, so anyone with access to this browser profile can read
-them. Removing the extension deletes its stored data, so download a backup
-first if you want to keep it. See the privacy policy for details.
+developer receives none of your data. Stored records are **encrypted** with
+a key protected by a passphrase you choose; you need it after Chrome
+restarts, after updates and after **Lock now**. **There is no recovery
+service:** a forgotten passphrase means erasing the records and restoring a
+backup you saved. Encryption does not protect records while they are
+unlocked, against malware, or with a weak passphrase, and plaintext left by
+versions before 0.7.0 may remain in Chrome's files. Removing the extension
+deletes its stored data, so download a backup first if you want to keep it.
+See the privacy policy for details.
 
 Scope: Amazon US orders in US dollars. Refund Reconciler is independent and
 is not affiliated with or endorsed by Amazon.
 
-**Permissions:** `storage` (keeps your records in this browser),
+**Permissions:** `storage` (keeps your encrypted records in this browser),
 `activeTab` (after you click the toolbar button, temporary access to that
 one tab) and `scripting` (after you choose Capture, reads the selected text
 on that tab). There are no host permissions, no background page access and
@@ -106,8 +112,12 @@ below is synthetic.
 
 1. Install the extension and pin **Refund Reconciler** from the puzzle-piece
    menu.
-2. Click the toolbar icon, then **Open dashboard**. The **How to use Refund
-   Reconciler** guide at the top explains the workflow.
+2. Click the toolbar icon, then **Open dashboard to set up**. On **Protect
+   your records**, enter any test passphrase of at least 12 characters (for
+   example `reviewer test phrase 01`) twice, tick the acknowledgment and
+   choose **Protect my records**. The **How to use Refund Reconciler** guide
+   at the top explains the workflow. **Lock now** locks the records; the
+   same passphrase unlocks them.
 3. Optional quick look: at the bottom of the case list, choose **Load
    synthetic demo**. Two clearly labelled fake cases appear, kept out of
    your totals. **Remove synthetic demo** deletes them again.
@@ -128,7 +138,8 @@ below is synthetic.
 6. Restore: delete all cases (**Delete case…** on each, and **Remove
    synthetic demo**), then use **Restore from a JSON backup…** with the file
    from step 5.
-7. Capture (optional, no account needed): open `https://www.amazon.com`,
+7. Capture (optional, no account needed; the records must be unlocked):
+   open `https://www.amazon.com`,
    highlight any ordinary text (for example a product name), click the
    toolbar icon and choose **Capture selected refund text**. Expected:
    **Cannot propose a report from this selection**, with a reason. Choose

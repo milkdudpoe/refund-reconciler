@@ -1,18 +1,57 @@
-# Beta 0.6.0 validation record
+# Beta validation record
 
-What has and has not been checked for the 0.6.0 beta. Synthetic data only;
-no private data, browser profiles or backups are kept in this repository.
-This is not commercial validation, evidence of customer demand or Chrome Web
-Store approval.
+What has and has not been checked for the beta. Synthetic data only; no
+private data, browser profiles, passphrases or backups are kept in this
+repository. This is not commercial validation, evidence of customer demand
+or Chrome Web Store approval.
 
-## Current status (as of 2026-10-10)
+## Current status (as of 2026-10-10, version 0.7.0)
 
 | Check | Status | Source |
 | --- | --- | --- |
-| Automated suites, extracted-ZIP smoke test, same-installation update (bundled Chromium) | pass | [Task 07](#task-07-2026-10-10) |
-| Toolbar access on the public amazon.com home page (desktop Chrome) | **pass, owner-reported** (not independently reproduced) | [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
+| Automated suites, extracted-ZIP smoke test, same-installation updates 0.5.0 → 0.7.0 and 0.6.0 → 0.7.0 (bundled Chromium) | pass | [Task 09](#task-09-070-encrypted-ledger-2026-10-10) |
+| Toolbar access on the public amazon.com home page (desktop Chrome), **0.7.0** | **not run**: the popup changed (it reads nothing until unlocked), so a new owner-operated check is needed | — |
+| Toolbar access, **0.6.0** (context only) | pass, owner-reported (not independently reproduced) | [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
 | Real Amazon refund wording (optional) | **untested** | — |
 | Update in place through the `chrome://extensions` UI (optional) | **untested** | — |
+
+## Task 09: 0.7.0 encrypted ledger (2026-10-10)
+
+- **Runtime change:** the ledger is encrypted at rest; setup, unlock, Lock
+  now, typed erase and migration of 0.5.0/0.6.0 data were added
+  ([vault.md](vault.md)). Version 0.7.0. Permissions unchanged (`storage`,
+  `activeTab`, `scripting`).
+- **Environments (local runs):** Linux cloud container (Intel Xeon 2.1 GHz,
+  4 vCPU), Node 22.22.0, Playwright 1.56.1 with **bundled Chromium
+  141.0.7390.37 (build 1194)**, LF checkout. CI runs on `ubuntu-latest` and
+  `windows-latest` are recorded in the Task 09 pull request.
+
+| Check | Linux (local) | Notes |
+| --- | --- | --- |
+| Typecheck, lint | pass | |
+| Unit tests (`npm test`) | **369 passed** (was 320) | +49: envelope/crypto (10), handler rewritten for the vault (19 instead of 10), migration fault injection (31), restore/capture handler tests ported to the vault; Windows skips the existing symlink test as before |
+| Browser suite (`npm run test:e2e`) | **96 passed** (was 87) | the 87 earlier tests adapted to set up/unlock through the real UI, plus 9 in `tests/e2e/vault.spec.ts` |
+| Extracted-ZIP smoke test (`npm run test:package`) | 1 passed | now also sets up, locks and unlocks |
+| Same-installation updates (`npm run test:update`) | **2 passed** (was 1) | 0.5.0 (`b323930`) and 0.6.0 (`60e330b`), each built from its own source and lockfile |
+
+How the earlier browser tests were adapted (disclosed): every fresh profile
+completes **Protect your records** through the real dashboard with a
+synthetic passphrase (`tests/e2e/fixtures.ts` `openDashboard`); tests that
+seeded storage now write vault ciphertext with an independent test-side
+encoder, and read stored data with a matching decoder, using the data key
+from the session record the extension wrote (`tests/e2e/vault-helpers.ts`);
+page-level faults wrap only the page's own runtime messages (reads
+separately from changes). Behaviour that changed on purpose is asserted as
+changed, not removed: an erase in another view now closes an open restore
+panel (the late reply cannot reopen it), and the popup refuses to read a
+page when it cannot confirm the records are unlocked. No production test
+hook or extra host grant was added; capture tests still use a temporary
+test copy with fixture-only host access, as before.
+
+KDF timing (reported, not asserted; production work factor):
+Node — setup 144 ms, unlock 107 ms; bundled Chromium click-to-unlocked —
+setup 416–421 ms, unlock 422 ms, both in the container above. Not measured
+on users' computers.
 
 ## Task 08: owner-reported toolbar check (reported 2026-10-10)
 
@@ -102,7 +141,7 @@ and left no Chromium process running. Windows CI shows the passing run on
 Windows. The failure-path check itself was run on Linux only.
 
 The update check is described in
-[beta.md](beta.md#update-check-050-to-this-beta-in-the-same-installation).
+[beta.md](beta.md#update-checks-050-and-060-to-this-beta-in-the-same-installation).
 In short, in bundled Chromium: 0.5.0 built from its own source
 (`b323930`) was loaded from one temp folder, populated with a rich synthetic
 ledger, and updated in place to the extracted beta ZIP with an **extension
@@ -128,15 +167,19 @@ Check a ZIP only against the checksum that came with it.
 
 ## Reusable manual toolbar checklist
 
-The owner-reported result above covers this check for the 0.6.0 beta. Keep
-the checklist for future builds (for example after a permission, manifest or
-popup change) or for another Chrome version. It needs desktop Chrome and no
+The owner-reported result above covers this check for the 0.6.0 beta only.
+**0.7.0 changed the popup, so this check must be run again for 0.7.0.**
+Keep the checklist for future builds (for example after a permission,
+manifest or popup change) or for another Chrome version. It needs desktop Chrome and no
 account (details in
 [beta.md, Check 1](beta.md#check-1-the-actual-toolbar-grant-no-account-or-private-data-needed)):
 
 1. New, temporary Chrome profile. `chrome://extensions` → Developer mode →
    **Load unpacked** the extracted CI beta ZIP (check it against the
-   `.sha256` that came with it). Pin the icon.
+   `.sha256` that came with it). Pin the icon. From 0.7.0: open the
+   dashboard and complete **Protect your records** with a throwaway
+   passphrase; optionally first confirm that, before setup, the toolbar
+   panel only offers to open the dashboard.
 2. Open `https://www.amazon.com` (not signed in). Highlight a short piece of
    ordinary text.
 3. Click the toolbar icon → **Capture selected refund text**.

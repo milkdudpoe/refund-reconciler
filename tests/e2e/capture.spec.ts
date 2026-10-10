@@ -6,6 +6,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DIST, createCase, itemCard, recordForItem } from './fixtures';
+import { migrateViaUi } from './vault-helpers';
 import { ORDER_A, ORDER_B, ORDER_PAGE, approveAndSave, assign, capture, expect, openPopup, openSource, pageFor, selectBlock, storedEntries, storedRaw, test } from './capture-fixtures';
 
 test('production build: only storage, activeTab and scripting; no host access without a user grant', async ({ production }) => {
@@ -18,6 +19,8 @@ test('production build: only storage, activeTab and scripting; no host access wi
   expect(shipped.content_scripts).toBeUndefined();
   expect(shipped.action.default_popup).toBe('popup.html');
 
+  // Records are protected first (Capture is only offered while they are unlocked).
+  await (await production.openDashboard()).close();
   const { page, tabId, windowId } = await openSource(production);
   await selectBlock(page, 'issued-70');
   const popup = await openPopup(production, windowId);
@@ -38,7 +41,7 @@ test('production build: only storage, activeTab and scripting; no host access wi
     }
   }, tabId);
   expect(direct).toMatch(/^refused: /);
-  expect(await storedRaw(production)).toBeUndefined();
+  expect(await storedRaw(production)).toEqual({ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: expect.any(String) });
 
   // Open dashboard stays available from the toolbar UI.
   const dashPromise = production.context!.waitForEvent('page', (p) => p.url().endsWith('/dashboard.html'));
@@ -311,6 +314,8 @@ test('a lost reply and approval retries keep one observation; a rejected write k
   await popup.evaluate(() => {
     const original = chrome.runtime.sendMessage.bind(chrome.runtime) as (m: unknown) => Promise<unknown>;
     (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: unknown) => {
+      // Only the save's reply is lost; the popup's reads of saved data still work.
+      if ((message as { kind?: string }).kind === 'read') return original(message);
       await original(message);
       throw new Error('Simulated lost reply');
     };
@@ -380,6 +385,7 @@ test('page-derived text is rendered literally in the preview and the timeline', 
 });
 
 test('with no real case, the popup routes to case creation; nothing is saved', async ({ granted }) => {
+  await (await granted.openDashboard()).close();
   const { page, windowId } = await openSource(granted);
   await selectBlock(page, 'issued-70');
   const popup = await openPopup(granted, windowId);
@@ -389,7 +395,7 @@ test('with no real case, the popup routes to case creation; nothing is saved', a
   await popup.getByRole('button', { name: 'Create a case in the dashboard' }).click();
   const dash = await dashPromise;
   await expect(dash.getByRole('heading', { name: 'Create case' })).toBeVisible();
-  expect(await storedRaw(granted)).toBeUndefined();
+  expect(await storedRaw(granted)).toEqual({ schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: expect.any(String) });
 });
 
 test('the capture collector cannot reach ledger storage from the page', async ({ granted }) => {
@@ -431,9 +437,11 @@ test('existing schema-1 data stays readable and captured evidence is appended wi
       },
     ],
   };
-  const dash = await granted.openDashboard();
+  // An earlier version's plaintext ledger in a profile that never set up a vault, migrated through the real UI.
+  const dash = await granted.openDashboard({ unlock: false });
   await dash.evaluate((value) => chrome.storage.local.set({ 'refundReconciler.store': value }), legacy);
   await dash.reload();
+  await migrateViaUi(dash);
   await dash.getByTestId('case-row').click();
   await expect(itemCard(dash, 'Legacy item').getByTestId('item-reported')).toHaveText('$35.00');
 
@@ -448,4 +456,5 @@ test('existing schema-1 data stays readable and captured evidence is appended wi
   const stored = (await storedRaw(granted)) as typeof legacy;
   expect(stored.cases[0]!.entries.slice(0, 2)).toEqual(legacy.cases[0]!.entries);
   expect(stored.cases[0]!.entries).toHaveLength(3);
+  expect(await dash.evaluate(() => chrome.storage.local.get('refundReconciler.store'))).toEqual({});
 });

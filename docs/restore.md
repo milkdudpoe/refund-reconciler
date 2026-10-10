@@ -4,12 +4,15 @@ Restore recovers saved evidence from a JSON file made with **Download all data
 (JSON)** (see [export.md](export.md)), for example in a fresh browser profile.
 It is deliberately narrow:
 
-- it writes only into a ledger that has **no cases** (not even synthetic demo
-  cases);
+- it writes only into an **unlocked** ledger that has **no cases** (not even
+  synthetic demo cases). From 0.7.0 a new installation must complete
+  **Protect your records** first, and the restored records are written into
+  the encrypted vault ([vault.md](vault.md)); the backup file itself stays
+  plaintext;
 - it never merges with, replaces, deletes or clears existing cases, and there
   is no erase-and-restore shortcut. To empty a ledger on purpose, use the
   existing **Delete case…** and **Remove synthetic demo** controls (or, only for
-  unreadable data, **Erase stored data…**) first;
+  unreadable or locked data, **Erase stored data…**) first;
 - it uses no network, no new permission and no backend. All code is bundled.
 
 Code: `src/domain/validate.ts` (`parseBackupEnvelope`, optional `lastRestore`
@@ -224,14 +227,22 @@ a never-written profile stays without a key until a real write.
 - **Deleting restored cases** (or removing the demo) keeps `lastRestore` in the
   ledger, so a delayed retry of that operation is answered `duplicate` and
   nothing is resurrected.
-- **Erase stored data** removes the receipt with everything else and writes a
-  new `ledgerEpoch`. The worker refuses every request approved before the
-  erase (`restore_stale`), whether it is a retry, a verbatim replay of a
-  committed request, or a first request whose delivery was delayed. The
-  dashboard additionally withdraws an uncertain operation without resending if
-  saved data changed after it was sent and its receipt is not there. A new
-  restore requires a fresh destination read and a new click (new operation id
-  and the post-erase token); it applies once.
+- **Erase stored data** (0.7.0: typed `ERASE`, available while locked or
+  unreadable) removes the vault with its receipt, revokes the session and
+  writes a fresh erase marker; the next **Protect your records** creates a new
+  vault whose ledger carries that marker as its `ledgerEpoch`. The worker
+  refuses every request approved before the erase (`restore_stale`), whether
+  it is a retry, a verbatim replay of a committed request, or a first request
+  whose delivery was delayed. The dashboard additionally withdraws an
+  uncertain operation without resending if saved data changed after it was
+  sent and its receipt is not there. From 0.7.0, an erase or Lock in any view
+  also **closes every open restore panel at once** (with the chosen file's
+  contents and any approval), so a late reply never reopens it; a restore the
+  worker already committed is not undone. A new restore requires a fresh
+  destination read and a new click (new operation id and the post-erase
+  token); it applies once.
+- **Tokens from 0.7.0.** A protected ledger always exists, so its approval
+  token is `{ revision, stored: true, epoch }` with the vault's own epoch.
 
 ## What was tested
 
@@ -311,22 +322,33 @@ requests captured from the real Restore UI and replayed unchanged:
 These tests were checked to fail with the pre-04.1 code (key removal on
 erase, and the old completion handling).
 
-Not tested: an isolated service-worker termination while the browser keeps
-running (the DevTools `stopAllWorkers` command also closed the test page in
-this harness). Unit tests recreate the handler over the same storage, and one
-browser test relaunches the whole browser with the same profile; neither is the
-same as terminating only the worker. The worker keeps no restore state in
-memory; recognition and erase protection rely only on stored data. Tests ran on
-Linux Chromium only; Windows was not run.
+Service-worker termination: in Task 09 an isolated worker stop through the
+DevTools protocol (`ServiceWorker.stopAllWorkers`, confirmed by Chrome's own
+running-status events) was exercised for the vault session in
+`tests/e2e/vault.spec.ts`; the restore tests themselves still model a restart
+by recreating the handler (unit) or relaunching the browser. The worker keeps
+no restore state in memory; recognition and erase protection rely only on
+stored data. The restore browser tests ran on Linux Chromium only; Windows CI
+runs the unit tests and the update checks.
+
+From 0.7.0 these tests run against the encrypted vault: each profile first
+completes **Protect your records** through the real UI, seeded ledgers are
+written as vault ciphertext by a test-side encoder, and stored data is read
+back by a test-side decoder (`tests/e2e/vault-helpers.ts`). Where an erase
+used to leave the restore panel open, the adapted tests assert that it is
+closed and that a late reply cannot reopen it.
 
 ## Limitations
 
-- Restore only into an empty ledger; no merge, partial import, or selection of
-  individual cases.
+- Restore only into an empty, unlocked ledger; no merge, partial import, or
+  selection of individual cases.
 - The file is checked for structure only. It is not encrypted or signed, so an
   edited file that is still well-formed is restored as it is.
+- Encryption adds about a third to the stored size, so the vault holds a
+  ledger of about 7.5 MB of JSON within the 10 MB quota.
 - Only the most recent restore is remembered (`lastRestore`).
-- Very large ledgers are bounded by Chrome's 10 MB `storage.local` quota.
+- Very large ledgers are bounded by Chrome's 10 MB `storage.local` quota
+  (see above).
 - Real Amazon refund-wording compatibility of capture remains untested; the
   toolbar grant was later owner-reported as passing (see
   [validation.md](validation.md)).

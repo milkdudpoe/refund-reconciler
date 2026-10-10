@@ -8,7 +8,7 @@
 - **Publisher:** [PENDING: publisher or developer name]
 - **Contact:** [PENDING: contact email or support URL controlled by the publisher]
 - **Effective date:** [PENDING: set on publication]
-- **Applies to:** Refund Reconciler (local preview) Chrome extension, version 0.6.0
+- **Applies to:** Refund Reconciler (local preview) Chrome extension, version 0.7.0
 
 ## Summary
 
@@ -17,7 +17,8 @@ items you returned. It handles information you enter, and text you choose
 to capture from Amazon US pages, **only inside your own Chrome profile on
 your device**. The extension does not send this information to the
 publisher or to anyone else. The publisher does not receive, see, sell or
-share it. Stored records are **not encrypted** in this version.
+share it. Stored records are **encrypted** with a key protected by a
+passphrase you choose; files and text you export are not.
 
 ## What information the extension handles
 
@@ -41,9 +42,12 @@ so do not enter information you do not want stored.
 **Information from a web page, only when you capture.** The capture feature
 works only on `https://amazon.com` and `https://www.amazon.com`:
 
-- When you click the Refund Reconciler toolbar button, Chrome temporarily
-  lets the extension see the address of the tab you are on. The extension
-  uses it only to check whether the page is supported. It is not saved.
+- When you click the Refund Reconciler toolbar button **while your records
+  are unlocked**, Chrome temporarily lets the extension see the address of
+  the tab you are on. The extension uses it only to check whether the page
+  is supported. It is not saved at that point. While your records are
+  locked, or before you have set a passphrase, the toolbar panel does not
+  look at the tab at all; it only offers to open the dashboard.
 - When you then choose **Capture selected refund text**, the extension reads
   the text you highlighted (up to 4,000 characters) and the page's address.
   It does not read the rest of the page, form fields, passwords, cookies or
@@ -82,11 +86,28 @@ any other purpose.
 - Records are stored in Chrome's extension storage (`chrome.storage.local`)
   in your Chrome profile on your device. They are not synced to other
   devices by the extension.
+- **The stored records are encrypted.** Before any record is saved, you
+  choose a passphrase. The extension derives a key from it on your device
+  (PBKDF2-HMAC-SHA-256) and uses it to protect a random AES-256-GCM key that
+  encrypts the stored records. Your passphrase is never stored or sent
+  anywhere.
+- While your records are **unlocked**, the key is kept in Chrome's
+  memory-only session storage so the extension can work. You need the
+  passphrase again after Chrome restarts, after the extension is reloaded or
+  updated, and after you choose **Lock now**.
+- **There is no recovery service.** The publisher cannot reset or recover a
+  forgotten passphrase. Without it, the stored records can only be erased;
+  a backup file you saved earlier can then be restored.
+- Encryption does **not** protect your records while they are unlocked in
+  your browser, against malware or anyone using your device or account, or
+  if your passphrase is easy to guess. Protect your device and your
+  operating-system account.
+- If you used a version before 0.7.0, your records were stored without
+  encryption. When you update, they are encrypted only after you choose a
+  passphrase, and older unencrypted copies may remain in Chrome's own files
+  on your device; the extension cannot remove them.
 - Web pages and the capture code that runs in a page cannot read the
   stored records; only the extension's own pages can.
-- **The stored records are not encrypted by the extension.** Anyone or
-  any software that can read your Chrome profile or your device's files
-  could read them. Protect your device and your operating-system account.
 
 ## Sharing and transmission
 
@@ -110,15 +131,16 @@ profile is deleted or lost.
 
 - **Delete case…** permanently removes a case and all its records.
 - **Remove synthetic demo** removes the demo records.
-- If stored data cannot be read, the dashboard offers **Erase stored
-  data…**, which erases everything.
+- If your records are locked (for example because you forgot the
+  passphrase) or stored data cannot be read, the dashboard offers **Erase
+  stored data…**, which erases everything after you type `ERASE`.
 - **Removing the extension** from Chrome deletes all of its stored records.
   Download a backup first if you want to keep them.
 - Losing or resetting the Chrome profile also loses the records. The
   publisher cannot recover them.
 - Deleting records in the extension does not delete files you exported.
 - The extension does not securely wipe the underlying storage files on
-  disk.
+  disk, including any unencrypted copies left by versions before 0.7.0.
 
 ## Your choices
 
@@ -135,7 +157,7 @@ Web Store User Data Policy, including the Limited Use requirements.
 ## Changes to this policy
 
 If a future version handles data differently, for example by adding
-encryption, network features or new data types, this policy will be updated
+network features or new data types, this policy will be updated
 before that version is released, and the extension will show the change
 prominently. The effective date above shows when this version took effect.
 

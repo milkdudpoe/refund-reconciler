@@ -10,6 +10,60 @@
   information and a hosted policy URL are missing, and store images do not
   exist yet. This document does not say that Google has rejected anything.
   It is not a compliance declaration or legal advice.
+- **Update for Task 09 (version 0.7.0, 2026-10-10):** B1's recommended
+  protection is **implemented** (see [Task 09 status](#task-09-status-070)).
+  The verdict stays **not ready to submit**: B2 (in-product disclosure and
+  consent), publisher inputs, a hosted policy, store images, a new
+  owner-operated toolbar check of the changed popup, and the store review
+  itself are all still pending. The sections below are the Task 08 audit of
+  0.6.0 unless they say otherwise.
+
+## Task 09 status (0.7.0)
+
+Facts (code and tests on the Task 09 branch; details in
+[../vault.md](../vault.md)):
+
+- The ledger is stored only as an AES-256-GCM ciphertext under
+  `refundReconciler.vault`. A random data key is wrapped under a key derived
+  from the user's passphrase with PBKDF2-HMAC-SHA-256 (600,000 iterations,
+  16-byte salt). No note, reference, excerpt, amount, case list or receipt
+  is plaintext metadata. Pages never read storage; the service worker reads,
+  decrypts, validates and writes (`src/background/handler.ts`,
+  `src/vault/`).
+- **Protect your records** comes before any ledger can exist. It explains
+  local storage, when the passphrase is needed, that there is no recovery
+  service, that exports are plaintext, and what is not protected, and it
+  requires an acknowledgment of the recovery limit. **This is not the B2
+  consent step**: it does not disclose capture's data types or ask for
+  agreement to data handling.
+- **Lock now**, locked-state unlock and typed erase, and a verified,
+  fault-tolerant migration of 0.5.0/0.6.0 plaintext ledgers exist. While
+  locked or before setup, the popup reads no tab address or selection (F4 and
+  F5 now happen only while unlocked).
+- Evidence: unit tests with real WebCrypto (tampering, bounds, unique IVs,
+  every migration storage fault, restarts, races), browser tests
+  (`tests/e2e/vault.spec.ts`: a canary typed through the UI is absent from
+  `chrome.storage.local` and from the closed profile's extension-storage
+  files; the data key is absent from the whole profile on disk; multi-view
+  Lock; worker stop and browser restart; migration), and update checks from
+  0.5.0 and 0.6.0 built from source.
+- Plaintext that 0.5.0/0.6.0 wrote may remain in Chrome's database and log
+  files after migration; earlier exports stay readable. Neither is claimed
+  to be removed.
+
+Interpretation: on the conservative reading of FAQ Q9, the stored financial
+records are now "stored at rest using a strong encryption method such as
+… AES". Whether Google's reviewers accept a passphrase-based local design,
+and whether they would have required it at all, is **not known**; this is
+not a compliance certification.
+
+Still pending: B2 (a one-time disclose-and-agree step before the first
+capture or case, re-shown on data-practice changes); publisher name,
+contact, hosted policy URL and effective date; store icon padding,
+promotional tile and screenshots; dashboard-label confirmation of every
+privacy answer (including whether the passphrase counts as
+"authentication information"); a new owner-operated toolbar check for
+0.7.0; and the store review.
 
 Related drafts: [listing.md](listing.md),
 [privacy-policy.md](privacy-policy.md) /
@@ -83,10 +137,12 @@ described in [capture.md](../capture.md) never reach `dist/` or the ZIP
 | F13 | Diagnostics | A single `console.error` call, used only if `setAccessLevel` fails, which logs the error object (no ledger data). The unreadable-data screen shows the raw stored value in a read-only textarea, on the device | Automatic / when data is unreadable | DevTools console / dashboard | No | No | `src/background/service-worker.ts`; `src/ui/app.ts` `renderUnreadable` |
 | F14 | Page context isolation | Page scripts and the injected collector cannot read the ledger | Service-worker start | — | — | — | `src/background/service-worker.ts` `setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })`; sender check in `onMessage` |
 
-F14 is an access-control setting. **It is not encryption**: the stored value
-is ordinary JSON in the profile's extension storage (Fact:
-`src/persistence/storage.ts` `saveStore` writes the `StoreData` object
-as is).
+F14 is an access-control setting. **It is not encryption**: in 0.6.0 the
+stored value is ordinary JSON in the profile's extension storage (Fact, for
+0.6.0: `src/persistence/storage.ts` `saveStore` wrote the `StoreData` object
+as is). In 0.7.0 F1–F3, F6, F8 and F11 are written only as vault ciphertext,
+F14 covers `chrome.storage.session` too, and F12's erase is typed and also
+available while locked ([Task 09 status](#task-09-status-070)).
 
 ## Requirement matrix
 
@@ -99,7 +155,7 @@ Status values: **Met** (fact), **Gap** (fact, with work needed),
 | R1 | Locally stored or processed data must still be disclosed (FAQ Q3, Q14) | The extension handles user data (F1–F11): typed financial evidence, page excerpts and page addresses. Nothing is transmitted | Data-flow table above | **Gap** (no store policy yet) | Host the [draft policy](privacy-policy.md) after publisher fields are filled in |
 | R2 | Post a privacy policy in the dashboard (FAQ Q6, Q14; dashboard page "Set a privacy policy") | A draft exists; nothing is hosted | [privacy-policy.md](privacy-policy.md) | **Pending** | Publisher hosts it on a URL they control and enters that URL |
 | R3 | Handle user data securely; encrypt transmissions (Handling Requirements; FAQ Q8) | No transmissions exist | Build scan above | **Met** for transmission | Re-assess if any network feature is ever added |
-| R4 | At-rest encryption (FAQ Q9) | Stored ledger and exports are unencrypted | `src/persistence/storage.ts` `saveStore`; `src/export/backup.ts` `serializeBackup` | **Unresolved / likely blocker** | See [B1](#b1-encryption-at-rest-unresolved-policy-question) and the [next step](#recommended-next-implementation-step) |
+| R4 | At-rest encryption (FAQ Q9) | 0.6.0: stored ledger and exports unencrypted. **0.7.0: stored ledger encrypted (passphrase-wrapped AES-256-GCM key); exports remain plaintext by design** | 0.7.0: `src/vault/crypto.ts`, `src/background/handler.ts`, [vault.md](../vault.md); `src/export/backup.ts` `serializeBackup` | **Implemented in 0.7.0** (fact); policy acceptance **unknown** (interpretation) | See [Task 09 status](#task-09-status-070) |
 | R5 | Prominent disclosure plus affirmative consent "prior to installation" (Disclosure Requirements), within the product UI and before collecting or handling (FAQ Q10) | Dashboard and popup headers give partial notice. Capture requires explicit clicks, and saving requires a preview and **Save**. There is no disclosure-and-agree step | `dashboard.html`, `popup.html` headers; `src/popup/popup.ts` `renderBody`; `src/ui/help.ts` | **Gap** | See [B2](#b2-prominent-disclosure-and-affirmative-consent-gap) |
 | R6 | Single, narrow purpose (dashboard page "State the extension's purpose") | Per-item refund-evidence tracking. Capture, exports, restore and the overview all serve it | `README.md` scope; feature code | **Met** (interpretation) | Use the wording in [privacy-practices.md](privacy-practices.md) |
 | R7 | Minimum permissions (FAQ *Minimum Permission* Q3; dashboard page "List and justify") | `storage`, `activeTab`, `scripting`. No host permissions, `tabs`, content scripts, `downloads` or `clipboardWrite` | `public/manifest.json`; see [Permissions](#permissions) | **Met** | List the permissions on an about page (FAQ *Minimum Permission* Q4). README and beta.md already do |
@@ -114,6 +170,11 @@ Status values: **Met** (fact), **Gap** (fact, with work needed),
 | R16 | Publisher identity, contact, policy URL, effective date | Not supplied | — | **Pending** | See [Publisher inputs](#publisher-inputs-pending) |
 
 ## B1. Encryption at rest (unresolved policy question)
+
+> **Task 09 status:** the owner chose option 1 below; 0.7.0 implements it
+> ([Task 09 status](#task-09-status-070)). The policy question itself (how
+> reviewers read FAQ Q9 for local-only data) is still not answered by Google,
+> and no support contact was made.
 
 The pages differ on encryption at rest:
 
@@ -245,7 +306,12 @@ The drafts were checked against the code (facts in the data-flow table):
 
 ## Stale in-product copy
 
-`src/ui/help.ts`, under "About capturing selected text", currently says:
+**Resolved in 0.7.0:** `src/ui/help.ts` now uses the proposed parser wording
+and describes the address read exactly as gated in 0.7.0 (only while the
+records are unlocked; nothing is read while locked). The Task 08 finding is
+kept below for the record.
+
+`src/ui/help.ts`, under "About capturing selected text", said in 0.6.0:
 
 > Capture is a preview feature. It has been tested only with synthetic
 > example pages, not with live Amazon pages, so it may not recognise the
@@ -335,8 +401,8 @@ from the production build and contain no real order data.
 - The privacy policy's effective date, set when it is published.
 - Whether the store name stays as the manifest's current
   **"Refund Reconciler (local preview)"** (changing it is a manifest change).
-- The decision on B1 (implement encryption, or obtain written clarification
-  first) and approval of the B2 design.
+- Approval of the B2 design. (B1 was decided by the owner for Task 09:
+  implement encryption; done in 0.7.0.)
 - Distribution choices (visibility, regions), category and language, which
   are dashboard settings.
 - Store support details, if any. The drafts promise none.
@@ -346,19 +412,28 @@ from the production build and contain no real order data.
 - Real Amazon refund wording through capture (Check 2 in
   [beta.md](../beta.md#manual-checks)).
 - Updating through the `chrome://extensions` UI (Check 3).
-- Toolbar access was **owner-reported**, not independently reproduced, and
-  covers one Chrome version (154.0.8037.98). See
-  [validation.md](../validation.md).
+- Toolbar access was **owner-reported** for **0.6.0**, not independently
+  reproduced, and covers one Chrome version (154.0.8037.98). The 0.7.0 popup
+  changed (unlock gating) and has **not** had an owner-operated toolbar
+  check. See [validation.md](../validation.md).
+- 0.7.0 KDF timing on users' real computers (only a cloud container was
+  measured; see [vault.md](../vault.md#evidence)).
 - Install-dialog permission warnings for this manifest.
 - Incognito behaviour.
 - Any Chrome Web Store review outcome.
 
 ## Recommended next implementation step
 
-**Task 09: local at-rest protection of the stored ledger (passphrase-wrapped
-data key).** This resolves B1 on the conservative reading. B2 (disclosure
-and consent, plus the help-copy fix) should be the separate task after it,
-so that the disclosure text can describe the final storage behaviour.
+**After Task 09: B2, the in-product disclosure and consent step** (and the
+toolbar re-check of the 0.7.0 popup), now that the storage behaviour it must
+describe is final. The Task 08 recommendation below (Task 09, at-rest
+protection) has been implemented.
+
+**Task 08 recommendation (implemented in Task 09):** local at-rest
+protection of the stored ledger (passphrase-wrapped data key). This resolves
+B1 on the conservative reading. B2 (disclosure and consent, plus the
+help-copy fix) should be the separate task after it, so that the disclosure
+text can describe the final storage behaviour.
 
 ### Options compared (local only; no account, backend or AI)
 
@@ -368,7 +443,18 @@ so that the disclosure text can describe the final storage behaviour.
 | B. **A user passphrase run through PBKDF2-SHA-256 (WebCrypto) to derive a key that wraps a random AES-256-GCM data key.** The unlocked data key is kept only in memory or in `chrome.storage.session` | A copied or stolen profile, disk or profile backup, or another OS account reading files, **without the passphrase** | Malware or another person using the browser **while unlocked**; keyloggers; weak passphrases; plaintext exports; older plaintext left on disk from before migration | **Recommended** |
 | C. A WebAuthn/passkey PRF-derived key | As B, with hardware backing | Inconsistent support across Chrome, OS and authenticator; more complex recovery | Not now; revisit later |
 
-### Proposed design (for review, not implemented)
+### Proposed design (Task 08; implemented in Task 09)
+
+Implemented as described in [vault.md](../vault.md), with these
+differences from the proposal: the additional authenticated data binds the
+format, version, vault id and KDF/cipher parameters, while the schema version
+and revision stay **inside** the ciphertext (they are not exposed as
+plaintext metadata, and authenticating them would not prevent replay of an
+older envelope anyway); erase removes the vault and leaves a separate
+nonprivate erase marker whose epoch the next vault's ledger carries; the
+erase confirmation is a typed `ERASE`; and migration writes a nonprivate
+progress marker so a restart can tell a pending migration from a finished
+one.
 
 - **Storage format.** A new vault record holds the format version, KDF
   parameters (salt, iteration count recorded with the data), the wrapped
@@ -431,7 +517,10 @@ so that the disclosure text can describe the final storage behaviour.
   panel warns that the file is not protected. An encrypted backup format
   would be a separate decision; it is not part of Task 09.
 
-### Tests (to be written in Task 09)
+### Tests (written in Task 09)
+
+All of the tests below exist; see [vault.md](../vault.md#evidence) and
+[validation.md](../validation.md) for files, counts and CI runs.
 
 - **Unit (Node WebCrypto):** round trip; wrong passphrase; tampering with
   the ciphertext, IV, additional data or wrapped key is rejected; each write
@@ -483,6 +572,10 @@ so that the disclosure text can describe the final storage behaviour.
   states and backup.
 
 ### Acceptance criteria for Task 09
+
+Status: criteria 1–6 are met by the Task 09 code, tests and documents;
+criterion 7 is recorded with its CI runs in [validation.md](../validation.md).
+None of this completes B2, publisher inputs, assets or store approval.
 
 1. **Fresh encrypted installation:** in a profile where encryption is
    enabled before any data exists, no plaintext ledger and no unwrapped data

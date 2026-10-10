@@ -1,10 +1,10 @@
 # Privacy practices tab: draft answers
 
-> **Draft answers, not a certification.** They describe beta 0.6.0 as built.
+> **Draft answers, not a certification.** They describe beta 0.7.0 as built.
 > Do not enter or certify them until the open items in
-> [readiness.md](readiness.md) are resolved. Those are B1 (encryption at
-> rest) and B2 (in-product disclosure and consent). After those changes
-> ship, revise the answers. The dashboard's own checkbox labels and
+> [readiness.md](readiness.md) are resolved. B1 (encryption at rest) is
+> implemented in 0.7.0; B2 (in-product disclosure and consent) is still
+> open. After B2 ships, revise the answers. The dashboard's own checkbox labels and
 > definitions were **not inspected** (no developer account), so confirm
 > every label below against the dashboard before answering.
 
@@ -35,19 +35,25 @@ None of them serves another goal.
 
 > Stores the user's refund records (cases, items, expected amounts,
 > merchant reports, confirmed receipts, recharges, voids and approved
-> captures) in chrome.storage.local in their own profile. Also used to
+> captures), encrypted with a key protected by the user's passphrase, in
+> chrome.storage.local in their own profile. While the records are
+> unlocked, the key is kept in memory-only chrome.storage.session so the
+> extension's service worker can resume without asking again. Also used to
 > refresh open extension pages when records change, and to keep stored
-> records out of reach of web-page contexts. Nothing is synced or sent.
+> records and the key out of reach of web-page contexts. Nothing is synced
+> or sent.
 
-Evidence: `src/persistence/storage.ts`; `src/ui/deps.ts` `subscribe`;
-`src/background/service-worker.ts` `setAccessLevel`.
+Evidence: `src/persistence/storage.ts`; `src/background/handler.ts`;
+`src/vault/`; `src/ui/deps.ts` `subscribe`;
+`src/background/service-worker.ts` `setAccessLevel` (both areas).
 
 **`activeTab`**
 
-> When the user clicks the toolbar button, the popup needs temporary access
-> to that one tab. It checks that the page is amazon.com or www.amazon.com
-> and, only if the user then chooses "Capture selected refund text", reads
-> the user's highlighted text there. We use activeTab instead of host
+> When the user clicks the toolbar button while their records are
+> unlocked, the popup needs temporary access to that one tab. It checks
+> that the page is amazon.com or www.amazon.com and, only if the user then
+> chooses "Capture selected refund text", reads the user's highlighted text
+> there. While the records are locked, the popup does not access the tab. We use activeTab instead of host
 > permissions so the extension has no standing access to any site and
 > nothing runs without a click.
 
@@ -91,9 +97,9 @@ or select it, although the extension does not ask for it.
 | --- | --- | --- | --- | --- |
 | Financial and payment information | **Yes** | Expected refunds, merchant-reported refunds, amounts the user confirmed receiving, recharges, transaction references, the dates of these events (F1–F3, F6) | Requested (amounts); reference and date optional | The core of the product is a payment history for refunds. Treat it as financial information even though there are no card or bank numbers |
 | Website content | **Yes** | The approved excerpt of selected text from an amazon.com page (≤4,000 chars), stored with the merchant report (F5–F6) | Requested for capture only, which is optional | FAQ Q2 lists "capturing data from a web page" as handling. It is stored only after the user approves |
-| Web browsing activity / web history | **Yes (conservative)** | For each approved capture: the page origin and a sanitised path (with at most one order number) (F6). Also the active tab's URL, read when the popup opens and kept in memory only (F4) | Read on toolbar click; stored only for approved captures | FAQ Q4 defines browsing activity to include "the domains or URLs the browser interacts with". It is not a history of visited pages. If the dashboard's definition is "list of pages visited", the honest answer may still be Yes because URLs are stored. **Unresolved:** confirm against the dashboard definition and choose the more inclusive answer if in doubt. Limited Use permits this only for a user-facing feature described on the store page and in the UI; the listing does describe it |
+| Web browsing activity / web history | **Yes (conservative)** | For each approved capture: the page origin and a sanitised path (with at most one order number) (F6). Also the active tab's URL, read when the popup opens **while the records are unlocked** and kept in memory only (F4) | Read on toolbar click; stored only for approved captures | FAQ Q4 defines browsing activity to include "the domains or URLs the browser interacts with". It is not a history of visited pages. If the dashboard's definition is "list of pages visited", the honest answer may still be Yes because URLs are stored. **Unresolved:** confirm against the dashboard definition and choose the more inclusive answer if in doubt. Limited Use permits this only for a user-facing feature described on the store page and in the UI; the listing does describe it |
 | Personally identifiable information | **Yes (conservative), owner decision** | Not requested. Amazon order numbers are stored as order references or detected numbers, and free text (item descriptions, notes, references, sources, void reasons, excerpts) may contain names, addresses or other identifiers if the user types or selects them | Voluntary only, apart from order numbers | An order number identifies a transaction, not a person; it is arguably not an "account number". Under-disclosure is the larger risk (FAQ *Simplifying* Q3). Alternative: answer No and say in the policy that free text may contain what users enter. **Owner to decide** |
-| Authentication information | No | — | Never requested; capture refuses selections inside form fields (`collectSelection`) | A user could type a secret into a note. That is voluntary and not a collection practice |
+| Authentication information | **Unresolved (0.7.0), owner decision** | The vault passphrase: requested on setup, unlock and migration, processed only on the device to derive the key (PBKDF2), cleared from the page at once, and **never stored, logged or transmitted** (`src/ui/vault.ts`, `src/background/handler.ts`). No site passwords: capture refuses selections inside form fields (`collectSelection`) | Requested (passphrase) | Before 0.7.0 the answer was No. FAQ Q2 counts processing as handling, so the conservative answer is **Yes**, with the policy explaining that the passphrase never leaves the device or persists. Confirm against the dashboard's definition. A user could also type a secret into a note; that is voluntary |
 | Personal communications | No | — | — | Not read or stored |
 | Health information | No | — | — | — |
 | Location | No | — | No geolocation API; an address typed into free text would fall under PII above | — |
@@ -131,5 +137,5 @@ Any of these would change the answers above. They would need an updated
 policy, an updated dashboard answer and a prominent in-product notice before
 release: network requests of any kind, sync, analytics or crash reporting,
 accounts, support uploads, AI or remote processing, new capture sites or
-whole-page extraction, new permissions, encryption or backup format
-changes, or any change in who can access the data.
+whole-page extraction, new permissions, changes to the encryption, vault or
+backup format, or any change in who can access the data.

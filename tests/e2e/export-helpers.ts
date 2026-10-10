@@ -3,17 +3,25 @@
 
 import { readFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
-import { STORE_KEY, expect } from './fixtures';
+import { expect } from './fixtures';
+import { decryptedRaw, writeVaultPayload } from './vault-helpers';
 
 export const SUMMARY_FILE = /^refund-reconciler-case-summary-\d{4}-\d{2}-\d{2}T\d{6}Z\.txt$/;
 export const BACKUP_FILE = /^refund-reconciler-backup-\d{4}-\d{2}-\d{2}T\d{6}Z\.json$/;
 
+/** The stored ledger as stored (decrypted by the test-side decoder; see vault-helpers.ts). */
 export async function storedRaw(page: Page): Promise<unknown> {
-  return (await page.evaluate((key) => chrome.storage.local.get(key), STORE_KEY))[STORE_KEY];
+  return decryptedRaw(page);
 }
 
+/**
+ * Replaces the stored ledger with `value`, encrypted into the unlocked vault
+ * exactly as the service worker writes it (disclosed test setup; see
+ * vault-helpers.ts). The extension then decrypts and validates it itself, so
+ * an invalid value is seen as unreadable stored data.
+ */
 export async function seed(page: Page, value: unknown): Promise<void> {
-  await page.evaluate(([key, v]) => chrome.storage.local.set({ [key as string]: v }), [STORE_KEY, value] as const);
+  await writeVaultPayload(page, value);
 }
 
 /** Clicks a button and returns the file the browser actually downloaded. */
@@ -47,22 +55,51 @@ export async function pasteClipboard(page: Page): Promise<string> {
   return value;
 }
 
-/** Makes this page's own chrome.storage.local.get fail or return a fixed value (the service worker is unaffected). */
+type ReadWindow = Window & {
+  __readMode?: 'reject' | 'corrupt' | 'real';
+  __readHold?: { armed: boolean; held: boolean; release: () => void };
+  __readWrapped?: boolean;
+};
+
+/**
+ * Wraps, once, this page's chrome.runtime.sendMessage for READ requests only
+ * (the page's only way to read saved data). Other requests pass through
+ * untouched. The service worker and other pages are unaffected.
+ */
+async function wrapPageReads(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as ReadWindow;
+    if (w.__readWrapped) return;
+    w.__readWrapped = true;
+    w.__readMode = 'real';
+    const rt = chrome.runtime as unknown as { sendMessage: (msg: unknown) => Promise<unknown> };
+    const inner = rt.sendMessage.bind(chrome.runtime);
+    rt.sendMessage = async (msg: unknown) => {
+      if ((msg as { kind?: unknown } | null)?.kind !== 'read') return inner(msg);
+      if (w.__readMode === 'reject') throw new Error('Simulated read failure');
+      // corrupt: a reply whose ledger fails the page's own validation.
+      const reply = w.__readMode === 'corrupt'
+        ? { ok: true, ledger: { status: 'ok', isNew: false, vaultId: 'simulated', store: { schemaVersion: 1, revision: 3, cases: [{ id: 'broken' }] } } }
+        : await inner(msg);
+      const hold = w.__readHold;
+      if (hold?.armed) {
+        hold.armed = false;
+        await new Promise<void>((resolve) => {
+          hold.release = resolve;
+          hold.held = true;
+        });
+      }
+      return reply;
+    };
+  });
+}
+
+/** Makes this page's own reads fail, return a reply that fails validation, or work normally (the service worker is unaffected). */
 export async function overridePageReads(page: Page, mode: 'reject' | 'corrupt' | 'real'): Promise<void> {
-  await page.evaluate(
-    ([m, key]) => {
-      const area = chrome.storage.local as unknown as { get: unknown };
-      const w = window as unknown as { __realGet?: unknown };
-      w.__realGet ??= area.get;
-      area.get =
-        m === 'reject'
-          ? () => Promise.reject(new Error('Simulated read failure'))
-          : m === 'corrupt'
-            ? () => Promise.resolve({ [key as string]: { schemaVersion: 1, revision: 3, cases: [{ id: 'broken' }] } })
-            : w.__realGet;
-    },
-    [mode, STORE_KEY] as const,
-  );
+  await wrapPageReads(page);
+  await page.evaluate((m) => {
+    (window as ReadWindow).__readMode = m;
+  }, mode);
 }
 
 export async function openSummary(page: Page): Promise<void> {
@@ -73,46 +110,28 @@ export async function openSummary(page: Page): Promise<void> {
 
 
 type GateWindow = Window & {
-  __realGet?: (...args: unknown[]) => Promise<Record<string, unknown>>;
-  __readGate?: { held: boolean; release: () => void };
   __realWrite?: (text: string) => Promise<void>;
   __clip?: { calls: number; written: string[]; pending: { resolve: () => void; reject: (e: unknown) => void } | null };
 };
 
 /**
- * Holds the page's NEXT chrome.storage.local.get result after the real API has
- * read it, until releaseHeldRead(). Later reads (e.g. the dashboard's
- * change-triggered refresh) pass straight through to the real API.
+ * Holds the page's NEXT read reply after the service worker has answered it,
+ * until releaseHeldRead(). Later reads (e.g. the dashboard's change-triggered
+ * refresh) pass straight through.
  */
 export async function holdNextRead(page: Page): Promise<void> {
+  await wrapPageReads(page);
   await page.evaluate(() => {
-    const w = window as GateWindow;
-    const area = chrome.storage.local as unknown as { get: (...args: unknown[]) => Promise<Record<string, unknown>> };
-    w.__realGet ??= area.get;
-    const real = w.__realGet;
-    const gate: { held: boolean; release: () => void } = { held: false, release: () => undefined };
-    w.__readGate = gate;
-    let armed = true;
-    area.get = async (...args: unknown[]) => {
-      const result = await real.apply(chrome.storage.local, args);
-      if (armed) {
-        armed = false;
-        await new Promise<void>((resolve) => {
-          gate.release = resolve;
-          gate.held = true;
-        });
-      }
-      return result;
-    };
+    (window as ReadWindow).__readHold = { armed: true, held: false, release: () => undefined };
   });
 }
 
 export async function waitForHeldRead(page: Page): Promise<void> {
-  await expect.poll(() => page.evaluate(() => (window as GateWindow).__readGate?.held === true)).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as ReadWindow).__readHold?.held === true)).toBe(true);
 }
 
 export async function releaseHeldRead(page: Page): Promise<void> {
-  await page.evaluate(() => (window as GateWindow).__readGate?.release());
+  await page.evaluate(() => (window as ReadWindow).__readHold?.release());
 }
 
 /**
