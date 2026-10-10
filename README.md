@@ -42,8 +42,9 @@ npm run build       # Vite build of the extension into dist/
 npm run test:e2e    # build, then Playwright tests against the real unpacked extension
 npm run package:beta  # fresh build + verified beta ZIP in artifacts/beta/ (see docs/beta.md)
 npm run test:package  # package:beta, then smoke-test the extracted ZIP in Chromium
+npm run test:update   # package:beta, then update 0.5.0 (built from its own source) in place to that ZIP
 npm run icons       # re-render public/icons/*.png from assets-src/*.svg (after editing the SVGs)
-npm run check       # typecheck, lint, unit, browser and package tests
+npm run check       # typecheck, lint, unit, browser, package and update tests
 ```
 
 ## Beta package

@@ -16,7 +16,8 @@
     "icons": "node --experimental-strip-types scripts/generate-icons.ts",
     "package:beta": "node --experimental-strip-types scripts/package-beta.ts",
     "test:package": "npm run package:beta && playwright test -c playwright.package.config.ts",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run test:e2e && npm run test:package"
+    "test:update": "npm run package:beta && playwright test -c playwright.update.config.ts",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run test:e2e && npm run test:package && npm run test:update"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

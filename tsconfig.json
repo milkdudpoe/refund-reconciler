@@ -16,5 +16,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "tests", "scripts", "playwright.package.config.ts", "vite.config.ts", "playwright.config.ts", "eslint.config.js"]
+  "include": ["src", "tests", "scripts", "playwright.package.config.ts", "playwright.update.config.ts", "vite.config.ts", "playwright.config.ts", "eslint.config.js"]
 }

@@ -28,6 +28,14 @@ jobs:
       - run: npm run test:package
         env:
           BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Same-installation update check (docs/beta.md): builds the previous
+      # production version, 0.5.0, from its own source at this immutable commit,
+      # which the shallow checkout does not contain.
+      - name: Fetch update-check baseline (Task 05, 0.5.0)
+        run: git fetch --no-tags --depth=1 origin b323930f7d9580f426e7e8fee39b4242143c4844
+      - run: npm run test:update
+        env:
+          BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
       # Independent cross-check of the archive with standard tools.
       - name: Check beta archive checksum and listing
         working-directory: artifacts/beta
