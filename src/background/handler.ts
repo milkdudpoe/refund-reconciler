@@ -3,6 +3,9 @@
 // stored state, never to a stale copy held by a page).
 
 import { applyCommand } from '../domain/ledger';
+import { decideRestore } from '../domain/restore';
+import { parseStore } from '../domain/validate';
+import { restorePayloadDigest } from '../export/backup';
 import { describeError, eraseStore, loadStore, saveStore, type StorageAreaLike } from '../persistence/storage';
 import { parseRequest, type Response } from './messages';
 
@@ -36,6 +39,37 @@ export function createHandler(area: StorageAreaLike, now: () => string = () => n
         return { ok: false, error: { code: 'storage_unsupported', message: 'Stored data uses an unsupported version, so no change was attempted.' } };
       case 'ok':
         break;
+    }
+
+    if (request.value.kind === 'restore') {
+      // Destination re-read and validated above, inside the serialised queue,
+      // immediately before deciding: emptiness, staleness and receipt checks
+      // here cannot be bypassed by a page.
+      const req = request.value;
+      const digest = await restorePayloadDigest(req.backup.exportedAt, req.backup.store);
+      const decision = decideRestore(loaded.store, !loaded.isNew, req, digest, now());
+      switch (decision.kind) {
+        case 'refused':
+          return { ok: false, error: { code: decision.code, message: decision.message } };
+        case 'already_restored':
+          return { ok: true, outcome: 'duplicate', revision: decision.revision };
+        case 'empty_backup':
+          return { ok: true, outcome: 'unchanged', revision: decision.revision };
+        case 'write':
+          break;
+      }
+      // Defence in depth: never write a ledger that would not read back as valid.
+      const check = parseStore(JSON.parse(JSON.stringify(decision.store)));
+      if (check.status !== 'ok') {
+        return { ok: false, error: { code: 'not_applied', message: 'The restored data did not pass validation, so nothing was written.' } };
+      }
+      try {
+        // One write: the restored cases and the receipt that identifies this operation.
+        await saveStore(area, decision.store);
+      } catch (err) {
+        return { ok: false, error: { code: 'write_rejected', message: `Storage rejected the restore, so nothing was restored: ${describeError(err)}` } };
+      }
+      return { ok: true, outcome: 'applied', revision: decision.store.revision };
     }
 
     const result = applyCommand(loaded.store, request.value.command, now());

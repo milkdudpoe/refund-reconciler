@@ -241,7 +241,7 @@ test('acceptance 8: the downloaded JSON envelope validates with parseStore and p
   await expect(page.getByTestId('export-real-count')).toHaveText('1');
   await expect(page.getByTestId('export-demo-count')).toHaveText('2');
   await expect(page.getByTestId('export-panel')).toContainText('unencrypted');
-  await expect(page.getByTestId('export-panel')).toContainText('restoring from it inside the extension is not available yet');
+  await expect(page.getByTestId('export-panel')).toContainText('it can be restored with “Restore from JSON…”');
   await expect(page.getByTestId('export-snapshot')).toContainText(`revision ${(seeded as { revision: number }).revision}`);
 
   const file = await downloadVia(page, 'Download JSON');

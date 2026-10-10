@@ -1,5 +1,7 @@
 # Case summaries and local data export (Task 03)
 
+Restoring a JSON backup (Task 04) is described in [restore.md](restore.md).
+
 Two read-only exports built from evidence already saved in this browser
 profile. Neither one contacts Amazon, sends a message, uploads anything, adds a
 permission or changes saved data. They use the same validated data and pure
@@ -90,8 +92,14 @@ captured excerpts and is an ordinary unencrypted file.
   or recomputed summaries are added. `store` validates unchanged with the
   existing `parseStore` validator (tested).
 
-**Restore is not implemented.** This milestone creates a portable copy only;
-the extension cannot import it yet.
+- `store.lastRestore` is present only if the exported ledger was itself
+  created by a restore (Task 04). It is the destination's own bookkeeping,
+  exported so later exports keep the complete ledger; when such a file is
+  restored elsewhere it is treated as source metadata and is not carried over.
+
+**Restore:** a file in this format can be restored into a browser profile
+whose ledger has no cases; see [restore.md](restore.md). Files exported by
+Task 03 builds (without `lastRestore`) are accepted unchanged.
 
 ## Snapshots
 
@@ -191,7 +199,7 @@ revalidation result is delivered.
   endorsed by Amazon and do not establish legal entitlement.
 - Capture is still validated only against synthetic fixtures; live Amazon
   compatibility and the real toolbar-grant flow remain outstanding.
-- No import or restore, reminders, automatic support messages or whole-page
-  capture.
+- Restore only into an empty ledger (no merge or partial import); no
+  reminders, automatic support messages or whole-page capture.
 - These exports do not establish willingness to pay or readiness for paid
   positioning.

@@ -3,13 +3,16 @@
 A local Chrome extension (Manifest V3) that helps you see which return/refund
 records are unresolved or contradictory, item by item.
 
-> **Status: Task 03 — manual entry, explicitly approved selected-text
-> capture, and local exports. Not a validated product.** You can enter
+> **Status: Task 04 — manual entry, explicitly approved selected-text
+> capture, local exports and restore into an empty ledger. Not a validated
+> product.** You can enter
 > evidence manually, or highlight a refund line on an Amazon US page and
 > approve a previewed merchant-report snapshot (see
 > [docs/capture.md](docs/capture.md)). You can copy or download a plain-text
 > case summary to use when contacting support yourself, and download a JSON
-> copy of all saved data (see [docs/export.md](docs/export.md)). Capture
+> copy of all saved data (see [docs/export.md](docs/export.md)), and restore
+> that JSON copy into a browser profile with no saved cases (see
+> [docs/restore.md](docs/restore.md)). Capture
 > has been tested only against synthetic fixtures, not live Amazon pages, and
 > the real toolbar-grant flow has not been validated manually.
 > There is no automatic reconciliation, whole-page extraction or history
@@ -68,10 +71,37 @@ After rebuilding, press the reload icon on the extension's card.
   sent to Amazon.
 - **All data:** on the case list, **Your data → Download all data (JSON)…**
   downloads every case (including demo cases), note and excerpt as an
-  unencrypted JSON file. Restoring it in the extension is not available yet.
+  unencrypted JSON file.
 
 Exports never change saved data. Format, snapshot behaviour and error handling
 are in [docs/export.md](docs/export.md).
+
+## Restore a JSON backup
+
+On the case list, **Your data → Restore from JSON…** (or **Restore from a JSON
+backup…** on a completely empty dashboard) restores a file made with Download
+all data (JSON):
+
+- Only that backup format (format version 1, ledger schema 1), at most
+  **25 MiB**. The file is validated in the dashboard and again in the service
+  worker; invalid files are refused with a specific reason and nothing is
+  written.
+- You see a preview (export time, versions, counts, the case list, demo
+  labels; notes, references and excerpts collapsed) before anything is saved.
+  Choosing or previewing a file writes nothing.
+- **Only into an empty ledger.** Any existing case, including synthetic demo
+  cases, blocks restore; corrupt or unreadable saved data blocks it too.
+  Restore never merges, replaces, deletes or clears existing cases. Delete
+  cases yourself first if you really want to replace them.
+- Restore writes every original case, item and entry unchanged (ids, times,
+  voids, history, provenance) and adds a small `lastRestore` receipt in the
+  same write, used to recognise the operation after a lost reply. The
+  destination revision continues from its own counter.
+- Restored records are not verification of money received, and the file is
+  not encrypted or authenticated.
+
+Retry, erase and compatibility details, and exactly what was tested, are in
+[docs/restore.md](docs/restore.md).
 
 ## Permissions and data
 
@@ -101,6 +131,11 @@ are never collected. Nothing from a capture is stored until you approve it. Data
 encrypted** by the extension; anyone with access to the profile can read it.
 It is not synced (`chrome.storage.sync` is not used).
 
+**Restore:** a backup file is read only after you choose it in the file
+input, kept in the open panel's memory, and written only when you choose
+Restore (into an empty ledger). Its text is shown as text only and is never
+executed or logged.
+
 **Exports:** case summaries and JSON data copies are created only when you
 click Copy or Download. Downloaded files are ordinary unencrypted files that
 the extension cannot track or delete. No `downloads` or clipboard permission
@@ -118,9 +153,9 @@ is used.
 ## Project layout
 
 ```
-src/domain/       pure model, money parsing, derivations, ledger, runtime validation
+src/domain/       pure model, money parsing, derivations, ledger, restore decision, runtime validation
 src/capture/      source checks, page collector, acquisition, deterministic excerpt parser
-src/export/       pure case-summary text and JSON backup envelope generation
+src/export/       pure case-summary text, JSON backup envelope, size bound and payload digest
 src/persistence/  chrome.storage.local read/write (validated, never auto-reset)
 src/background/   service worker: message validation + serialised writes
 src/ui/           dashboard (plain TS + CSS, text-only rendering)
@@ -129,14 +164,15 @@ public/manifest.json
 tests/unit/       Vitest
 tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,
                   synthetic Amazon-like fixtures served in-browser, no network)
-docs/             product scope, data model, capture, export
+docs/             product scope, data model, capture, export, restore
 ```
 
 See [docs/product-scope-and-data-model.md](docs/product-scope-and-data-model.md)
 for the derivation rules, limitations and next milestone, and
 [docs/capture.md](docs/capture.md) for the capture flow, parser patterns and
-what was or was not verified, and [docs/export.md](docs/export.md) for the
-summary and backup formats.
+what was or was not verified, [docs/export.md](docs/export.md) for the
+summary and backup formats, and [docs/restore.md](docs/restore.md) for
+restoring a backup.
 
 Capture browser tests cannot click the real toolbar button, so they load a
 temporary copy of `dist/` with host access to the synthetic fixture hosts
