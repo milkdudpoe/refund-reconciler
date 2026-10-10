@@ -224,7 +224,9 @@ and makes no claim that the user's refunds are settled.
 - Evidence is manual or user-approved selected text; correctness depends on
   what the user records and selects. Capture reads only selected text on
   `amazon.com` / `www.amazon.com` and supports only the documented patterns.
-  It has been tested on synthetic fixtures, not on live Amazon pages.
+  The parser has been tested on synthetic fixtures, not on real Amazon refund
+  wording. A real toolbar click on the public amazon.com home page was
+  owner-reported as working on 2026-10-10 (see [validation.md](validation.md)).
 - Items cannot be added to or removed from an existing case yet; order
   reference and item labels cannot be edited after creation.
 - Exports: a plain-text case summary and a complete JSON data copy (see
@@ -253,7 +255,8 @@ Still to do before any paid positioning:
   status can be selected and parsed reliably, and update the parser patterns
   from that evidence;
 - validate the toolbar-click flow manually in desktop Chrome, since automated
-  tests use a test copy with fixture-only host access;
+  tests use a test copy with fixture-only host access (owner-reported pass
+  for 0.6.0 on 2026-10-10; see Task 08 below);
 - only then consider whole-page extraction and history, and test willingness
   to pay.
 
@@ -282,6 +285,16 @@ Task 07 adds an automated same-installation update check (0.5.0 built from
 its own source, updated in place to the beta ZIP, data preserved; bundled
 Chromium only) and corrects the beta docs on reproducibility and the toolbar
 check's outcomes. The toolbar-grant and real-Amazon checks remain **not run**
-(see [validation.md](validation.md)).
+(see [validation.md](validation.md)) as of that task.
+
+Task 08 records the owner-reported toolbar check (2026-10-10, desktop Chrome
+154.0.8037.98: a toolbar click on ordinary selected text on the public
+amazon.com home page was refused as a refund report and nothing was saved;
+not independently reproduced) and adds Chrome Web Store drafts and a
+privacy/security gap assessment in [store/readiness.md](store/readiness.md).
+Real Amazon refund wording and updating through Chrome's extensions UI remain
+untested. The assessment finds open publication blockers (unencrypted stored
+financial evidence; in-product notice and consent before capture), so the
+drafts are not a release or store approval.
 
 Until then this should not be presented as a validated or paid product.

@@ -13,10 +13,13 @@ records are unresolved or contradictory, item by item.
 > [docs/restore.md](docs/restore.md)), and see what needs attention in a
 > read-only overview. Task 06 adds an installable beta ZIP, icons and an
 > in-app **How to use Refund Reconciler** guide (see
-> [docs/beta.md](docs/beta.md)). Capture has been tested only against
-> synthetic fixtures, not live Amazon pages, and the real toolbar-grant flow
-> has not been validated manually; both live checks are described in
-> docs/beta.md and are **not yet performed**.
+> [docs/beta.md](docs/beta.md)). The refund parser has been tested only
+> against synthetic fixtures, not real Amazon refund wording. The owner
+> reported (2026-10-10, desktop Chrome 154) that a real toolbar click on the
+> public amazon.com home page gave access, refused ordinary selected text and
+> saved nothing; this was not independently reproduced. Real refund wording
+> and updating through Chrome's extensions UI remain **untested** (see
+> [docs/validation.md](docs/validation.md)).
 > There is no automatic reconciliation, whole-page extraction or history
 > crawling, and no payment/commercial validation. The tool tracks evidence; it
 > does not move money, file disputes, or establish legal entitlement to a
@@ -56,8 +59,16 @@ and verified before it is kept; CI saves all three as the
 `refund-reconciler-beta` workflow artifact after every passing run. Testers
 can install that ZIP without Node: unzip it into a folder they keep, then
 **Load unpacked** that folder. Step-by-step tester instructions, updating
-without losing data, the manual checks that are still outstanding and a
-plain-language data explanation are in [docs/beta.md](docs/beta.md).
+without losing data, the reusable manual checks and a plain-language data
+explanation are in [docs/beta.md](docs/beta.md).
+
+**Chrome Web Store drafts (not a release).** [docs/store/](docs/store/readiness.md)
+holds a readiness assessment, listing text, a draft privacy policy and draft
+dashboard privacy answers. They are unpublished drafts with pending publisher
+fields. The assessment identifies unresolved privacy and security questions
+(unencrypted stored financial evidence, and in-product consent before
+capture) that block submission; see
+[docs/store/readiness.md](docs/store/readiness.md).
 
 ## Install the unpacked extension (developers)
 
@@ -229,8 +240,11 @@ for the derivation rules, limitations and next milestone, and
 [docs/capture.md](docs/capture.md) for the capture flow, parser patterns and
 what was or was not verified, [docs/export.md](docs/export.md) for the
 summary and backup formats, [docs/restore.md](docs/restore.md) for
-restoring a backup, and [docs/beta.md](docs/beta.md) for the beta package,
-tester instructions and outstanding live checks.
+restoring a backup, [docs/beta.md](docs/beta.md) for the beta package,
+tester instructions and manual checks, [docs/validation.md](docs/validation.md)
+for what has and has not been validated, and
+[docs/store/readiness.md](docs/store/readiness.md) for the store-readiness
+assessment and drafts.
 
 Capture browser tests cannot click the real toolbar button, so they load a
 temporary copy of `dist/` with host access to the synthetic fixture hosts

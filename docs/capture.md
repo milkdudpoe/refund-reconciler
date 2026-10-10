@@ -312,9 +312,15 @@ gesture granted access. Separately, the unmodified production build is tested:
 Test permissions never enter `dist/`.
 
 **Not verified:** behaviour on real, signed-in Amazon US pages; Amazon's
-current refund wording and how its pages produce `Selection.toString()` text;
-and the manual toolbar-click flow in a desktop Chrome profile. These need
-live, user-consented validation before anyone relies on this capture. A
-manual checklist for both (the toolbar grant and one real refund line) is in
-[beta.md](beta.md#manual-checks-still-to-do); as of beta 0.6.0 neither has
-been performed.
+current refund wording and how its pages produce `Selection.toString()` text.
+These need live, user-consented validation before anyone relies on this
+capture. The manual checklist (the toolbar grant and one real refund line) is
+in [beta.md](beta.md#manual-checks).
+
+**Toolbar grant (owner-reported).** On 2026-10-10 the owner reported that, in
+desktop Chrome 154.0.8037.98, a real toolbar click on ordinary selected text
+from the public amazon.com home page followed by Capture showed "Cannot
+propose a report from this selection" and the dashboard stayed empty. This
+supports the `activeTab` grant path and refusal of non-refund text; it was
+not independently reproduced and says nothing about real refund wording (see
+[validation.md](validation.md)).

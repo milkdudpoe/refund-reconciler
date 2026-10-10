@@ -327,5 +327,6 @@ Linux Chromium only; Windows was not run.
   edited file that is still well-formed is restored as it is.
 - Only the most recent restore is remembered (`lastRestore`).
 - Very large ledgers are bounded by Chrome's 10 MB `storage.local` quota.
-- Live Amazon compatibility of capture and the real toolbar-grant flow remain
-  unvalidated (unchanged by this task).
+- Real Amazon refund-wording compatibility of capture remains untested; the
+  toolbar grant was later owner-reported as passing (see
+  [validation.md](validation.md)).
