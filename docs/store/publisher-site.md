@@ -181,7 +181,12 @@ page) and then requires, for publication (`scripts/site/publication.ts`):
 
 - exactly one `- **Effective date:** YYYY-MM-DD` line in
   `docs/store/privacy-policy.md`, a real calendar day (no rollover such as
-  `2027-02-30`) and not the Task 12 review-preparation date `2026-10-11`;
+  `2027-02-30`). The gate cannot tell which day is the true publication
+  date, so it imposes no particular day: the owner records the actual
+  first-publication date. Copying the review-preparation date
+  (2026-10-11) into the field does not by itself establish publication, but
+  publishing on the same day the site was prepared is valid, and such a
+  date passes;
 - no `[PENDING: ...]` marker in the policy, its standalone copy or any page;
 - no draft note (`> ` block, rendered as `<aside class="draft">`) and no
   draft-only wording (*unpublished draft*, *not yet in effect*, *not yet
@@ -209,8 +214,10 @@ date, the draft note and its wording remain, the host is still *planned*,
 copies contain the draft note and are labelled drafts, and all three pages
 carry the review banner. `tests/unit/publication-gate.test.ts` pins that
 list, and checks a finalized **fixture** (temporary copies of the reviewed
-files with the documented edits applied, test data only) that passes, plus
-each remaining draft element, stale policy HTML and extra files failing on
+files with the documented edits applied, test data only) that passes,
+including when dated the preparation day 2026-10-11 or a later day, plus
+each remaining draft element (a leftover **Prepared for review** line
+included, whatever its date), stale policy HTML and extra files failing on
 their own.
 
 ## Manual Pages workflow (Task 13)
@@ -256,8 +263,9 @@ None of these steps has been performed.
 
 1. **Approval.** The owner approves the reviewed site, the **If you email
    MJUD** support wording, GitHub Pages as host, and the actual publication.
-2. **Final edits, on the actual first-publication date** (not the date any
-   preparation task ran):
+2. **Final edits, on the actual first-publication date** (whatever day
+   publication really happens, which may be the same day as a preparation
+   task; never a date chosen only because a task ran on it):
    - `docs/store/privacy-policy.md`: delete the `> ` draft note; set
      `- **Effective date:** YYYY-MM-DD` to that date (removing *not yet
      effective* and its `[PENDING]` marker); delete the **Prepared for

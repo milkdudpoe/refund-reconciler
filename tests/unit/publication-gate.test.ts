@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isAllowedProductionPath } from '../../scripts/beta/verify.ts';
 import { SITE_ASSET_SOURCES, SITE_DIR, SITE_FILES } from '../../scripts/site/checks.ts';
-import { checkPublication, isCalendarDate, publicationProblems, readPublicationTexts, REVIEW_PREPARATION_DATE } from '../../scripts/site/publication.ts';
+import { checkPublication, isCalendarDate, publicationProblems, readPublicationTexts } from '../../scripts/site/publication.ts';
 import { checkSiteSources, lf, POLICY_HTML, POLICY_MD, SITE_PRIVACY, writeDerivedFiles } from '../../scripts/site/sources.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -116,6 +116,17 @@ describe('publication gate on a finalized fixture', () => {
     expect(added).toEqual([`- **Effective date:** ${EFFECTIVE}`, expect.stringMatching(/^- \*\*Host:\*\* GitHub Pages\. Like any web host/)]);
   });
 
+  // Preparation and first publication may fall on the same day; the gate checks
+  // the policy's finalized state, not which day it was prepared.
+  it.each(['2026-10-11', '2026-10-12', '2028-02-29'])('passes the complete check when finalized with effective date %s', async (date) => {
+    const root = join(scratch, `dated-${date}`);
+    await copyRepoFiles(root);
+    await finalize(root, date);
+    expect(await checkSiteSources(root)).toEqual([]);
+    expect(await checkPublication(root)).toEqual([]);
+    for (const file of [POLICY_HTML, SITE_PRIVACY]) expect(await readText(root, file)).toContain(`<strong>Effective date:</strong> ${date}</li>`);
+  });
+
   it('allows an honest statement that the extension is an unpublished beta', async () => {
     const home = await readText(finalized, `${SITE_DIR}/index.html`);
     expect(home).toContain('Unpublished beta &middot; local preview');
@@ -142,8 +153,11 @@ describe('publication gate refuses each remaining draft element on its own', () 
     expect(await problemsWith(withDate(value))).toEqual([expect.stringContaining(`effective date "${value}" is not a valid YYYY-MM-DD calendar date`)]);
   });
 
-  it('the review-preparation date as effective date', async () => {
-    expect(await problemsWith(withDate(REVIEW_PREPARATION_DATE))).toEqual([expect.stringContaining('is the review-preparation date')]);
+  it('a "Prepared for review" label, even when every date is a valid calendar day', async () => {
+    const prepared = (md: string) => md.replace(`- **Effective date:** ${EFFECTIVE}\n`, `- **Effective date:** ${EFFECTIVE}\n- **Prepared for review:** ${EFFECTIVE}\n`);
+    expect(await problemsWith(prepared)).toEqual([
+      `${POLICY_MD} still contains draft-only wording ("Prepared for review"); finalize the draft note and metadata lines`,
+    ]);
   });
 
   it('a residual [PENDING] marker (policy and both generated copies)', async () => {

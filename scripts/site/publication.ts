@@ -9,9 +9,6 @@ import { join } from 'node:path';
 import { CONTACT_EMAIL, PAGES, PUBLISHER, SITE_DIR } from './checks.ts';
 import { checkSiteSources, lf, POLICY_HTML, POLICY_MD } from './sources.ts';
 
-/** The Task 12 review-preparation date. It is not an effective date. */
-export const REVIEW_PREPARATION_DATE = '2026-10-11';
-
 export const LIMITED_USE_LINK = 'privacy.html#chrome-web-store-user-data-policy';
 
 /**
@@ -58,8 +55,6 @@ export function publicationProblems({ policyMarkdown, policyHtml, pages }: Publi
     const date = dates[0] ?? '';
     if (!isCalendarDate(date)) {
       problems.push(`${POLICY_MD} effective date "${date}" is not a valid YYYY-MM-DD calendar date; set it to the actual first-publication date`);
-    } else if (date === REVIEW_PREPARATION_DATE) {
-      problems.push(`${POLICY_MD} effective date ${date} is the review-preparation date, not a publication date; set the actual first-publication date`);
     }
   }
 
