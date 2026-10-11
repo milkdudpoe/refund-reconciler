@@ -43,6 +43,16 @@
   date, distribution choices, the exact Developer Dashboard privacy labels,
   an owner-operated toolbar check of 0.8.0 (**not run**), real refund
   wording, and the store review itself.
+- **Update for Task 13 (version 0.8.0 unchanged, 2026-10-11):** prepared,
+  not performed: the source of a manual-only GitHub Pages workflow
+  (`.github/workflows/publisher-site-pages.yml`, `workflow_dispatch` on
+  `main` only) and a read-only publication gate
+  (`npm run site:publication-check`), which **refuses the current draft**
+  (no effective date, draft note, review banners, `[PENDING]` markers, host
+  not confirmed). The workflow has **not been run**; Pages is not enabled
+  and no setting was changed. The site stays **unhosted and unpublished**,
+  and the verdict stays **not ready to submit**. Ordered remaining steps:
+  [publisher-site.md](publisher-site.md#future-publication-procedure-owner-authorized).
 
 ## Task 12 status (publisher site)
 
@@ -52,6 +62,8 @@
 | Public contact | **Supplied and incorporated:** `exiledeals@gmail.com` (mailto on every site page) | Owner; policy drafts, site |
 | Website | **Static files prepared, unhosted** (`publisher-site/`: home, privacy, support) | [publisher-site.md](publisher-site.md); CI artifact `refund-reconciler-publisher-site` |
 | Hosting | **Candidate: GitHub Pages** (repository is public; Pages not enabled). Owner's plan not inspected; eligibility is confirmed only in Settings → Pages | [publisher-site.md](publisher-site.md#hosting-plan-proposed) |
+| Deployment workflow (Task 13) | **Source prepared, never run**: manual `workflow_dispatch` on `main` only, publication gate before upload, Pages artifact = the seven site files only. Pages source setting and any `github-pages` protection rule are not configured | `.github/workflows/publisher-site-pages.yml`; [publisher-site.md](publisher-site.md#manual-pages-workflow-task-13) |
+| Publication gate (Task 13) | **Refuses the current draft** (expected); ordinary `site:check` still passes | `npm run site:publication-check`; [publisher-site.md](publisher-site.md#publication-gate-task-13) |
 | Public policy URL | **Pending** (proposed, not live: `https://milkdudpoe.github.io/refund-reconciler/privacy.html`) | — |
 | Policy effective date | **Pending**: the policy is marked unpublished and not yet effective; only a review-preparation date (2026-10-11) is shown | [privacy-policy.md](privacy-policy.md) |
 | Limited Use statement on a site belonging to the extension | **Prepared**: one click from the homepage; live only once hosted | `publisher-site/index.html` |
@@ -569,7 +581,8 @@ pending:
 
 - A privacy policy URL hosted on a site the publisher controls; the same
   site carries the Limited Use statement. Files are prepared in
-  `publisher-site/`; hosting is not done ([publisher-site.md](publisher-site.md)).
+  `publisher-site/`, and a manual Pages workflow and publication gate exist
+  (Task 13, not run); hosting is not done ([publisher-site.md](publisher-site.md)).
 - The privacy policy's effective date, set when it is published.
 - Owner review of the support-email and website wording in the policy, which
   describe MJUD's own handling of email.
@@ -602,10 +615,13 @@ pending:
 
 ## Recommended next implementation step
 
-**After Task 12:** the owner reviews the site and policy, then authorizes
-hosting (publication steps in [publisher-site.md](publisher-site.md#final-edits-at-publication-owner-authorized-step));
-then the public URL and effective date, distribution choices, the
-dashboard-label review and the 0.8.0 toolbar check.
+**After Task 13:** the owner reviews the site and policy and authorizes
+publication; then the final edits on the actual publication date, the Pages
+source setting and an explicit run of the manual workflow on `main`, then
+recording the verified live URLs and effective date (ordered steps in
+[publisher-site.md](publisher-site.md#future-publication-procedure-owner-authorized)).
+Separately for the extension: distribution choices, the dashboard-label
+review and the 0.8.0 toolbar check.
 
 *After Task 11 (publisher name and contact since supplied in Task 12):* owner and publisher inputs, not code. These are:
 

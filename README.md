@@ -56,6 +56,7 @@ npm run icons       # re-render public/icons/*.png from assets-src/*.svg (after 
 npm run assets:store  # package:beta, then store listing images from the extracted ZIP (see docs/store/assets.md)
 npm run site:policy   # regenerate both policy HTML copies from docs/store/privacy-policy.md (see docs/store/publisher-site.md)
 npm run site:check    # check the static publisher site and that the policy copies are current
+npm run site:publication-check  # site:check plus the publication requirements; refuses the current draft by design
 npm run check       # typecheck, lint, unit, browser, package and update tests
 ```
 

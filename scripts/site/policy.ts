@@ -129,7 +129,10 @@ const STANDALONE_STYLE = `  :root { color-scheme: light dark; --fg: #1d1f23; --b
   mark.pending { background: var(--mark-bg); color: var(--mark-fg); font-weight: 700; padding: 0 0.2em; border-radius: 3px; }
   @media print { .draft { border: 2px solid #000; } mark.pending { outline: 2px solid #000; } }`;
 
-/** The standalone review copy, docs/store/privacy-policy.html. */
+/**
+ * The standalone review copy, docs/store/privacy-policy.html. Its title says
+ * "(unpublished draft)" while the policy still has its draft note.
+ */
 export function standalonePolicyHtml(policy: RenderedPolicy): string {
   return `<!doctype html>
 <html lang="en">
@@ -137,7 +140,7 @@ export function standalonePolicyHtml(policy: RenderedPolicy): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>${escapeHtml(policy.title)} (unpublished draft)</title>
+<title>${escapeHtml(policy.title)}${policy.html.includes('<aside class="draft"') ? ' (unpublished draft)' : ''}</title>
 <!-- Generated from privacy-policy.md by npm run site:policy; do not edit by hand. Standalone: no scripts, fonts or other external resources. Not part of the extension package. -->
 <style>
 ${STANDALONE_STYLE}
