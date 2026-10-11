@@ -11,64 +11,32 @@
 //   npm run site:artifact   site:check, then stage exactly the site files in
 //                           artifacts/publisher-site/site/ with a provenance
 //                           report beside them (not inside the site)
+//   npm run site:publication-check
+//                           site:check plus the publication requirements
+//                           (effective date, no draft notes, banners or
+//                           [PENDING] markers, confirmed host); refuses the
+//                           draft prepared for review (changes nothing)
 //
 // Writes only the named files above; the artifact directory is git-ignored.
-// Nothing here publishes, deploys or contacts any service.
+// Nothing here publishes, deploys or contacts any service; deployment is the
+// separate, manually run .github/workflows/publisher-site-pages.yml.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { checkSite, SITE_ASSET_SOURCES, SITE_DIR, SITE_FILES } from './site/checks.ts';
-import { injectPolicy, renderPolicy, standalonePolicyHtml } from './site/policy.ts';
+import { SITE_DIR, SITE_FILES } from './site/checks.ts';
+import { checkPublication } from './site/publication.ts';
+import { checkSiteSources, POLICY_MD, writeDerivedFiles } from './site/sources.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const POLICY_MD = 'docs/store/privacy-policy.md';
-const POLICY_HTML = 'docs/store/privacy-policy.html';
-const SITE_PRIVACY = `${SITE_DIR}/privacy.html`;
 const OUT_DIR = join(ROOT, 'artifacts', 'publisher-site');
 
-const lf = (text: string): string => text.replace(/\r\n/g, '\n');
 const sha256 = (data: Uint8Array): string => createHash('sha256').update(data).digest('hex');
 
 function git(args: string[]): string | null {
   const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
   return r.status === 0 ? r.stdout.trim() : null;
-}
-
-/** The generated text files and their expected contents. */
-async function expectedPolicyFiles(): Promise<Map<string, string>> {
-  const policy = renderPolicy(await readFile(join(ROOT, POLICY_MD), 'utf8'));
-  const sitePage = await readFile(join(ROOT, SITE_PRIVACY), 'utf8');
-  return new Map([
-    [POLICY_HTML, standalonePolicyHtml(policy)],
-    [SITE_PRIVACY, injectPolicy(sitePage, policy)],
-  ]);
-}
-
-async function write(): Promise<void> {
-  for (const [file, text] of await expectedPolicyFiles()) {
-    await writeFile(join(ROOT, file), text);
-    console.log(`wrote ${file}`);
-  }
-  for (const [file, source] of Object.entries(SITE_ASSET_SOURCES)) {
-    await mkdir(dirname(join(ROOT, SITE_DIR, file)), { recursive: true });
-    await copyFile(join(ROOT, source), join(ROOT, SITE_DIR, file));
-    console.log(`copied ${source} -> ${SITE_DIR}/${file}`);
-  }
-}
-
-async function check(): Promise<string[]> {
-  const problems: string[] = [];
-  for (const [file, text] of await expectedPolicyFiles()) {
-    if (lf(await readFile(join(ROOT, file), 'utf8')) !== text) problems.push(`${file} is out of date with ${POLICY_MD}; run npm run site:policy`);
-  }
-  for (const [file, source] of Object.entries(SITE_ASSET_SOURCES)) {
-    const [copy, original] = await Promise.all([readFile(join(ROOT, SITE_DIR, file)).catch(() => null), readFile(join(ROOT, source))]);
-    if (copy === null || !copy.equals(original)) problems.push(`${SITE_DIR}/${file} differs from ${source}; run npm run site:policy`);
-  }
-  problems.push(...(await checkSite(ROOT)));
-  return problems;
 }
 
 async function artifact(): Promise<void> {
@@ -104,16 +72,24 @@ async function artifact(): Promise<void> {
 
 const mode = process.argv[2] ?? '--write';
 if (mode === '--write') {
-  await write();
+  await writeDerivedFiles(ROOT, console.log);
 } else if (mode === '--check' || mode === '--artifact') {
-  const problems = await check();
+  const problems = await checkSiteSources(ROOT);
   if (problems.length > 0) {
     for (const p of problems) console.error(`publisher site: ${p}`);
     process.exit(1);
   }
   console.log(`publisher site: ${SITE_FILES.length} files checked, policy copies up to date`);
   if (mode === '--artifact') await artifact();
+} else if (mode === '--publication-check') {
+  const problems = await checkPublication(ROOT);
+  if (problems.length > 0) {
+    for (const p of problems) console.error(`publication gate: ${p}`);
+    console.error(`publication gate: REFUSED (${problems.length} problems). The site is not ready to publish; see docs/store/publisher-site.md.`);
+    process.exit(1);
+  }
+  console.log(`publication gate: passed (${SITE_FILES.length} files, policy finalized). This is a check of files, not a deployment.`);
 } else {
-  console.error('usage: publisher-site.ts [--write | --check | --artifact]');
+  console.error('usage: publisher-site.ts [--write | --check | --artifact | --publication-check]');
   process.exit(2);
 }

@@ -1,10 +1,18 @@
-# Publisher site and privacy-policy handoff (Task 12)
+# Publisher site and privacy-policy handoff (Tasks 12 and 13)
 
 > **Prepared, not published.** The files below are ready for the owner's
 > review. Nothing has been hosted or deployed: GitHub Pages is not enabled,
-> no DNS, domain, hosting account or deployment workflow exists, nothing was
-> submitted to the Chrome Web Store, and no email was sent. The proposed URLs
-> below are **not live** and were not requested.
+> no DNS, domain or hosting account exists, nothing was submitted to the
+> Chrome Web Store, and no email was sent. The proposed URLs below are **not
+> live** and were not requested.
+>
+> **Task 13** added the *source* of a manual-only deployment workflow
+> (`.github/workflows/publisher-site-pages.yml`) and a read-only publication
+> gate (`npm run site:publication-check`). The workflow has **never been
+> run**, Pages settings and the `github-pages` environment were not touched,
+> and the gate **refuses today's draft** by design (see
+> [Publication gate](#publication-gate-task-13)). The site stays unhosted and
+> unpublished.
 
 - **Publisher:** MJUD (supplied by the owner)
 - **Public contact:** `exiledeals@gmail.com` (supplied by the owner)
@@ -114,14 +122,14 @@ Checked on 2026-10-11 (read-only):
   informational project page with no transactions or forms. Published sites
   are limited to 1 GB with a 100 GB/month soft bandwidth limit; this site is
   under 0.2 MB.
-- **Deployment method (when authorized):** a custom GitHub Actions workflow
-  that uploads **only** `publisher-site/` with `actions/upload-pages-artifact`
-  and deploys it with `actions/deploy-pages`; the deploy job needs
-  `pages: write` and `id-token: write`
+- **Deployment method (when authorized):** the manual workflow described in
+  [Manual Pages workflow](#manual-pages-workflow-task-13), which uploads
+  **only** the staged site files with `actions/upload-pages-artifact` and
+  deploys them with `actions/deploy-pages`
   ([Using custom workflows with GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages),
   [Configuring a publishing source](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)).
-  This keeps the rest of the repository out of the site. **No such workflow
-  is added in this task**, and the existing CI permissions are unchanged.
+  Its source exists since Task 13; it has not been run. The existing CI
+  workflow's permissions are unchanged (`contents: read`, no deployment).
 
 If GitHub Pages is not used, the folder can be uploaded unchanged to any
 static host. The policy's **This website** section must then be rewritten
@@ -160,26 +168,130 @@ These are interpretations for planning, not a compliance certification.
   Linking the site from the extension would be a later change, made only
   once the URLs are live.
 
-## Final edits at publication (owner-authorized step)
+## Publication gate (Task 13)
 
-1. Choose the host. For GitHub Pages: enable Pages with **GitHub Actions** as
-   the source and add the artifact-only deployment workflow described above.
-2. In `docs/store/privacy-policy.md`:
-   - replace the draft note with nothing (or a short "Current version" line);
-   - set **Effective date** to the actual publication date (remove its
-     `[PENDING]` marker) and remove the **Prepared for review** line;
-   - in **This website**, confirm the host description matches the actual
-     host and remove its `[PENDING]` marker.
-3. Remove the review-only banner (`<div class="review-note">…</div>`) from
-   the three pages; it is not generated. Optionally drop the `.review-note`
-   CSS.
-4. Run `npm run site:policy` and `npm run site:check`, update the expected
-   `[PENDING]` list in `tests/unit/publisher-site.test.ts` (it pins the two
-   draft-only markers), run `npm test`, then review the diff.
-5. Deploy, then confirm that each final URL returns the expected page over
-   HTTPS, that relative links and images work there, and that the Limited
-   Use link lands on the right heading.
-6. Record the live privacy-policy URL and effective date in
-   [readiness.md](readiness.md) and
-   [privacy-practices.md](privacy-practices.md#privacy-policy-url), and use
-   that URL in the Developer Dashboard.
+```sh
+npm run site:publication-check   # read-only; exits non-zero unless the site is publishable
+```
+
+It runs everything `site:check` runs (both policy HTML copies and the
+images current, the exact seven-file inventory, no scripts, forms or external
+resources, relative links and fragments, MJUD and the contact mailto on every
+page) and then requires, for publication (`scripts/site/publication.ts`):
+
+- exactly one `- **Effective date:** YYYY-MM-DD` line in
+  `docs/store/privacy-policy.md`, a real calendar day (no rollover such as
+  `2027-02-30`) and not the Task 12 review-preparation date `2026-10-11`;
+- no `[PENDING: ...]` marker in the policy, its standalone copy or any page;
+- no draft note (`> ` block, rendered as `<aside class="draft">`) and no
+  draft-only wording (*unpublished draft*, *not yet in effect*, *not yet
+  effective*, *Prepared for review*) in the policy; neither generated copy
+  nor the privacy page may call the policy a draft in its `<title>` or meta
+  description;
+- no review-only banner (`<div class="review-note">`) on the three pages;
+- the **This website** host bullet reading exactly as reviewed, minus
+  *Planned* and its marker: *"**Host:** GitHub Pages. Like any web host, it
+  receives the request … GitHub states that it logs and stores visitors' IP
+  addresses for security purposes; see the GitHub Privacy Statement."*;
+- the publisher, contact and Limited Use statement in the policy, and the
+  homepage's one-click link to `privacy.html#chrome-web-store-user-data-policy`.
+
+It writes nothing, fills in no date and generates no policy text. Ordinary
+`site:check` and CI still accept the draft and keep producing the review
+artifact. The gate does not object to the homepage's accurate statement that
+the **extension** is an unpublished beta, not in the Chrome Web Store; that
+stays true until a store release and is not the same as publishing a policy
+that is not in effect.
+
+Today's draft is refused with 15 problems: the effective date is not a
+date, the draft note and its wording remain, the host is still *planned*,
+`[PENDING]` markers remain in the policy and both HTML copies, both HTML
+copies contain the draft note and are labelled drafts, and all three pages
+carry the review banner. `tests/unit/publication-gate.test.ts` pins that
+list, and checks a finalized **fixture** (temporary copies of the reviewed
+files with the documented edits applied, test data only) that passes, plus
+each remaining draft element, stale policy HTML and extra files failing on
+their own.
+
+## Manual Pages workflow (Task 13)
+
+`.github/workflows/publisher-site-pages.yml` (**not run**):
+
+- **Trigger:** `workflow_dispatch` only. Both jobs run only when the
+  selected ref is `refs/heads/main`; any other branch or tag is skipped and
+  nothing is deployed.
+- **Commit:** checks out `github.sha` (the dispatched commit) without
+  persisted credentials, confirms `HEAD` equals it and fetches nothing else.
+- **Build job** (`contents: read`, 15 min): pinned Node from `.nvmrc`,
+  `npm ci`, `typecheck`, `lint`, `npm test`, **`site:publication-check`**, then
+  `site:artifact` with the provenance commit set to `github.sha`; the report
+  must name that commit as both source and checkout, with a clean working
+  tree. It does not build the extension or regenerate store screenshots.
+- **Artifacts:** the provenance report is uploaded separately as the normal
+  artifact `refund-reconciler-publisher-site-report`. The Pages artifact is
+  **only** `artifacts/publisher-site/site/` (the seven files), never the
+  repository root or the report's directory. The report describes the staged
+  files; it is not evidence that a deployment happened.
+- **Deploy job:** `needs: build`, the only job with `pages: write` and
+  `id-token: write`, environment `github-pages` with the deployment URL as
+  its output, `actions/deploy-pages@v4`, 10 min.
+- **Concurrency:** group `pages`, `cancel-in-progress: false`, so an
+  in-progress deployment finishes and a later run waits.
+- **Not done by the workflow:** it does not enable Pages or change any
+  setting (no `actions/configure-pages` enablement). Before a first run the
+  owner sets **Settings → Pages → Build and deployment → Source** to
+  **GitHub Actions**. GitHub recommends a deployment protection rule so that
+  only the default branch can deploy to the `github-pages` environment; any
+  rule or required reviewer is the owner's service setting.
+
+Checked in Task 13 without running anything: `actionlint` 1.7.7 reports no
+problems in either workflow, and the triggers, permissions, branch
+condition, `needs` and upload path above were inspected in the YAML. Until
+the publication text is finalized, the workflow refuses at the gate; the CI
+artifact `refund-reconciler-publisher-site` stays the way to inspect the draft.
+
+## Future publication procedure (owner-authorized)
+
+None of these steps has been performed.
+
+1. **Approval.** The owner approves the reviewed site, the **If you email
+   MJUD** support wording, GitHub Pages as host, and the actual publication.
+2. **Final edits, on the actual first-publication date** (not the date any
+   preparation task ran):
+   - `docs/store/privacy-policy.md`: delete the `> ` draft note; set
+     `- **Effective date:** YYYY-MM-DD` to that date (removing *not yet
+     effective* and its `[PENDING]` marker); delete the **Prepared for
+     review** line; in **This website**, change
+     `**Planned host [PENDING: confirm when the site is published]:** GitHub Pages.`
+     to `**Host:** GitHub Pages.` and leave the rest of the bullet as is.
+   - Remove `<div class="review-note">…</div>` from `index.html`,
+     `privacy.html` and `support.html` (hand-written, not generated), and
+     drop *(unpublished draft)* from `privacy.html`'s meta description.
+     Optionally drop the `.review-note` CSS. Keep the extension's
+     *Unpublished beta* status until a store release.
+   - Run `npm run site:policy` (regenerates both policy HTML copies; the
+     standalone title loses *(unpublished draft)* once the note is gone),
+     update the pinned draft expectations in
+     `tests/unit/publisher-site.test.ts` (the two `[PENDING]` markers and
+     *not yet effective*) and `tests/unit/publication-gate.test.ts` (the
+     real-draft refusal), then run `npm test`, `npm run site:check` and
+     `npm run site:publication-check` (must pass). Review the concrete diff.
+3. **Main and settings.** Get the reviewed revision onto `main` with CI
+   green, and set the Pages source to **GitHub Actions** (optionally adding
+   the `github-pages` protection rule).
+4. **Run.** Explicitly run *Publisher site (manual Pages deployment)* on
+   `main` from the Actions tab. An environment approval, if configured, is
+   given by the owner in GitHub.
+5. **Verify and record.** Over HTTPS, check the live home, privacy and
+   support pages, images, relative navigation and the Limited Use anchor
+   (`privacy.html#chrome-web-store-user-data-policy`). Record the deployed
+   commit, the workflow run and deployment result, the effective date and the
+   verified URLs in [readiness.md](readiness.md) and
+   [privacy-practices.md](privacy-practices.md#privacy-policy-url). Only then
+   use those URLs in the store listing and Developer Dashboard.
+
+Website publication is separate from extension submission. The site may be
+published before the extension is submitted; the extension still needs the
+owner-operated **0.8.0** toolbar check (the earlier 0.6.0 owner report does
+not verify this beta), the Developer Dashboard privacy labels,
+certifications and distribution choices, and Google's review.

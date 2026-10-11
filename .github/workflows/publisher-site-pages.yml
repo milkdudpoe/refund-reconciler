@@ -1,0 +1,83 @@
+# Manual GitHub Pages deployment of the static publisher site (publisher-site/).
+# See docs/store/publisher-site.md. Run only when the owner has authorized
+# publication: it is started by hand on main, never by a push, pull request,
+# schedule or other workflow, and the publication gate refuses the draft site.
+# It does not enable Pages; Settings -> Pages -> Source must be set to
+# "GitHub Actions" by the owner first, or the deploy step fails.
+
+name: Publisher site (manual Pages deployment)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One Pages deployment at a time; a queued run waits for one in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Any other selected branch or tag is skipped, so the deploy job never runs.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The dispatched commit itself, not whatever main points to later.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Confirm the checkout is the dispatched commit
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      # Refuses unless the policy and pages are finalized (effective date, no
+      # draft notes, review banners or [PENDING] markers, confirmed host) and
+      # everything site:check requires still holds.
+      - run: npm run site:publication-check
+      - name: Stage the site and check its provenance
+        env:
+          BETA_SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          npm run site:artifact
+          report=artifacts/publisher-site/publisher-site-report.json
+          test "$(jq -r .sourceCommit "$report")" = "$GITHUB_SHA"
+          test "$(jq -r .checkoutCommit "$report")" = "$GITHUB_SHA"
+          test "$(jq -r .workingTreeClean "$report")" = true
+          cd artifacts/publisher-site/site
+          find . -type f -print0 | sort -z | xargs -0 sha256sum
+      # Review artifact only: the report describes the staged files, not a deployment.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: refund-reconciler-publisher-site-report
+          path: artifacts/publisher-site/publisher-site-report.json
+          if-no-files-found: error
+          retention-days: 90
+      # The Pages artifact holds only the seven site files, never the report.
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: artifacts/publisher-site/site/
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
