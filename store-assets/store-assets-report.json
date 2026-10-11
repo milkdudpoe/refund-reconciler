@@ -1,0 +1,103 @@
+{
+  "generation": "local-precommit",
+  "generationNote": "Generated locally before these files were committed, from the checkout recorded in generatedFrom. This is not CI final-head output: the CI \"refund-reconciler-store-assets\" artifact for the pull request head is the final-head record.",
+  "extension": {
+    "name": "Refund Reconciler (local preview)",
+    "version": "0.8.0",
+    "permissions": [
+      "storage",
+      "activeTab",
+      "scripting"
+    ]
+  },
+  "dataPracticesVersion": 1,
+  "package": {
+    "file": "refund-reconciler-beta-0.8.0.zip",
+    "bytes": 85563,
+    "sha256": "79cc8f5ebae2780723ab4b4ba84b9d6a64f0462548b523476a3a46eb8365bfd8",
+    "sourceCommit": "7dab474d9847e90668e120796dccd41c581a71b2",
+    "checkoutCommit": "7dab474d9847e90668e120796dccd41c581a71b2",
+    "workingTreeClean": true
+  },
+  "generatedFrom": {
+    "checkoutCommit": "7dab474d9847e90668e120796dccd41c581a71b2",
+    "workingTreeClean": true,
+    "dirtyPaths": []
+  },
+  "browser": {
+    "name": "Chromium (Playwright bundled)",
+    "version": "141.0.7390.37"
+  },
+  "node": "v22.22.0",
+  "capture": {
+    "viewportCssPx": {
+      "width": 960,
+      "height": 600
+    },
+    "deviceScaleFactor": 1.3333333333333333,
+    "locale": "en-US",
+    "timezoneId": "America/New_York"
+  },
+  "verifiedScenario": {
+    "realCases": 4,
+    "demoCases": 0,
+    "unresolvedCents": 4250,
+    "unknownItems": 1,
+    "casesNeedingAttention": 3,
+    "casesNeedingReview": 1
+  },
+  "storeIcon": {
+    "path": "icons/icon-128.png",
+    "sha256": "0cd9aa34bfcafbca38935475b8b79d48695470ab38681d4a5559e0fa081d5688",
+    "bytes": 2760,
+    "width": 128,
+    "height": 128,
+    "alphaBounds": {
+      "left": 16,
+      "top": 16,
+      "right": 111,
+      "bottom": 111
+    },
+    "artworkWidth": 96,
+    "artworkHeight": 96,
+    "minTransparentMargin": 16
+  },
+  "outputs": [
+    {
+      "file": "small-promo-tile-440x280.png",
+      "kind": "small promotional tile",
+      "width": 440,
+      "height": 280,
+      "bytes": 55160,
+      "sha256": "c8f97596a52fa74323b0c7b564b1fcd39f3e9078fecc50339030bbb3639a151f"
+    },
+    {
+      "file": "screenshot-1-overview-1280x800.png",
+      "kind": "screenshot 1",
+      "width": 1280,
+      "height": 800,
+      "bytes": 125578,
+      "sha256": "aefa81a051bbf880ca3d35b30e3ec6a00a2409e04fd573f462074ae5306b290b",
+      "scenario": "Overview and case list: four synthetic manual cases (SYNTHETIC-1001 partially confirmed, SYNTHETIC-1002 needs review, SYNTHETIC-1003 open with one unknown expected amount, SYNTHETIC-1004 settled); no demo cases. Overview $42.50 unresolved, 1 unknown amount, 3 need attention, 1 needs review; search and Status controls visible."
+    },
+    {
+      "file": "screenshot-2-item-evidence-1280x800.png",
+      "kind": "screenshot 2",
+      "width": 1280,
+      "height": 800,
+      "bytes": 88631,
+      "sha256": "d7d4cc6a01d486813fc0531ffef936713aea1d8377bc595b80578704676aa420",
+      "scenario": "Case SYNTHETIC-1001, item \"Synthetic wool blanket\": expected $64.00, merchant report $64.00 (2026-09-21), confirmed received $40.00 (2026-09-24); Partially confirmed, $24.00 difference, merchant-reported vs confirmed warning."
+    },
+    {
+      "file": "screenshot-3-case-summary-1280x800.png",
+      "kind": "screenshot 3",
+      "width": 1280,
+      "height": 800,
+      "bytes": 144790,
+      "sha256": "b98e98ef0066abf9cbeec713dcad734fcdb60b8c1dc2fc48b0f60d89e8624a02",
+      "scenario": "Prepare case summary for SYNTHETIC-1001: the read-only plain-text preview with \"Include evidence details\" unticked (the synthetic references are omitted), the note that details may contain private text, and that the user shares the text themselves; nothing is sent."
+    }
+  ],
+  "hashesNote": "SHA-256 values identify these exact files for artifact integrity. Rendering differs across operating systems and fonts, so they are not a visual-correctness check and are not compared across runs."
+}

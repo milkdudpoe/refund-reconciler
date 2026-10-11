@@ -198,10 +198,17 @@ artifact for manual testing, not a release or a Web Store upload. In CI the
 report's `sourceCommit` is the pull request's head commit; `checkoutCommit`
 is the merge commit GitHub actually built.
 
-**Icons.** `assets-src/icon.svg` (32/48/128 px) and `assets-src/icon-16.svg`
-(simplified for 16 px) are the editable sources. `npm run icons` renders them
+**Icons.** `assets-src/icon.svg` (32/48 px), `assets-src/icon-16.svg`
+(simplified for 16 px) and `assets-src/icon-store.svg` (128 px, the same
+artwork as a 96×96 tile with 16 px transparent padding, as the Chrome Web
+Store asks; Task 11) are the editable sources. `npm run icons` renders them
 with Playwright's bundled Chromium into `public/icons/icon-{16,32,48,128}.png`,
 which are committed; the build only copies them.
+
+**Store listing images** (not part of the ZIP): `npm run assets:store`
+captures them from this ZIP; CI also uploads them as the separate
+**`refund-reconciler-store-assets`** artifact. See
+[store/assets.md](store/assets.md).
 
 ## For testers: install and try the beta
 
