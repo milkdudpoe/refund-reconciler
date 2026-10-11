@@ -17,6 +17,8 @@
     "package:beta": "node --experimental-strip-types scripts/package-beta.ts",
     "test:package": "npm run package:beta && playwright test -c playwright.package.config.ts",
     "test:update": "npm run package:beta && playwright test -c playwright.update.config.ts",
+    "assets:store": "node --experimental-strip-types scripts/store-assets.ts",
+    "assets:promote": "node --experimental-strip-types scripts/store-assets.ts --promote",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:e2e && npm run test:package && npm run test:update"
   },
   "devDependencies": {

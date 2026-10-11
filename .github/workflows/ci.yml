@@ -40,6 +40,23 @@ jobs:
       - run: npm run test:update
         env:
           BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Chrome Web Store listing images from the same verified beta ZIP, in a
+      # disposable profile (docs/store/assets.md). Not part of the ZIP.
+      - name: Generate and verify store assets from the beta ZIP
+        run: npm run assets:store -- --reuse-package
+        env:
+          BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Check store assets name this run's beta ZIP and head
+        env:
+          BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          report=artifacts/store-assets/store-assets-report.json
+          zip_sha=$(cut -d' ' -f1 artifacts/beta/refund-reconciler-beta-*.zip.sha256)
+          test "$(jq -r .package.sha256 "$report")" = "$zip_sha"
+          test "$(jq -r .package.sourceCommit "$report")" = "$BETA_SOURCE_COMMIT"
+          test "$(jq -r .generation "$report")" = ci-final-head
+          test "$(jq '.outputs | length' "$report")" = 4
+          jq '{generation, package, browser, storeIcon: .storeIcon.alphaBounds, outputs: [.outputs[] | {file, width, height, bytes, sha256}]}' "$report"
       # Independent cross-check of the archive with standard tools.
       - name: Check beta archive checksum and listing
         working-directory: artifacts/beta
@@ -55,6 +72,18 @@ jobs:
             artifacts/beta/refund-reconciler-beta-*.zip
             artifacts/beta/refund-reconciler-beta-*.zip.sha256
             artifacts/beta/refund-reconciler-beta-*.report.json
+          if-no-files-found: error
+          retention-days: 14
+      # Listing images and their provenance report, separate from the beta ZIP.
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: refund-reconciler-store-assets
+          path: |
+            artifacts/store-assets/*.png
+            artifacts/store-assets/store-assets-report.json
+            artifacts/store-assets/capture.json
+            artifacts/store-assets/preview.html
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4

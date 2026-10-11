@@ -8,13 +8,13 @@
 // that capture works on current Amazon pages. See docs/beta.md.
 
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { test as base } from '@playwright/test';
 import { ExtensionSession, createCase, expect, recordForItem } from '../e2e/fixtures';
 import { CONSENT_KEY, VAULT_KEY, acceptViaUi, consentGate, decryptedRaw, setupViaUi, unlockViaUi, vaultScreen } from '../e2e/vault-helpers';
-import { isRegularFileEntry, isSafeEntryName, readZip } from '../../scripts/beta/zip.ts';
+import { extractBetaZip } from './extract';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const VERSION = (JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')) as { version: string }).version;
@@ -29,14 +29,7 @@ const test = base.extend<{ packaged: { session: ExtensionSession; extracted: str
     });
     const work = await mkdtemp(join(tmpdir(), 'refund-reconciler-beta-smoke-'));
     const extracted = join(work, 'extension');
-    for (const entry of readZip(zip)) {
-      expect(isSafeEntryName(entry.name), entry.name).toBe(true);
-      expect(isRegularFileEntry(entry), entry.name).toBe(true);
-      const target = resolve(extracted, ...entry.name.split('/'));
-      expect(target.startsWith(extracted + sep)).toBe(true);
-      await mkdir(dirname(target), { recursive: true });
-      await writeFile(target, entry.data);
-    }
+    await extractBetaZip(zip, extracted);
     const session = new ExtensionSession(join(work, 'profile'), extracted);
     await session.launch();
     await use({ session, extracted, zip });
