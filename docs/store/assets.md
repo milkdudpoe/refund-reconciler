@@ -27,7 +27,7 @@ The page footer reads "Last updated 2018-06-11 UTC". It was fetched again on
 
 | File | Kind | Source | Committed |
 | --- | --- | --- | --- |
-| `public/icons/icon-128.png` | Packaged icon (manifest `icons.128` and `action.default_icon.128`) | `assets-src/icon-store.svg` | yes |
+| `public/icons/icon-128.png` | Packaged icon (manifest `icons.128`; the toolbar `action.default_icon` lists only 16 and 32) | `assets-src/icon-store.svg` | yes |
 | `public/icons/icon-{16,32,48}.png` | Toolbar icons, **unchanged** byte for byte | `assets-src/icon-16.svg`, `assets-src/icon.svg` | yes |
 | `store-assets/small-promo-tile-440x280.png` | Small promotional tile | `store-assets/source/small-promo-tile.svg` | yes |
 | `store-assets/screenshot-1-overview-1280x800.png` | Screenshot 1 | Captured from the extracted beta ZIP | yes |
@@ -265,8 +265,9 @@ The exact bytes and hashes of each image are in
 
 These are not decided here (see [readiness.md](readiness.md#publisher-inputs-pending)):
 
-- publisher name and contact;
-- hosted policy URL and effective date;
+- hosted policy URL and effective date (publisher MJUD and contact
+  `exiledeals@gmail.com` were supplied in Task 12; site files are prepared in
+  [publisher-site.md](publisher-site.md));
 - distribution choices;
 - the exact Developer Dashboard privacy labels;
 - an owner-operated toolbar check of 0.8.0;

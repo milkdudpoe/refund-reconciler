@@ -33,6 +33,48 @@
   choices, a dashboard-label review of every privacy answer, an
   owner-operated toolbar check of 0.8.0 (**not run**), real refund wording,
   and the store review itself.
+- **Update for Task 12 (version 0.8.0 unchanged, 2026-10-11):** the owner
+  supplied the publisher name **MJUD**, the public contact
+  **exiledeals@gmail.com** and "no existing website". Both are now in the
+  policy drafts, and a static publisher site is **prepared but not hosted**
+  (see [Task 12 status](#task-12-status-publisher-site) and
+  [publisher-site.md](publisher-site.md)). The verdict stays **not ready to
+  submit**. Still pending: hosting and the public policy URL, the effective
+  date, distribution choices, the exact Developer Dashboard privacy labels,
+  an owner-operated toolbar check of 0.8.0 (**not run**), real refund
+  wording, and the store review itself.
+
+## Task 12 status (publisher site)
+
+| Item | Status | Source / evidence |
+| --- | --- | --- |
+| Publisher identity | **Supplied and incorporated:** MJUD | Owner (Task 12 instructions); policy drafts, site |
+| Public contact | **Supplied and incorporated:** `exiledeals@gmail.com` (mailto on every site page) | Owner; policy drafts, site |
+| Website | **Static files prepared, unhosted** (`publisher-site/`: home, privacy, support) | [publisher-site.md](publisher-site.md); CI artifact `refund-reconciler-publisher-site` |
+| Hosting | **Candidate: GitHub Pages** (repository is public; Pages not enabled). Owner's plan not inspected; eligibility is confirmed only in Settings → Pages | [publisher-site.md](publisher-site.md#hosting-plan-proposed) |
+| Public policy URL | **Pending** (proposed, not live: `https://milkdudpoe.github.io/refund-reconciler/privacy.html`) | — |
+| Policy effective date | **Pending**: the policy is marked unpublished and not yet effective; only a review-preparation date (2026-10-11) is shown | [privacy-policy.md](privacy-policy.md) |
+| Limited Use statement on a site belonging to the extension | **Prepared**: one click from the homepage; live only once hosted | `publisher-site/index.html` |
+| 0.8.0 owner toolbar check | **Not run.** No owner result was supplied during Task 12; screenshots and automated tests do not substitute for it | [../validation.md](../validation.md) |
+| Developer Dashboard privacy labels, distribution settings, store review | **Pending**; no dashboard login or form was used | [privacy-practices.md](privacy-practices.md) |
+| Real refund wording | **Untested**; the 0.6.0 owner toolbar report stays historical context only | [../validation.md](../validation.md#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
+
+What the policy drafts now add (data practices of the extension unchanged):
+an **If you email MJUD** section (voluntary; MJUD receives the sender's
+address and what they send; used only to answer; email providers keep their
+own copies; no retention period is promised) and a **This website** section
+(no cookies, scripts or analytics; the planned host receives requests and,
+for GitHub Pages, logs IP addresses for security). Broad statements such as
+"the publisher does not receive any information" were narrowed to the
+extension's records, which MJUD cannot access.
+
+**Publication order.** A reviewed policy can be hosted before the extension
+is submitted; Google's approval is not a prerequisite for hosting the policy
+reviewers need to read. Website/policy publication needs only owner review,
+a host, the effective date and confirmed URLs. Extension submission then
+also needs the hosted URL, dashboard labels and certifications, distribution
+settings and the toolbar check; release needs the review outcome. Details:
+[publisher-site.md](publisher-site.md#what-depends-on-what).
 
 ## Task 11 status (0.8.0, store assets)
 
@@ -274,12 +316,12 @@ Status values: **Met** (fact), **Gap** (fact, with work needed),
 | R8 | No remote code (dashboard page "Declare any remote code") | All code is bundled. CSP `script-src 'self'`. The injected function is bundled `func` | `public/manifest.json` CSP; `src/capture/acquire.ts`; build scan | **Met** | Answer "No" |
 | R9 | Limited Use: use data only for the single purpose; transfer, advertising, creditworthiness and human-reading limits | No transfer, advertising or developer access. Data stays on the device | Build scan; data-flow table | **Met** (fact plus interpretation) | Certify only after the remaining open items (publisher inputs, hosted policy, dashboard labels) are settled; B1 and B2 are implemented |
 | R10 | Web browsing activity only for a user-facing feature described prominently on the store page **and** in the UI (Limited Use) | The page address is used for capture provenance and order matching, after a toolbar click and Capture | F4–F6 | **Met in the UI; Pending on the store page** | The listing must describe capture and its stored page address ([listing.md](listing.md) does) |
-| R11 | Limited Use affirmative statement on a website belonging to the extension (Limited Use; FAQ *Limited uses* Q1) | None hosted | — | **Pending** | Included in the draft policy; needs hosting |
+| R11 | Limited Use affirmative statement on a website belonging to the extension (Limited Use; FAQ *Limited uses* Q1) | None hosted. **Task 12:** prepared in `publisher-site/` (homepage links to it in one click) | `publisher-site/index.html`, `privacy.html` | **Pending** (not hosted) | Host the reviewed site |
 | R12 | Privacy policy, dashboard answers and behaviour must be consistent (FAQ *Simplifying* Q3) | The drafts were checked against the code (see [Consistency](#consistency-check)). Stale in-product help copy remains | `src/ui/help.ts` | **Gap** (copy) | See [Stale copy](#stale-in-product-copy) |
 | R13 | Don't publicly disclose financial or payment information (Handling Requirements; FAQ Q11) | The extension publishes nothing. Users can export and share files themselves | F9, F10 | **Met** | Keep the warnings about plaintext exports |
 | R14 | 128×128 PNG icon with 96×96 artwork and 16 px transparent padding (Images: Extension icon, Icon size) | 0.6.0: 128×128 PNG. Opaque artwork spans x/y 4–123 (120×120 with a 4 px margin). **Task 11 (0.8.0): artwork x/y 16–111 (96×96), fully transparent outside** | 0.6.0: `assets-src/icon.svg` (`rect x=4 width=120`). Task 11: `assets-src/icon-store.svg`; measured from `public/icons/icon-128.png` by `tests/unit/store-assets.test.ts` | 0.6.0: **Gap**. **Done in Task 11** (fact) | See [assets.md](assets.md) |
 | R15 | Small promo tile 440×280 (required); screenshots 1280×800 or 640×400, at least 1 (Images) | 0.6.0: none exist. **Task 11: one 440×280 tile and three 1280×800 screenshots of the production ZIP** | `store-assets/`, `store-assets/store-assets-report.json`; CI artifact `refund-reconciler-store-assets` | 0.6.0: **Gap**. **Done in Task 11** (fact); not uploaded | See [assets.md](assets.md) |
-| R16 | Publisher identity, contact, policy URL, effective date | Not supplied | — | **Pending** | See [Publisher inputs](#publisher-inputs-pending) |
+| R16 | Publisher identity, contact, policy URL, effective date | **Task 12:** publisher MJUD and contact `exiledeals@gmail.com` supplied by the owner and incorporated; policy URL and effective date not yet set | Policy drafts; `publisher-site/` | Identity/contact: **Supplied**. URL and date: **Pending** | See [Publisher inputs](#publisher-inputs-pending) and [publisher-site.md](publisher-site.md) |
 
 ## B1. Encryption at rest (unresolved policy question)
 
@@ -521,11 +563,16 @@ from the production build and contain no real order data.
 
 ## Publisher inputs (pending)
 
-- Publisher or developer name as it will appear in the store.
-- A contact email or support URL that the publisher controls.
+Supplied by the owner in Task 12 and incorporated: publisher name **MJUD**
+and public contact **exiledeals@gmail.com** (no existing website). Still
+pending:
+
 - A privacy policy URL hosted on a site the publisher controls; the same
-  site carries the Limited Use statement.
+  site carries the Limited Use statement. Files are prepared in
+  `publisher-site/`; hosting is not done ([publisher-site.md](publisher-site.md)).
 - The privacy policy's effective date, set when it is published.
+- Owner review of the support-email and website wording in the policy, which
+  describe MJUD's own handling of email.
 - Whether the store name stays as the manifest's current
   **"Refund Reconciler (local preview)"** (changing it is a manifest change).
 - Owner review of the implemented B2 flow (0.8.0) and of the disclosure
@@ -555,7 +602,12 @@ from the production build and contain no real order data.
 
 ## Recommended next implementation step
 
-**After Task 11:** owner and publisher inputs, not code. These are:
+**After Task 12:** the owner reviews the site and policy, then authorizes
+hosting (publication steps in [publisher-site.md](publisher-site.md#final-edits-at-publication-owner-authorized-step));
+then the public URL and effective date, distribution choices, the
+dashboard-label review and the 0.8.0 toolbar check.
+
+*After Task 11 (publisher name and contact since supplied in Task 12):* owner and publisher inputs, not code. These are:
 
 - publisher name and contact;
 - a hosted policy URL and effective date;

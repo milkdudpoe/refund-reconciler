@@ -54,6 +54,8 @@ npm run test:package  # package:beta, then smoke-test the extracted ZIP in Chrom
 npm run test:update   # package:beta, then update 0.5.0, 0.6.0 and 0.7.0 (each built from its own source) in place to that ZIP
 npm run icons       # re-render public/icons/*.png from assets-src/*.svg (after editing the SVGs)
 npm run assets:store  # package:beta, then store listing images from the extracted ZIP (see docs/store/assets.md)
+npm run site:policy   # regenerate both policy HTML copies from docs/store/privacy-policy.md (see docs/store/publisher-site.md)
+npm run site:check    # check the static publisher site and that the policy copies are current
 npm run check       # typecheck, lint, unit, browser, package and update tests
 ```
 
@@ -71,14 +73,18 @@ explanation are in [docs/beta.md](docs/beta.md).
 
 **Chrome Web Store drafts (not a release).** [docs/store/](docs/store/readiness.md)
 holds a readiness assessment, listing text, a draft privacy policy and draft
-dashboard privacy answers. They are unpublished drafts with pending publisher
-fields. 0.7.0 implemented the at-rest encryption the assessment recommended
+dashboard privacy answers. They are unpublished drafts; the publisher (MJUD)
+and contact (exiledeals@gmail.com) are filled in, the policy URL and effective
+date are pending. 0.7.0 implemented the at-rest encryption the assessment recommended
 and 0.8.0 the in-product disclosure and agreement (B2). Task 11 added the
 store images (a padded 128 px icon, a promotional tile and three screenshots
 of the production ZIP with synthetic data; see
 [docs/store/assets.md](docs/store/assets.md)); they are not uploaded.
-Publisher inputs, a hosted policy, a real toolbar check and the store review
-are still pending and block submission; see
+Task 12 prepared a small static publisher site in `publisher-site/` (home,
+privacy, support; not hosted; see
+[docs/store/publisher-site.md](docs/store/publisher-site.md)). A hosted policy
+and its effective date, the dashboard privacy labels, a real toolbar check and
+the store review are still pending and block submission; see
 [docs/store/readiness.md](docs/store/readiness.md).
 
 ## Data practices: read, then agree
@@ -305,6 +311,7 @@ src/popup/        toolbar popup: Open dashboard, capture preview and approval
 public/manifest.json, public/icons/   manifest and generated PNG icons
 assets-src/       editable icon SVGs (icon-store.svg: the padded 128 px icon)
 store-assets/     Chrome Web Store listing images, tile source and provenance report (never shipped)
+publisher-site/   static publisher website: home, privacy, support (never shipped; not hosted yet)
 scripts/          icon generation, beta packaging and store-asset generation (dev tooling; never shipped)
 tests/unit/       Vitest
 tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,

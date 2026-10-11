@@ -19,6 +19,9 @@
     "test:update": "npm run package:beta && playwright test -c playwright.update.config.ts",
     "assets:store": "node --experimental-strip-types scripts/store-assets.ts",
     "assets:promote": "node --experimental-strip-types scripts/store-assets.ts --promote",
+    "site:policy": "node --experimental-strip-types scripts/publisher-site.ts --write",
+    "site:check": "node --experimental-strip-types scripts/publisher-site.ts --check",
+    "site:artifact": "node --experimental-strip-types scripts/publisher-site.ts --artifact",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:e2e && npm run test:package && npm run test:update"
   },
   "devDependencies": {

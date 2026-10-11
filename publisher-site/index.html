@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refund Reconciler by MJUD</title>
+<meta name="description" content="Refund Reconciler, a Chrome extension by MJUD for tracking refund evidence for returned items, one item at a time. Unpublished beta.">
+<link rel="icon" type="image/png" href="assets/icon-32.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <img src="assets/icon-128.png" alt="" width="40" height="40">
+      <span><span class="brand-name">Refund Reconciler</span><span class="brand-by">by MJUD</span></span>
+    </a>
+    <nav class="site-nav" aria-label="Site">
+      <ul>
+        <li><a href="index.html" aria-current="page">Home</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="support.html">Support</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<div class="review-note" role="note">
+  <div class="wrap"><p><strong>Review copy, not yet published.</strong> This website and its privacy policy are drafts awaiting the publisher&#8217;s review.</p></div>
+</div>
+<main id="main" class="wrap">
+<div class="prose">
+  <p class="status">Unpublished beta &middot; local preview</p>
+  <h1>Refund Reconciler</h1>
+  <p class="lede">A Chrome extension by MJUD for keeping track of refunds for items you returned, one item at a time, so you can see what is still unresolved.</p>
+  <p>Refund Reconciler is a beta that is not yet available to install. It is not in the Chrome Web Store.</p>
+  <ul class="actions">
+    <li><a class="button button-primary" href="privacy.html">Privacy policy</a></li>
+    <li><a class="button button-secondary" href="support.html">Support</a></li>
+  </ul>
+</div>
+
+<h2 id="how-it-works">Evidence you record, item by item</h2>
+<div class="prose">
+  <p>For each returned item, you keep four things apart, so a statement that a refund was issued is never mistaken for money you actually received.</p>
+</div>
+<dl class="terms">
+  <div>
+    <dt>Expected amount</dt>
+    <dd>The refund you expect for the item, or &#8220;unknown&#8221; if you do not know it yet.</dd>
+  </div>
+  <div>
+    <dt>Merchant reports</dt>
+    <dd>What the merchant says it issued. This is the merchant&#8217;s statement, not proof that you were paid.</dd>
+  </div>
+  <div>
+    <dt>Money received</dt>
+    <dd>Amounts you confirmed yourself after checking your own card or bank statement. Only these count as received.</dd>
+  </div>
+  <div>
+    <dt>Still unresolved</dt>
+    <dd>What you expected but have not confirmed receiving. It is a prompt to review your records, not a guarantee that money is owed.</dd>
+  </div>
+</dl>
+
+<figure>
+  <img src="assets/example-item-evidence.png" alt="Example screenshot of the Refund Reconciler dashboard with made-up data: case SYNTHETIC-1001, item &#8220;Synthetic wool blanket&#8221;, expected $64.00, merchant reports issued $64.00, confirmed received $40.00, difference $24.00, marked Partially confirmed, with the warning &#8220;Merchant reports more issued than you have confirmed received.&#8221;" width="1280" height="800">
+  <figcaption>Example only. A screenshot of the beta (version 0.8.0) with made-up data labelled &#8220;Synthetic&#8221;: the merchant reports $64.00 issued, $40.00 has been confirmed received, and $24.00 remains unresolved.</figcaption>
+</figure>
+
+<h2 id="limits">What it does not do</h2>
+<div class="prose">
+  <ul>
+    <li><strong>Amazon US orders in US dollars only.</strong> Other stores, Amazon country sites and currencies are not supported.</li>
+    <li><strong>No connection to your bank or to Amazon.</strong> It does not sign in anywhere, request refunds, contact merchants, move money or decide what you are owed.</li>
+    <li><strong>You confirm money yourself.</strong> You record a receipt only after checking your own statement; the extension cannot see your accounts.</li>
+    <li><strong>Capture is optional and limited.</strong> On amazon.com you can highlight one item&#8217;s refund line and approve a preview to record a merchant report. It reads only the text you highlight and the page address, understands only certain US-dollar wording, and has been tested only on example text, not on real Amazon refund pages. You can always type a merchant report in by hand instead.</li>
+  </ul>
+</div>
+
+<h2 id="your-data">Your records stay in your browser</h2>
+<div class="grid">
+  <div class="card">
+    <h3>Encrypted with your passphrase</h3>
+    <p>Before you save anything, you choose a passphrase. Your records are stored in your Chrome profile, encrypted with a key that the passphrase protects. The passphrase itself is never stored.</p>
+  </div>
+  <div class="card">
+    <h3>No passphrase recovery</h3>
+    <p>Nobody, including MJUD, can reset a forgotten passphrase. If you forget it, the only way forward is to erase the stored records and restore a backup you saved earlier.</p>
+  </div>
+  <div class="card">
+    <h3>Exports are plain text</h3>
+    <p>Backup files, case summaries and text you copy are not encrypted. Keep them somewhere safe and share them only if you choose to.</p>
+  </div>
+  <div class="card">
+    <h3>Nothing is sent anywhere</h3>
+    <p>The extension makes no network requests, has no account, sync, analytics or advertising, and never sends your records to MJUD or anyone else.</p>
+  </div>
+</div>
+<div class="prose">
+  <p>Before any of this, the extension explains how it handles your data and asks you to agree. The <a href="privacy.html">privacy policy</a> has the details, including what capture reads and saves, how deletion works, and the limits of encryption.</p>
+  <p>The use of information received by Refund Reconciler adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements. See the <a href="privacy.html#chrome-web-store-user-data-policy">Limited Use statement</a> in the privacy policy.</p>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="privacy.html">Privacy policy</a></li>
+      <li><a href="privacy.html#chrome-web-store-user-data-policy">Limited Use statement</a></li>
+      <li><a href="support.html">Support</a></li>
+    </ul>
+    <p>Refund Reconciler is published by MJUD. Contact: <a href="mailto:exiledeals@gmail.com">exiledeals@gmail.com</a></p>
+    <p>Refund Reconciler is independent and is not affiliated with or endorsed by Amazon.</p>
+  </div>
+</footer>
+</body>
+</html>

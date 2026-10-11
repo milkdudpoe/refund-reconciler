@@ -7,7 +7,8 @@
 > [../consent.md](../consent.md)) in 0.8.0; the answers below were reviewed
 > for 0.8.0 and are unchanged in substance, because the agreement step adds
 > no data type, use or transfer (its receipt holds only a version number and
-> a timestamp). Publisher inputs remain pending. The dashboard's own checkbox labels and
+> a timestamp). Publisher MJUD and contact `exiledeals@gmail.com` were
+> supplied in Task 12; the hosted policy URL and effective date remain pending. The dashboard's own checkbox labels and
 > definitions were **not inspected** (no developer account), so confirm
 > every label below against the dashboard before answering.
 
@@ -130,16 +131,27 @@ that:
   lending: **true**.
 
 **Do not certify yet.** Certifying asserts policy compliance overall.
-B1 and B2 are implemented (0.7.0, 0.8.0), but publisher inputs, the hosted
-policy, the dashboard-label review and the store review are still open. The Limited Use statement must also be hosted on a site
-belonging to the extension. That is pending publisher input; the text is in
-the [policy draft](privacy-policy.md).
+B1 and B2 are implemented (0.7.0, 0.8.0), but the hosted policy and its
+effective date, the dashboard-label review and the store review are still
+open. The Limited Use statement must also be hosted on a site belonging to
+the extension. The site is prepared but not hosted
+([publisher-site.md](publisher-site.md)); the text is in the
+[policy draft](privacy-policy.md).
+
+Voluntary support email to MJUD is not data the extension collects: the
+extension never sends anything, and the policy describes email separately
+(**If you email MJUD**).
 
 ## Privacy policy URL
 
-**[PENDING: privacy policy URL on a site the publisher controls]**. Host
-[privacy-policy.html](privacy-policy.html) only after the publisher fields
-are filled in and the policy text matches the build being submitted.
+**[PENDING: privacy policy URL on a site the publisher controls]**. Proposed,
+not live: `https://milkdudpoe.github.io/refund-reconciler/privacy.html`
+(GitHub Pages project site; see [publisher-site.md](publisher-site.md)). The
+site's `privacy.html` carries the complete policy, generated from
+[privacy-policy.md](privacy-policy.md). Host it only after the owner's review,
+with the effective date set, and with the policy text matching the build
+being submitted. A support URL, if the dashboard asks for one, would be the
+site's `support.html`.
 
 ## Changes that would require fresh disclosure
 

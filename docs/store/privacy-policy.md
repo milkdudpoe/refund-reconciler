@@ -1,24 +1,26 @@
 # Refund Reconciler privacy policy
 
-> **DRAFT, not published.** Fields marked **[PENDING: …]** must be filled
-> in by the publisher before this policy is posted. Do not post this draft
-> until the open items in [readiness.md](readiness.md) are resolved. This
-> draft describes the current build and is not legal advice.
+> **Unpublished draft, not yet in effect.** This policy has not been
+> published and does not apply to anyone yet. It takes effect only when it is
+> published with an effective date. It describes the current build and is
+> not legal advice.
 
-- **Publisher:** [PENDING: publisher or developer name]
-- **Contact:** [PENDING: contact email or support URL controlled by the publisher]
-- **Effective date:** [PENDING: set on publication]
-- **Applies to:** Refund Reconciler (local preview) Chrome extension, version 0.8.0
+- **Publisher:** MJUD
+- **Contact:** [exiledeals@gmail.com](mailto:exiledeals@gmail.com)
+- **Effective date:** not yet effective [PENDING: set to the date this policy is first published]
+- **Prepared for review:** 2026-10-11 (this is not an effective date)
+- **Applies to:** Refund Reconciler (local preview) Chrome extension, version 0.8.0, and the Refund Reconciler website
 
 ## Summary
 
 Refund Reconciler is a Chrome extension for keeping track of refunds for
 items you returned. It handles information you enter, and text you choose
 to capture from Amazon US pages, **only inside your own Chrome profile on
-your device**. The extension does not send this information to the
-publisher or to anyone else. The publisher does not receive, see, sell or
-share it. Stored records are **encrypted** with a key protected by a
-passphrase you choose; files and text you export are not.
+your device**. The extension does not send this information to MJUD (the
+publisher) or to anyone else, and MJUD has no access to it. Stored records
+are **encrypted** with a key protected by a passphrase you choose; files and
+text you export are not. If you choose to email MJUD for support, MJUD
+receives only what you send (see [If you email MJUD](#if-you-email-mjud)).
 
 **You are asked first.** Before you can enter refund information, set a
 passphrase, restore a backup or use capture, the extension shows an
@@ -105,7 +107,7 @@ any other purpose.
   memory-only session storage so the extension can work. You need the
   passphrase again after Chrome restarts, after the extension is reloaded or
   updated, and after you choose **Lock now**.
-- **There is no recovery service.** The publisher cannot reset or recover a
+- **There is no recovery service.** MJUD cannot reset or recover a
   forgotten passphrase. Without it, the stored records can only be erased;
   a backup file you saved earlier can then be restored.
 - Encryption does **not** protect your records while they are unlocked in
@@ -127,8 +129,10 @@ any other purpose.
 - The extension makes **no network requests**. It has no analytics,
   advertising, tracking, remote code or AI services, and no account or
   server.
-- The publisher has no access to your records and does not transfer them to
-  anyone.
+- MJUD has no access to the records stored in the extension, and the
+  extension never sends them to MJUD or anyone else. The extension does not
+  contact MJUD automatically, and it has no feedback, crash-report or upload
+  feature.
 - **Your own exports.** If you copy a case summary to the clipboard or
   download a summary or a JSON backup, the result is an ordinary,
   **unencrypted** file or clipboard text that you control. The extension
@@ -153,8 +157,8 @@ profile is deleted or lost.
   `ERASE`. You do not need to agree in order to erase.
 - **Removing the extension** from Chrome deletes all of its stored records.
   Download a backup first if you want to keep them.
-- Losing or resetting the Chrome profile also loses the records. The
-  publisher cannot recover them.
+- Losing or resetting the Chrome profile also loses the records. MJUD
+  cannot recover them.
 - Deleting records in the extension does not delete files you exported.
 - The extension does not securely wipe the underlying storage files on
   disk, including any unencrypted copies left by versions before 0.7.0.
@@ -168,10 +172,41 @@ Capture is optional and runs only when you ask; you can enter merchant
 reports manually instead. You can view everything stored in the dashboard,
 export it, and delete it as described above.
 
+## If you email MJUD
+
+Emailing MJUD is optional and separate from the extension. If you write to
+[exiledeals@gmail.com](mailto:exiledeals@gmail.com), MJUD receives your email
+address and whatever you choose to put in the message or attach to it.
+
+- MJUD uses it only to read and answer your message.
+- It is not added to the extension or linked to your stored records, which
+  MJUD cannot see. It is not sold, and it is not used for advertising.
+- The message is delivered and stored by email services: your own provider
+  and MJUD's (the address above is a Gmail address, a Google service), under
+  their own terms. MJUD cannot erase copies those services keep.
+- Please do not send your passphrase, order screenshots, bank or card
+  records, backup files, case summaries or captured page text. Support does
+  not need them.
+
+## This website
+
+The Refund Reconciler website consists of plain pages with no cookies,
+scripts, analytics, advertising, forms, embedded content or third-party
+resources.
+
+- **Planned host [PENDING: confirm when the site is published]:** GitHub
+  Pages. Like any web host, it receives the request your browser makes when
+  you open a page, including your IP address. GitHub states that it logs and
+  stores visitors' IP addresses for security purposes; see the
+  [GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+- MJUD does not add tracking to the website, and visiting it does not
+  connect to the extension or to your stored records.
+
 ## Chrome Web Store User Data Policy
 
-The use of information received by Refund Reconciler adheres to the Chrome
-Web Store User Data Policy, including the Limited Use requirements.
+The use of information received by Refund Reconciler adheres to the
+[Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/limited-use),
+including the Limited Use requirements.
 
 ## Changes to this policy
 
@@ -183,5 +218,5 @@ applies. The effective date above shows when this version took effect.
 
 ## Contact
 
-Questions about this policy: [PENDING: contact email or support URL
-controlled by the publisher].
+Questions about this policy: MJUD,
+[exiledeals@gmail.com](mailto:exiledeals@gmail.com).

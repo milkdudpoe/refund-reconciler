@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy | Refund Reconciler</title>
+<meta name="description" content="The Refund Reconciler privacy policy (unpublished draft).">
+<link rel="icon" type="image/png" href="assets/icon-32.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <img src="assets/icon-128.png" alt="" width="40" height="40">
+      <span><span class="brand-name">Refund Reconciler</span><span class="brand-by">by MJUD</span></span>
+    </a>
+    <nav class="site-nav" aria-label="Site">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="privacy.html" aria-current="page">Privacy</a></li>
+        <li><a href="support.html">Support</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<div class="review-note" role="note">
+  <div class="wrap"><p><strong>Review copy, not yet published.</strong> This website and its privacy policy are drafts awaiting the publisher&#8217;s review.</p></div>
+</div>
+<main id="main" class="wrap">
+<article class="prose policy">
+<!-- policy:start (generated from docs/store/privacy-policy.md by npm run site:policy; do not edit by hand) -->
+<h1>Refund Reconciler privacy policy</h1>
+<aside class="draft" role="note"><p><strong>Unpublished draft, not yet in effect.</strong> This policy has not been published and does not apply to anyone yet. It takes effect only when it is published with an effective date. It describes the current build and is not legal advice.</p></aside>
+<ul class="policy-meta">
+  <li><strong>Publisher:</strong> MJUD</li>
+  <li><strong>Contact:</strong> <a href="mailto:exiledeals@gmail.com">exiledeals@gmail.com</a></li>
+  <li><strong>Effective date:</strong> not yet effective <mark class="pending">[PENDING: set to the date this policy is first published]</mark></li>
+  <li><strong>Prepared for review:</strong> 2026-10-11 (this is not an effective date)</li>
+  <li><strong>Applies to:</strong> Refund Reconciler (local preview) Chrome extension, version 0.8.0, and the Refund Reconciler website</li>
+</ul>
+<h2 id="summary">Summary</h2>
+<p>Refund Reconciler is a Chrome extension for keeping track of refunds for items you returned. It handles information you enter, and text you choose to capture from Amazon US pages, <strong>only inside your own Chrome profile on your device</strong>. The extension does not send this information to MJUD (the publisher) or to anyone else, and MJUD has no access to it. Stored records are <strong>encrypted</strong> with a key protected by a passphrase you choose; files and text you export are not. If you choose to email MJUD for support, MJUD receives only what you send (see <a href="#if-you-email-mjud">If you email MJUD</a>).</p>
+<p><strong>You are asked first.</strong> Before you can enter refund information, set a passphrase, restore a backup or use capture, the extension shows an explanation of how it handles your data inside the dashboard and asks you to choose <strong>Agree and continue</strong>. If you choose <strong>Not now</strong>, nothing is stored or changed and these features stay unavailable. Only a small record that you agreed (which version of the explanation, and when) is stored in your Chrome profile; it contains nothing else about you. You can reread the explanation under <strong>Data and privacy</strong> in the dashboard.</p>
+<h2 id="what-information-the-extension-handles">What information the extension handles</h2>
+<p><strong>Information you type in.</strong> For each case you create:</p>
+<ul>
+  <li>an optional order reference;</li>
+  <li>descriptions of the returned items;</li>
+  <li>expected refund amounts (or &quot;unknown&quot;);</li>
+  <li>entries you record: merchant reports, money you confirmed receiving, and recharges, each with an amount and optionally a date, a transaction or observation reference, a source and a note;</li>
+  <li>reasons you give when you void a mistaken entry;</li>
+  <li>the time each entry was recorded.</li>
+</ul>
+<p>This is financial information about your purchases and refunds. The extension does not ask for your name, address, email, account login, card numbers or bank details. Free-text fields (order reference, item description, reference, source, note, void reason) accept anything you type, so do not enter information you do not want stored.</p>
+<p><strong>Information from a web page, only when you capture.</strong> The capture feature works only on <code>https://amazon.com</code> and <code>https://www.amazon.com</code>:</p>
+<ul>
+  <li>When you click the Refund Reconciler toolbar button <strong>after you have agreed and while your records are unlocked</strong>, Chrome temporarily lets the extension see the address of the tab you are on. The extension uses it only to check whether the page is supported. It is not saved at that point. Before you agree, while your records are locked, or before you have set a passphrase, the toolbar panel does not look at the tab at all; it only offers to open the dashboard.</li>
+  <li>When you then choose <strong>Capture selected refund text</strong>, the extension reads the text you highlighted (up to 4,000 characters) and the page's address. It does not read the rest of the page, form fields, passwords, cookies or other tabs, and it takes no screenshots.</li>
+  <li>The extension shows you a preview. <strong>Nothing is saved unless you approve it.</strong> If you approve, it saves the highlighted text, the page's address (shortened: tracking parts and all query parameters except a single order number are removed), the capture time, the amount text you approved and any order number found, together with the merchant report.</li>
+  <li>If you discard or close a preview <strong>before</strong> choosing <strong>Save merchant report</strong>, nothing is saved.</li>
+  <li>Once you choose <strong>Save merchant report</strong>, the approved report is sent to be saved. Closing the panel or choosing <strong>Stop waiting</strong> afterwards does not undo that save. If the panel could not confirm the outcome, open the case in the dashboard to check whether the report was recorded before you capture the same text again. If it was recorded and you do not want it, void it there or delete the case.</li>
+</ul>
+<p><strong>Backup files you choose to restore.</strong> If you use <strong>Restore from JSON</strong>, the file you pick is read on your device and its records are saved into the extension.</p>
+<p><strong>Synthetic demo.</strong> If you choose <strong>Load synthetic demo</strong>, made-up example records are saved until you remove them.</p>
+<h2 id="how-the-information-is-used">How the information is used</h2>
+<p>Only to provide the extension's single purpose: showing you, item by item, which refunds are expected, reported, confirmed, reversed or still unresolved, and letting you create summaries and backups. It is not used for advertising, profiling, creditworthiness or lending decisions, analytics or any other purpose.</p>
+<h2 id="where-it-is-stored-and-how-it-is-protected">Where it is stored and how it is protected</h2>
+<ul>
+  <li>Records are stored in Chrome's extension storage (<code>chrome.storage.local</code>) in your Chrome profile on your device. They are not synced to other devices by the extension.</li>
+  <li><strong>The stored records are encrypted.</strong> Before any record is saved, you choose a passphrase. The extension derives a key from it on your device (PBKDF2-HMAC-SHA-256) and uses it to protect a random AES-256-GCM key that encrypts the stored records. Your passphrase is never stored or sent anywhere.</li>
+  <li>While your records are <strong>unlocked</strong>, the key is kept in Chrome's memory-only session storage so the extension can work. You need the passphrase again after Chrome restarts, after the extension is reloaded or updated, and after you choose <strong>Lock now</strong>.</li>
+  <li><strong>There is no recovery service.</strong> MJUD cannot reset or recover a forgotten passphrase. Without it, the stored records can only be erased; a backup file you saved earlier can then be restored.</li>
+  <li>Encryption does <strong>not</strong> protect your records while they are unlocked in your browser, against malware or anyone using your device or account, or if your passphrase is easy to guess. Protect your device and your operating-system account.</li>
+  <li>The record of your agreement is stored separately from your records and is not encrypted; it holds only the explanation's version number and the time you agreed.</li>
+  <li>If you used a version before 0.7.0, your records were stored without encryption. When you update, they are encrypted only after you choose a passphrase, and older unencrypted copies may remain in Chrome's own files on your device; the extension cannot remove them.</li>
+  <li>Web pages and the capture code that runs in a page cannot read the stored records; only the extension's own pages can.</li>
+</ul>
+<h2 id="sharing-and-transmission">Sharing and transmission</h2>
+<ul>
+  <li>The extension makes <strong>no network requests</strong>. It has no analytics, advertising, tracking, remote code or AI services, and no account or server.</li>
+  <li>MJUD has no access to the records stored in the extension, and the extension never sends them to MJUD or anyone else. The extension does not contact MJUD automatically, and it has no feedback, crash-report or upload feature.</li>
+  <li><strong>Your own exports.</strong> If you copy a case summary to the clipboard or download a summary or a JSON backup, the result is an ordinary, <strong>unencrypted</strong> file or clipboard text that you control. The extension cannot track or delete it. Anyone you share it with, and any app that can read your clipboard or files, may be able to read it. Summaries leave out notes, references and captured text unless you choose to include them. A JSON backup contains all stored records.</li>
+</ul>
+<h2 id="how-long-it-is-kept-and-how-to-delete-it">How long it is kept and how to delete it</h2>
+<p>Records are kept until you delete them, remove the extension, or the Chrome profile is deleted or lost.</p>
+<ul>
+  <li><strong>Delete case…</strong> permanently removes a case and all its records. It is available after you have agreed to the data practices and unlocked your records.</li>
+  <li><strong>Remove synthetic demo</strong> removes the demo records.</li>
+  <li>If your records are locked (for example because you forgot the passphrase), stored data cannot be read, or you have not agreed to the data practices, the dashboard offers <strong>Erase stored data…</strong>, which erases everything, including the record of your agreement, after you type <code>ERASE</code>. You do not need to agree in order to erase.</li>
+  <li><strong>Removing the extension</strong> from Chrome deletes all of its stored records. Download a backup first if you want to keep them.</li>
+  <li>Losing or resetting the Chrome profile also loses the records. MJUD cannot recover them.</li>
+  <li>Deleting records in the extension does not delete files you exported.</li>
+  <li>The extension does not securely wipe the underlying storage files on disk, including any unencrypted copies left by versions before 0.7.0.</li>
+</ul>
+<h2 id="your-choices">Your choices</h2>
+<p>Using the extension is optional, and so is every field marked optional. Choosing <strong>Not now</strong> on the data-practices explanation keeps any existing records unchanged and leaves the extension's data features off. Capture is optional and runs only when you ask; you can enter merchant reports manually instead. You can view everything stored in the dashboard, export it, and delete it as described above.</p>
+<h2 id="if-you-email-mjud">If you email MJUD</h2>
+<p>Emailing MJUD is optional and separate from the extension. If you write to <a href="mailto:exiledeals@gmail.com">exiledeals@gmail.com</a>, MJUD receives your email address and whatever you choose to put in the message or attach to it.</p>
+<ul>
+  <li>MJUD uses it only to read and answer your message.</li>
+  <li>It is not added to the extension or linked to your stored records, which MJUD cannot see. It is not sold, and it is not used for advertising.</li>
+  <li>The message is delivered and stored by email services: your own provider and MJUD's (the address above is a Gmail address, a Google service), under their own terms. MJUD cannot erase copies those services keep.</li>
+  <li>Please do not send your passphrase, order screenshots, bank or card records, backup files, case summaries or captured page text. Support does not need them.</li>
+</ul>
+<h2 id="this-website">This website</h2>
+<p>The Refund Reconciler website consists of plain pages with no cookies, scripts, analytics, advertising, forms, embedded content or third-party resources.</p>
+<ul>
+  <li><strong>Planned host <mark class="pending">[PENDING: confirm when the site is published]</mark>:</strong> GitHub Pages. Like any web host, it receives the request your browser makes when you open a page, including your IP address. GitHub states that it logs and stores visitors' IP addresses for security purposes; see the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</li>
+  <li>MJUD does not add tracking to the website, and visiting it does not connect to the extension or to your stored records.</li>
+</ul>
+<h2 id="chrome-web-store-user-data-policy">Chrome Web Store User Data Policy</h2>
+<p>The use of information received by Refund Reconciler adheres to the <a href="https://developer.chrome.com/docs/webstore/program-policies/limited-use">Chrome Web Store User Data Policy</a>, including the Limited Use requirements.</p>
+<h2 id="changes-to-this-policy">Changes to this policy</h2>
+<p>If a future version handles data differently, for example by adding network features or new data types, this policy will be updated before that version is released, and the extension will show the changed explanation prominently and ask you to agree again before the new practice applies. The effective date above shows when this version took effect.</p>
+<h2 id="contact">Contact</h2>
+<p>Questions about this policy: MJUD, <a href="mailto:exiledeals@gmail.com">exiledeals@gmail.com</a>.</p>
+<!-- policy:end -->
+</article>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="privacy.html">Privacy policy</a></li>
+      <li><a href="privacy.html#chrome-web-store-user-data-policy">Limited Use statement</a></li>
+      <li><a href="support.html">Support</a></li>
+    </ul>
+    <p>Refund Reconciler is published by MJUD. Contact: <a href="mailto:exiledeals@gmail.com">exiledeals@gmail.com</a></p>
+    <p>Refund Reconciler is independent and is not affiliated with or endorsed by Amazon.</p>
+  </div>
+</footer>
+</body>
+</html>
