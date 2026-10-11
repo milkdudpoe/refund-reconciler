@@ -32,13 +32,13 @@ describe('publisher site', () => {
     }
   });
 
-  it('names the publisher and contact, and leaves only publication fields pending', async () => {
+  it('names the publisher and contact, and has no publication placeholders or draft metadata', async () => {
     const md = await read('docs/store/privacy-policy.md');
     expect(md).toContain(`**Publisher:** ${PUBLISHER}`);
     expect(md).toContain(`**Contact:** [${CONTACT_EMAIL}](mailto:${CONTACT_EMAIL})`);
-    const pending = [...md.matchAll(/\[PENDING: ([^\]]*)\]/g)].map((m) => m[1]);
-    expect(pending).toEqual(['set to the date this policy is first published', 'confirm when the site is published']);
-    expect(md).toMatch(/\*\*Effective date:\*\* not yet effective/);
+    expect(md).toMatch(/^- \*\*Effective date:\*\* \d{4}-\d{2}-\d{2}$/m);
+    expect(md).toContain('- **Host:** GitHub Pages.');
+    expect(md).not.toMatch(/\[PENDING:|^>|Prepared for review|Planned host|not yet effective|not yet in effect|unpublished draft/im);
     expect(md).toContain('Limited Use requirements');
     expect(md).not.toMatch(/publisher or developer name|support URL controlled by the publisher/);
   });

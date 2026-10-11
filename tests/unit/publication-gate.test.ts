@@ -1,7 +1,9 @@
-// The publication gate (npm run site:publication-check) on the real draft and
-// on isolated fixture copies. The "finalized" fixture applies the documented
-// final edits (docs/store/publisher-site.md) to temporary copies of the
-// reviewed files; it is test data, not owner approval or an effective policy.
+// The publication gate (npm run site:publication-check) on the real, finalized
+// source and on isolated fixture copies. Fixtures are temporary copies of the
+// reviewed files: the "dated" fixtures only swap in an arbitrary effective date
+// (never the real candidate date), and the "draft" fixture deliberately
+// restores the former draft elements from the explicit test data below. They
+// are test data, not owner approval, an effective policy or a deployment.
 
 import { createHash } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -9,13 +11,38 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isAllowedProductionPath } from '../../scripts/beta/verify.ts';
-import { SITE_ASSET_SOURCES, SITE_DIR, SITE_FILES } from '../../scripts/site/checks.ts';
+import { CONTACT_EMAIL, PAGES, PUBLISHER, SITE_ASSET_SOURCES, SITE_DIR, SITE_FILES } from '../../scripts/site/checks.ts';
 import { checkPublication, isCalendarDate, publicationProblems, readPublicationTexts } from '../../scripts/site/publication.ts';
 import { checkSiteSources, lf, POLICY_HTML, POLICY_MD, SITE_PRIVACY, writeDerivedFiles } from '../../scripts/site/sources.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
+/** An arbitrary fixture date, deliberately unlike any real publication date. */
 const EFFECTIVE = '2027-03-15';
 const FIXTURE_FILES = [POLICY_MD, POLICY_HTML, ...SITE_FILES.map((f) => `${SITE_DIR}/${f}`), ...Object.values(SITE_ASSET_SOURCES)];
+const EFFECTIVE_LINE = /^- \*\*Effective date:\*\* .*$/m;
+
+/** The former draft elements (as reviewed before finalization), restored only into fixtures. */
+const DRAFT = {
+  note: [
+    '> **Unpublished draft, not yet in effect.** This policy has not been',
+    '> published and does not apply to anyone yet. It takes effect only when it is',
+    '> published with an effective date. It describes the current build and is',
+    '> not legal advice.',
+    '',
+  ].join('\n'),
+  effectiveLine: '- **Effective date:** not yet effective [PENDING: set to the date this policy is first published]',
+  preparedLine: '- **Prepared for review:** 2026-10-11 (this is not an effective date)',
+  plannedHost: '- **Planned host [PENDING: confirm when the site is published]:** GitHub Pages.',
+  banner: [
+    '<div class="review-note" role="note">',
+    '  <div class="wrap"><p><strong>Review copy, not yet published.</strong> This website and its privacy policy are drafts awaiting the publisher&#8217;s review.</p></div>',
+    '</div>',
+    '',
+  ].join('\n'),
+  privacyDescription: 'The Refund Reconciler privacy policy (unpublished draft).',
+};
+const HOST_LINE = '- **Host:** GitHub Pages.';
+const PRIVACY_DESCRIPTION = 'The Refund Reconciler privacy policy.';
 
 let scratch: string;
 let finalized: string;
@@ -35,50 +62,69 @@ async function edit(root: string, file: string, change: (text: string) => string
   await writeFile(join(root, file), after);
 }
 
-/** The documented final edits, applied to fixture copies. */
-async function finalize(root: string, effectiveDate: string): Promise<void> {
-  await edit(root, POLICY_MD, (md) =>
-    md
-      .replace(/\n(> .*\n|>\n)+\n/, '\n')
-      .replace(/^- \*\*Effective date:\*\* .*$/m, `- **Effective date:** ${effectiveDate}`)
-      .replace(/^- \*\*Prepared for review:\*\* .*\n/m, '')
-      .replace('- **Planned host [PENDING: confirm when the site is published]:** GitHub\n  Pages.', '- **Host:** GitHub Pages.'),
-  );
-  for (const page of ['index.html', 'privacy.html', 'support.html']) {
-    await edit(root, `${SITE_DIR}/${page}`, (html) => html.replace(/<div class="review-note" role="note">\n.*\n<\/div>\n/, ''));
-  }
-  await edit(root, SITE_PRIVACY, (html) => html.replace('privacy policy (unpublished draft).', 'privacy policy.'));
+/** Sets the fixture's single effective-date line (whatever it holds) and regenerates the copies. */
+async function setEffectiveDate(root: string, effectiveDate: string): Promise<void> {
+  const md = await readText(root, POLICY_MD);
+  expect(md.match(new RegExp(EFFECTIVE_LINE, 'gm'))).toHaveLength(1);
+  await writeFile(join(root, POLICY_MD), md.replace(EFFECTIVE_LINE, `- **Effective date:** ${effectiveDate}`));
   await writeDerivedFiles(root);
 }
 
-/** A fresh copy of the finalized fixture. */
-async function finalizedCopy(name: string): Promise<string> {
+/** A fresh copy of the finalized repository files, with a fixture effective date. */
+async function finalizedCopy(name: string, effectiveDate = EFFECTIVE): Promise<string> {
   const dir = join(scratch, name);
-  await cp(finalized, dir, { recursive: true });
+  await copyRepoFiles(dir);
+  await setEffectiveDate(dir, effectiveDate);
+  return dir;
+}
+
+/** A fresh copy with every former draft element deliberately restored from DRAFT. */
+async function draftCopy(name: string): Promise<string> {
+  const dir = join(scratch, name);
+  await copyRepoFiles(dir);
+  await edit(dir, POLICY_MD, (md) =>
+    md
+      .replace('\n\n- **Publisher:**', `\n\n${DRAFT.note}\n- **Publisher:**`)
+      .replace(EFFECTIVE_LINE, `${DRAFT.effectiveLine}\n${DRAFT.preparedLine}`)
+      .replace(HOST_LINE, DRAFT.plannedHost),
+  );
+  for (const page of PAGES) await edit(dir, `${SITE_DIR}/${page}`, (html) => html.replace('</header>\n', `</header>\n${DRAFT.banner}`));
+  await edit(dir, SITE_PRIVACY, (html) => html.replace(PRIVACY_DESCRIPTION, DRAFT.privacyDescription));
+  await writeDerivedFiles(dir);
   return dir;
 }
 
 beforeAll(async () => {
   scratch = await mkdtemp(join(tmpdir(), 'publication-gate-'));
-  finalized = join(scratch, 'finalized');
-  await copyRepoFiles(finalized);
-  await finalize(finalized, EFFECTIVE);
+  finalized = await finalizedCopy('finalized');
 });
 
 afterAll(async () => {
   await rm(scratch, { recursive: true, force: true });
 });
 
-describe('publication gate on the current draft', () => {
-  it('refuses the real draft with actionable errors and changes no file', async () => {
+describe('publication gate on the real, finalized source', () => {
+  it('passes with current copies, the approved publisher and contact and one valid date, and changes no file', async () => {
     const hash = async (): Promise<string[]> =>
       Promise.all(FIXTURE_FILES.map(async (f) => `${f} ${createHash('sha256').update(await readFile(join(ROOT, f))).digest('hex')}`));
     const before = await hash();
     const problems = await checkPublication(ROOT);
     expect(await hash()).toEqual(before);
+    expect(problems).toEqual([]);
 
-    expect(await checkSiteSources(ROOT)).toEqual([]); // ordinary site:check still accepts the draft
-    expect(problems).toEqual([
+    const md = await readText(ROOT, POLICY_MD);
+    expect(md).toContain(`- **Publisher:** ${PUBLISHER}\n- **Contact:** [${CONTACT_EMAIL}](mailto:${CONTACT_EMAIL})\n`);
+    const dates = [...md.matchAll(new RegExp(EFFECTIVE_LINE, 'gm'))].map((m) => m[0].replace('- **Effective date:** ', ''));
+    expect(dates).toHaveLength(1);
+    expect(isCalendarDate(dates[0] ?? '')).toBe(true);
+  });
+});
+
+describe('publication gate on an explicit draft fixture', () => {
+  it('refuses every restored draft element with actionable errors, while site:check accepts it', async () => {
+    const root = await draftCopy('draft');
+    expect(await checkSiteSources(root)).toEqual([]);
+    expect(await checkPublication(root)).toEqual([
       `${POLICY_MD} effective date "not yet effective [PENDING: set to the date this policy is first published]" is not a valid YYYY-MM-DD calendar date; set it to the actual first-publication date`,
       `${POLICY_MD} still has a "> " note (the draft note); remove it before publication`,
       `${POLICY_MD} still contains draft-only wording ("Unpublished draft"); finalize the draft note and metadata lines`,
@@ -96,9 +142,25 @@ describe('publication gate on the current draft', () => {
       `${POLICY_MD} still contains a [PENDING: ...] marker`,
     ]);
   });
+
+  it('differs from the finalized source only in the reviewed publication edits', async () => {
+    const draft = (await readText(await draftCopy('draft-diff'), POLICY_MD)).split('\n');
+    const final = (await readText(ROOT, POLICY_MD)).split('\n');
+    const removed = draft.filter((l) => !final.includes(l));
+    const added = final.filter((l) => !draft.includes(l));
+    expect(removed.every((l) => /^>|Effective date|Prepared for review|Planned host/.test(l)), removed.join('\n')).toBe(true);
+    expect(added).toEqual([expect.stringMatching(/^- \*\*Effective date:\*\* \d{4}-\d{2}-\d{2}$/), expect.stringMatching(/^- \*\*Host:\*\* GitHub Pages\. Like any web host/)]);
+  });
 });
 
-describe('publication gate on a finalized fixture', () => {
+describe('publication gate on finalized fixtures', () => {
+  it('changes only the effective-date line when given a fixture date', async () => {
+    const real = (await readText(ROOT, POLICY_MD)).split('\n');
+    const fixture = (await readText(finalized, POLICY_MD)).split('\n');
+    expect(fixture.length).toBe(real.length);
+    expect(fixture.filter((l, i) => l !== real[i])).toEqual([`- **Effective date:** ${EFFECTIVE}`]);
+  });
+
   it('passes with one coherent effective date and the confirmed host', async () => {
     expect(await checkPublication(finalized)).toEqual([]);
     const md = await readText(finalized, POLICY_MD);
@@ -107,21 +169,10 @@ describe('publication gate on a finalized fixture', () => {
     expect(await readText(finalized, POLICY_HTML)).toContain('<title>Refund Reconciler privacy policy</title>');
   });
 
-  it('changes only the documented lines of the reviewed policy', async () => {
-    const draft = (await readText(ROOT, POLICY_MD)).split('\n');
-    const final = (await readText(finalized, POLICY_MD)).split('\n');
-    const removed = draft.filter((l) => !final.includes(l));
-    const added = final.filter((l) => !draft.includes(l));
-    expect(removed.every((l) => /^>|Effective date|Prepared for review|Planned host|^ {2}Pages\./.test(l)), removed.join('\n')).toBe(true);
-    expect(added).toEqual([`- **Effective date:** ${EFFECTIVE}`, expect.stringMatching(/^- \*\*Host:\*\* GitHub Pages\. Like any web host/)]);
-  });
-
   // Preparation and first publication may fall on the same day; the gate checks
   // the policy's finalized state, not which day it was prepared.
   it.each(['2026-10-11', '2026-10-12', '2028-02-29'])('passes the complete check when finalized with effective date %s', async (date) => {
-    const root = join(scratch, `dated-${date}`);
-    await copyRepoFiles(root);
-    await finalize(root, date);
+    const root = await finalizedCopy(`dated-${date}`, date);
     expect(await checkSiteSources(root)).toEqual([]);
     expect(await checkPublication(root)).toEqual([]);
     for (const file of [POLICY_HTML, SITE_PRIVACY]) expect(await readText(root, file)).toContain(`<strong>Effective date:</strong> ${date}</li>`);
@@ -173,9 +224,7 @@ describe('publication gate refuses each remaining draft element on its own', () 
 
   it('a draft policy note', async () => {
     const root = await finalizedCopy('draft-note');
-    const draftNote = (await readText(ROOT, POLICY_MD)).match(/\n((> .*\n|>\n)+)\n/)?.[1] ?? '';
-    expect(draftNote).toMatch(/^> \*\*Unpublished draft, not yet in effect\.\*\*/);
-    await edit(root, POLICY_MD, (md) => md.replace('\n\n- **Publisher:**', `\n\n${draftNote}\n- **Publisher:**`));
+    await edit(root, POLICY_MD, (md) => md.replace('\n\n- **Publisher:**', `\n\n${DRAFT.note}\n- **Publisher:**`));
     await writeDerivedFiles(root);
     expect(await checkPublication(root)).toEqual([
       `${POLICY_MD} still has a "> " note (the draft note); remove it before publication`,
@@ -188,13 +237,12 @@ describe('publication gate refuses each remaining draft element on its own', () 
 
   it('a remaining review banner', async () => {
     const root = await finalizedCopy('banner');
-    const banner = (await readText(ROOT, `${SITE_DIR}/support.html`)).match(/<div class="review-note"[\s\S]*?\n<\/div>\n/)?.[0] ?? '';
-    await edit(root, `${SITE_DIR}/support.html`, (html) => html.replace('</header>\n', `</header>\n${banner}`));
+    await edit(root, `${SITE_DIR}/support.html`, (html) => html.replace('</header>\n', `</header>\n${DRAFT.banner}`));
     expect(await checkPublication(root)).toEqual([`${SITE_DIR}/support.html still has the review-only banner (<div class="review-note">); remove it`]);
   });
 
   it('a host that is still only planned, or reworded', async () => {
-    expect(await problemsWith((md) => md.replace('- **Host:** GitHub Pages.', '- **Planned host:** GitHub Pages.'))).toEqual([
+    expect(await problemsWith((md) => md.replace(HOST_LINE, '- **Planned host:** GitHub Pages.'))).toEqual([
       `${POLICY_MD} "This website" still describes a planned host; confirm the host`,
       expect.stringContaining('"This website" must confirm GitHub Pages and its IP-address logging'),
     ]);

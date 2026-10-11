@@ -265,9 +265,9 @@ The exact bytes and hashes of each image are in
 
 These are not decided here (see [readiness.md](readiness.md#publisher-inputs-pending)):
 
-- hosted policy URL and effective date (publisher MJUD and contact
-  `exiledeals@gmail.com` were supplied in Task 12; site files are prepared in
-  [publisher-site.md](publisher-site.md));
+- hosted policy URL (publisher MJUD and contact `exiledeals@gmail.com` were
+  supplied in Task 12; the site is finalized for publication but not
+  deployed, see [publisher-site.md](publisher-site.md));
 - distribution choices;
 - the exact Developer Dashboard privacy labels;
 - an owner-operated toolbar check of 0.8.0;

@@ -52,7 +52,23 @@
   not confirmed). The workflow has **not been run**; Pages is not enabled
   and no setting was changed. The site stays **unhosted and unpublished**,
   and the verdict stays **not ready to submit**. Ordered remaining steps:
-  [publisher-site.md](publisher-site.md#future-publication-procedure-owner-authorized).
+  [publisher-site.md](publisher-site.md#deployment-procedure-approved-not-yet-performed).
+  (Historical: superseded by the Task 14 update below.)
+- **Update for Task 14 (version 0.8.0 unchanged, 2026-10-11):** the owner
+  explicitly **approved publishing** the reviewed site and privacy policy on
+  GitHub Pages under MJUD with `exiledeals@gmail.com` as support contact
+  ("I approve publishing."). The publication files are **finalized**: the
+  draft note, **Prepared for review** line, `[PENDING]` markers and review
+  banners are gone, the host reads **GitHub Pages**, and the effective date
+  is the **candidate publication date 2026-10-11** (America/New_York),
+  which must be reconciled with the actual first successful publication
+  before deployment. The real files **pass** `npm run site:publication-check`,
+  which CI now runs. **Deployment has not been performed**: Pages is not
+  enabled, the workflow has not been run, and the proposed URLs are
+  unverified. The verdict stays **not ready to submit** (0.8.0 toolbar check,
+  Developer Dashboard privacy/distribution choices and Google's review
+  remain pending). Next steps:
+  [publisher-site.md](publisher-site.md#deployment-procedure-approved-not-yet-performed).
 
 ## Task 12 status (publisher site)
 
@@ -60,12 +76,12 @@
 | --- | --- | --- |
 | Publisher identity | **Supplied and incorporated:** MJUD | Owner (Task 12 instructions); policy drafts, site |
 | Public contact | **Supplied and incorporated:** `exiledeals@gmail.com` (mailto on every site page) | Owner; policy drafts, site |
-| Website | **Static files prepared, unhosted** (`publisher-site/`: home, privacy, support) | [publisher-site.md](publisher-site.md); CI artifact `refund-reconciler-publisher-site` |
+| Website | **Publication files finalized (Task 14), deployment not yet performed** (`publisher-site/`: home, privacy, support); owner approved publication on GitHub Pages | [publisher-site.md](publisher-site.md); CI artifact `refund-reconciler-publisher-site` |
 | Hosting | **Candidate: GitHub Pages** (repository is public; Pages not enabled). Owner's plan not inspected; eligibility is confirmed only in Settings → Pages | [publisher-site.md](publisher-site.md#hosting-plan-proposed) |
 | Deployment workflow (Task 13) | **Source prepared, never run**: manual `workflow_dispatch` on `main` only, publication gate before upload, Pages artifact = the seven site files only. Pages source setting and any `github-pages` protection rule are not configured | `.github/workflows/publisher-site-pages.yml`; [publisher-site.md](publisher-site.md#manual-pages-workflow-task-13) |
-| Publication gate (Task 13) | **Refuses the current draft** (expected); ordinary `site:check` still passes | `npm run site:publication-check`; [publisher-site.md](publisher-site.md#publication-gate-task-13) |
-| Public policy URL | **Pending** (proposed, not live: `https://milkdudpoe.github.io/refund-reconciler/privacy.html`) | — |
-| Policy effective date | **Pending**: the policy is marked unpublished and not yet effective; only a review-preparation date (2026-10-11) is shown | [privacy-policy.md](privacy-policy.md) |
+| Publication gate (Task 13) | **Passes the finalized source (Task 14)** and runs in CI; refused the Task 13 draft (historical) | `npm run site:publication-check`; [publisher-site.md](publisher-site.md#publication-gate-task-13) |
+| Public policy URL | **Pending deployment** (proposed, unverified: `https://milkdudpoe.github.io/refund-reconciler/privacy.html`) | — |
+| Policy effective date | **Candidate 2026-10-11** (America/New_York, Task 14); not an established publication date. Reconcile with the actual first successful publication before deployment | [privacy-policy.md](privacy-policy.md) |
 | Limited Use statement on a site belonging to the extension | **Prepared**: one click from the homepage; live only once hosted | `publisher-site/index.html` |
 | 0.8.0 owner toolbar check | **Not run.** No owner result was supplied during Task 12; screenshots and automated tests do not substitute for it | [../validation.md](../validation.md) |
 | Developer Dashboard privacy labels, distribution settings, store review | **Pending**; no dashboard login or form was used | [privacy-practices.md](privacy-practices.md) |
@@ -75,15 +91,16 @@ What the policy drafts now add (data practices of the extension unchanged):
 an **If you email MJUD** section (voluntary; MJUD receives the sender's
 address and what they send; used only to answer; email providers keep their
 own copies; no retention period is promised) and a **This website** section
-(no cookies, scripts or analytics; the planned host receives requests and,
-for GitHub Pages, logs IP addresses for security). Broad statements such as
+(no cookies, scripts or analytics; the host, GitHub Pages, receives
+requests and logs IP addresses for security). Broad statements such as
 "the publisher does not receive any information" were narrowed to the
 extension's records, which MJUD cannot access.
 
 **Publication order.** A reviewed policy can be hosted before the extension
 is submitted; Google's approval is not a prerequisite for hosting the policy
-reviewers need to read. Website/policy publication needs only owner review,
-a host, the effective date and confirmed URLs. Extension submission then
+reviewers need to read. Website/policy publication is approved by the owner
+(Task 14) and now needs only the final PR review, the date aligned with the
+actual publication, the deployment and confirmed URLs. Extension submission then
 also needs the hosted URL, dashboard labels and certifications, distribution
 settings and the toolbar check; release needs the review outcome. Details:
 [publisher-site.md](publisher-site.md#what-depends-on-what).
@@ -581,11 +598,12 @@ pending:
 
 - A privacy policy URL hosted on a site the publisher controls; the same
   site carries the Limited Use statement. Files are prepared in
-  `publisher-site/`, and a manual Pages workflow and publication gate exist
-  (Task 13, not run); hosting is not done ([publisher-site.md](publisher-site.md)).
-- The privacy policy's effective date, set when it is published.
-- Owner review of the support-email and website wording in the policy, which
-  describe MJUD's own handling of email.
+  `publisher-site/` and finalized for publication (Task 14; owner approved
+  publishing on GitHub Pages); deployment is not done
+  ([publisher-site.md](publisher-site.md)).
+- The privacy policy's effective date: candidate 2026-10-11, to be
+  reconciled with the actual first publication. (The owner approved the
+  support-email and website wording with the publication approval.)
 - Whether the store name stays as the manifest's current
   **"Refund Reconciler (local preview)"** (changing it is a manifest change).
 - Owner review of the implemented B2 flow (0.8.0) and of the disclosure
@@ -615,11 +633,13 @@ pending:
 
 ## Recommended next implementation step
 
-**After Task 13:** the owner reviews the site and policy and authorizes
-publication; then the final edits on the actual publication date, the Pages
-source setting and an explicit run of the manual workflow on `main`, then
-recording the verified live URLs and effective date (ordered steps in
-[publisher-site.md](publisher-site.md#future-publication-procedure-owner-authorized)).
+**After Task 14:** review of the finalized site PR, the reviewed source on
+`main`, the effective date aligned with the actual publication day, the
+Pages source set to GitHub Actions and an explicit run of the manual
+workflow on `main`, then live HTTPS verification and recording the deployed
+commit, run, date and URLs (ordered steps in
+[publisher-site.md](publisher-site.md#deployment-procedure-approved-not-yet-performed);
+publication is already approved).
 Separately for the extension: distribution choices, the dashboard-label
 review and the 0.8.0 toolbar check.
 

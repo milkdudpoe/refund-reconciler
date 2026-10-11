@@ -1,18 +1,29 @@
-# Publisher site and privacy-policy handoff (Tasks 12 and 13)
+# Publisher site and privacy-policy handoff (Tasks 12 to 14)
 
-> **Prepared, not published.** The files below are ready for the owner's
-> review. Nothing has been hosted or deployed: GitHub Pages is not enabled,
-> no DNS, domain or hosting account exists, nothing was submitted to the
-> Chrome Web Store, and no email was sent. The proposed URLs below are **not
-> live** and were not requested.
+> **Current status (Task 14): publication files finalized, deployment not
+> yet performed.** The owner explicitly approved publishing the reviewed site
+> and privacy policy on GitHub Pages under **MJUD**, with
+> `exiledeals@gmail.com` as the public support contact ("I approve
+> publishing."); that approval covers the reviewed support-email wording and
+> the GitHub Pages host, and it persists. Task 14 applied the reviewed final
+> edits to the source and the real files now **pass**
+> `npm run site:publication-check`. Nothing has been hosted or deployed:
+> Pages is not enabled, the manual workflow has **never been run**, no
+> setting was changed, nothing was merged by Claude Code, nothing was
+> submitted to the Chrome Web Store and no email was sent. The proposed URLs
+> below are **not live** and were not requested.
 >
-> **Task 13** added the *source* of a manual-only deployment workflow
-> (`.github/workflows/publisher-site-pages.yml`) and a read-only publication
-> gate (`npm run site:publication-check`). The workflow has **never been
-> run**, Pages settings and the `github-pages` environment were not touched,
-> and the gate **refuses today's draft** by design (see
-> [Publication gate](#publication-gate-task-13)). The site stays unhosted and
-> unpublished.
+> **Candidate publication date: 2026-10-11** (the calendar date in
+> America/New_York when Task 14 ran). It is the policy's effective date as
+> prepared for the upcoming deployment; **publication has not happened**, and
+> choosing the date does not make the policy live. Before the workflow runs,
+> the date must be reconciled with the day of the actual first successful
+> publication: if review or deployment moves to another day, the effective
+> date (and any copy stating it) is updated in a small reviewed change first.
+>
+> Task 13 added the manual-only deployment workflow source
+> (`.github/workflows/publisher-site-pages.yml`) and the read-only
+> publication gate; at that time the gate refused the draft by design.
 
 - **Publisher:** MJUD (supplied by the owner)
 - **Public contact:** `exiledeals@gmail.com` (supplied by the owner)
@@ -71,8 +82,9 @@ python3 -m http.server 8000 --directory /tmp/site-preview   # then open http://l
 
 ## CI artifact
 
-The Ubuntu CI job runs `npm run site:artifact` (`site:check`, then staging)
-and uploads **`refund-reconciler-publisher-site`** (kept 14 days):
+The Ubuntu CI job runs `npm run site:publication-check` on the finalized
+source (Task 14; read-only, no deployment), then `npm run site:artifact`
+(`site:check`, then staging), and uploads **`refund-reconciler-publisher-site`** (kept 14 days):
 
 - `site/`: exactly the seven files above;
 - `publisher-site-report.json`, **outside** `site/`: generation label
@@ -111,8 +123,8 @@ Checked on 2026-10-11 (read-only):
   of these URLs exists yet.
 - **Visitor logging:** the same page says that when a Pages site is visited,
   the visitor's IP address is logged and stored for security purposes,
-  whether or not the visitor is signed in to GitHub. The draft policy's
-  **This website** section says so, labelled as a planned host. The
+  whether or not the visitor is signed in to GitHub. The policy's
+  **This website** section says so for its host, GitHub Pages. The
   extension's "no network requests" statement covers only the extension, not
   the website.
 - **Acceptable use (interpretation):** GitHub's
@@ -155,10 +167,11 @@ These are interpretations for planning, not a compliance certification.
 
 ## What depends on what
 
-- **Website and policy publication** needs: the owner's review of these
-  files (in particular the **If you email MJUD** wording, which describes
-  MJUD's own handling of support email), a host, the effective date and the
-  final URLs. It does **not** need store approval or a submitted extension:
+- **Website and policy publication** has the owner's explicit approval
+  (MJUD, `exiledeals@gmail.com`, the **If you email MJUD** wording and the
+  GitHub Pages host). It still needs the review of this final source, the
+  effective date aligned with the actual publication day, the deployment
+  itself and the verified final URLs. It does **not** need store approval or a submitted extension:
   the policy reviewers read must exist before submission.
 - **Extension submission** additionally needs: the hosted policy URL entered
   in the dashboard, the exact Developer Dashboard privacy labels and
@@ -201,24 +214,27 @@ page) and then requires, for publication (`scripts/site/publication.ts`):
 - the publisher, contact and Limited Use statement in the policy, and the
   homepage's one-click link to `privacy.html#chrome-web-store-user-data-policy`.
 
-It writes nothing, fills in no date and generates no policy text. Ordinary
-`site:check` and CI still accept the draft and keep producing the review
-artifact. The gate does not object to the homepage's accurate statement that
+It writes nothing, fills in no date and generates no policy text. Since
+Task 14 the real, finalized files pass it, and ordinary CI runs it on every
+pull request and push to `main` (read-only; no deployment trigger or
+permission). The gate does not object to the homepage's accurate statement that
 the **extension** is an unpublished beta, not in the Chrome Web Store; that
 stays true until a store release and is not the same as publishing a policy
 that is not in effect.
 
-Today's draft is refused with 15 problems: the effective date is not a
-date, the draft note and its wording remain, the host is still *planned*,
-`[PENDING]` markers remain in the policy and both HTML copies, both HTML
-copies contain the draft note and are labelled drafts, and all three pages
-carry the review banner. `tests/unit/publication-gate.test.ts` pins that
-list, and checks a finalized **fixture** (temporary copies of the reviewed
-files with the documented edits applied, test data only) that passes,
-including when dated the preparation day 2026-10-11 or a later day, plus
-each remaining draft element (a leftover **Prepared for review** line
-included, whatever its date), stale policy HTML and extra files failing on
-their own.
+In Task 13 the then-draft was refused with 15 problems (historical). Since
+Task 14, `tests/unit/publication-gate.test.ts` requires the **real** source
+to pass with current copies, the approved publisher and contact and one valid
+effective date, without changing any file. The same 15 refusals are pinned on
+an explicit **draft fixture**: temporary copies of the finalized files with
+the former draft note, *not yet effective* date, **Prepared for review**
+line, planned-host wording, review banners and draft meta description
+restored from test data. Finalized fixtures with arbitrary dates (the same
+day 2026-10-11, 2026-10-12, leap day 2028-02-29) pass, and each remaining
+draft element (a leftover **Prepared for review** line included, whatever
+its date), invalid or missing dates, stale policy HTML, extra files and
+external resources fail on their own. Fixtures never modify the real files
+or their date.
 
 ## Manual Pages workflow (Task 13)
 
@@ -253,48 +269,32 @@ their own.
 
 Checked in Task 13 without running anything: `actionlint` 1.7.7 reports no
 problems in either workflow, and the triggers, permissions, branch
-condition, `needs` and upload path above were inspected in the YAML. Until
-the publication text is finalized, the workflow refuses at the gate; the CI
-artifact `refund-reconciler-publisher-site` stays the way to inspect the draft.
+condition, `needs` and upload path above were inspected in the YAML. The
+publication text is finalized as of Task 14, so the gate no longer stops a
+run on `main`; the workflow has still not been run.
 
-## Future publication procedure (owner-authorized)
+## Deployment procedure (approved, not yet performed)
 
-None of these steps has been performed.
+Publication is approved by the owner; that approval covers these steps and
+no further approval is needed. None of them has been performed.
 
-1. **Approval.** The owner approves the reviewed site, the **If you email
-   MJUD** support wording, GitHub Pages as host, and the actual publication.
-2. **Final edits, on the actual first-publication date** (whatever day
-   publication really happens, which may be the same day as a preparation
-   task; never a date chosen only because a task ran on it):
-   - `docs/store/privacy-policy.md`: delete the `> ` draft note; set
-     `- **Effective date:** YYYY-MM-DD` to that date (removing *not yet
-     effective* and its `[PENDING]` marker); delete the **Prepared for
-     review** line; in **This website**, change
-     `**Planned host [PENDING: confirm when the site is published]:** GitHub Pages.`
-     to `**Host:** GitHub Pages.` and leave the rest of the bullet as is.
-   - Remove `<div class="review-note">…</div>` from `index.html`,
-     `privacy.html` and `support.html` (hand-written, not generated), and
-     drop *(unpublished draft)* from `privacy.html`'s meta description.
-     Optionally drop the `.review-note` CSS. Keep the extension's
-     *Unpublished beta* status until a store release.
-   - Run `npm run site:policy` (regenerates both policy HTML copies; the
-     standalone title loses *(unpublished draft)* once the note is gone),
-     update the pinned draft expectations in
-     `tests/unit/publisher-site.test.ts` (the two `[PENDING]` markers and
-     *not yet effective*) and `tests/unit/publication-gate.test.ts` (the
-     real-draft refusal), then run `npm test`, `npm run site:check` and
-     `npm run site:publication-check` (must pass). Review the concrete diff.
-3. **Main and settings.** Get the reviewed revision onto `main` with CI
-   green, and set the Pages source to **GitHub Actions** (optionally adding
-   the `github-pages` protection rule).
+1. **Review.** Independent review of the Task 14 pull request (this final
+   source); the reviewed revision lands on `main` with CI green.
+2. **Date.** Confirm the policy's effective date (candidate **2026-10-11**)
+   equals the day of the actual first successful publication. If not, a
+   small reviewed change sets the actual date (`docs/store/privacy-policy.md`,
+   then `npm run site:policy`, `npm test`, `npm run site:publication-check`)
+   before running the workflow.
+3. **Settings.** Set **Settings → Pages → Build and deployment → Source** to
+   **GitHub Actions** (optionally adding the `github-pages` protection rule).
 4. **Run.** Explicitly run *Publisher site (manual Pages deployment)* on
-   `main` from the Actions tab. An environment approval, if configured, is
-   given by the owner in GitHub.
+   `main` from the Actions tab.
 5. **Verify and record.** Over HTTPS, check the live home, privacy and
-   support pages, images, relative navigation and the Limited Use anchor
+   support pages, images, relative navigation, that no external resource
+   loads, and the Limited Use anchor
    (`privacy.html#chrome-web-store-user-data-policy`). Record the deployed
-   commit, the workflow run and deployment result, the effective date and the
-   verified URLs in [readiness.md](readiness.md) and
+   commit, the workflow run and deployment result, the actual publication
+   date and the verified URLs in [readiness.md](readiness.md) and
    [privacy-practices.md](privacy-practices.md#privacy-policy-url). Only then
    use those URLs in the store listing and Developer Dashboard.
 
