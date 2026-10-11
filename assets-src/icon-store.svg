@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!--
+    Store-sized 128 px variant of icon.svg (original artwork, editable source).
+    Chrome Web Store image guidance: a 128x128 PNG whose square artwork is
+    about 96x96, with 16 px of transparent padding on every side
+    (https://developer.chrome.com/docs/webstore/images, "Icon size").
+    The blue tile spans exactly x/y 16-112; everything outside it stays fully
+    transparent. The inner drawing is icon.svg's, scaled by 0.8 about the
+    tile (120 px tile -> 96 px tile). Used only for public/icons/icon-128.png;
+    the 16/32/48 toolbar sizes keep icon.svg and icon-16.svg.
+    The clip path keeps anti-aliasing of the rounded corners from leaking a
+    faint pixel into the padding. Regenerate with `npm run icons` after editing.
+  -->
+  <defs>
+    <clipPath id="artwork-region"><rect x="16" y="16" width="96" height="96"/></clipPath>
+  </defs>
+  <rect x="16" y="16" width="96" height="96" rx="20.8" fill="#2456a6" clip-path="url(#artwork-region)"/>
+  <g transform="matrix(0.8 0 0 0.8 12.8 12.8)">
+    <path d="M34 18 H78 L98 38 V110 H34 Z" fill="#ffffff"/>
+    <path d="M78 18 V38 H98 Z" fill="#b9cdf0"/>
+    <rect x="44" y="34" width="26" height="8" rx="4" fill="#2456a6"/>
+    <rect x="44" y="48" width="40" height="8" rx="4" fill="#2456a6"/>
+    <path d="M76 90 A13 13 0 1 1 63 77" fill="none" stroke="#2456a6" stroke-width="8" stroke-linecap="round"/>
+    <path d="M62 68 L74 77 L62 86 Z" fill="#2456a6" stroke="#2456a6" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+</svg>

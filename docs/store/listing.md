@@ -3,9 +3,11 @@
 > **Draft, not submitted.** This text describes beta 0.8.0 as it is built
 > today. Do not submit it until the open items in
 > [readiness.md](readiness.md) are resolved: publisher inputs, a hosted
-> privacy policy, store images, a real toolbar check of 0.8.0 and the
-> review itself (encryption at rest shipped in 0.7.0; the in-product
-> disclosure and agreement step in 0.8.0).
+> privacy policy, a real toolbar check of 0.8.0 and the review itself
+> (encryption at rest shipped in 0.7.0; the in-product disclosure and
+> agreement step in 0.8.0). The store images (padded icon, promotional tile
+> and three screenshots, Task 11) are done but not uploaded; files,
+> suggested order and captions are in [assets.md](assets.md).
 > No customers, testimonials, pricing, affiliations or results are claimed.
 
 ## Name

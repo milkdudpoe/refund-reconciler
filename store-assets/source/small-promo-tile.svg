@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 280" width="440" height="280">
+  <!--
+    Refund Reconciler small promotional tile, 440x280 (editable source).
+    Chrome Web Store "Supplying images": one 440x280 small promotional image;
+    avoid text, fill the entire region, well-defined edges, saturated colours
+    (https://developer.chrome.com/docs/webstore/images).
+
+    Original artwork only: the extension's document-and-return-arrow icon
+    (assets-src/icon.svg, same blue identity) beside three abstract refund
+    records, one per returned item. Deliberately no text, numbers, currency
+    signs, check marks, badges, screenshots or third-party logos.
+    Render with `npm run assets:store` (Playwright Chromium, 440x280, no scaling).
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2d66c2"/>
+      <stop offset="1" stop-color="#173c7a"/>
+    </linearGradient>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#0b1f45" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Full-bleed background. -->
+  <rect width="440" height="280" fill="url(#bg)"/>
+  <circle cx="132" cy="140" r="118" fill="#ffffff" fill-opacity="0.06"/>
+  <circle cx="132" cy="140" r="84" fill="#ffffff" fill-opacity="0.06"/>
+
+  <!-- The icon artwork (icon.svg's 128-unit drawing at 1.4x, centred on 132,140). -->
+  <g transform="matrix(1.4 0 0 1.4 42.4 50.4)" filter="url(#lift)">
+    <rect x="4" y="4" width="120" height="120" rx="26" fill="#2456a6" stroke="#ffffff" stroke-opacity="0.35" stroke-width="2"/>
+    <path d="M34 18 H78 L98 38 V110 H34 Z" fill="#ffffff"/>
+    <path d="M78 18 V38 H98 Z" fill="#b9cdf0"/>
+    <rect x="44" y="34" width="26" height="8" rx="4" fill="#2456a6"/>
+    <rect x="44" y="48" width="40" height="8" rx="4" fill="#2456a6"/>
+    <path d="M76 90 A13 13 0 1 1 63 77" fill="none" stroke="#2456a6" stroke-width="8" stroke-linecap="round"/>
+    <path d="M62 68 L74 77 L62 86 Z" fill="#2456a6" stroke="#2456a6" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Three abstract refund records, one per item: a status dot and two lines each. -->
+  <g filter="url(#lift)">
+    <rect x="262" y="56" width="148" height="44" rx="10" fill="#ffffff"/>
+    <circle cx="284" cy="78" r="8" fill="#e0a526"/>
+    <rect x="302" y="68" width="62" height="8" rx="4" fill="#2456a6"/>
+    <rect x="302" y="82" width="92" height="7" rx="3.5" fill="#b9cdf0"/>
+
+    <rect x="262" y="118" width="148" height="44" rx="10" fill="#ffffff"/>
+    <circle cx="284" cy="140" r="8" fill="#2456a6"/>
+    <rect x="302" y="130" width="80" height="8" rx="4" fill="#2456a6"/>
+    <rect x="302" y="144" width="68" height="7" rx="3.5" fill="#b9cdf0"/>
+
+    <rect x="262" y="180" width="148" height="44" rx="10" fill="#ffffff"/>
+    <circle cx="284" cy="202" r="8" fill="#7f97c4"/>
+    <rect x="302" y="192" width="54" height="8" rx="4" fill="#2456a6"/>
+    <rect x="302" y="206" width="84" height="7" rx="3.5" fill="#b9cdf0"/>
+  </g>
+
+  <!-- Thin connector from the icon to the records. -->
+  <path d="M232 140 H252" stroke="#ffffff" stroke-opacity="0.55" stroke-width="4" stroke-linecap="round"/>
+  <path d="M244 78 V202" stroke="#ffffff" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M244 78 H254 M244 202 H254" stroke="#ffffff" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round"/>
+</svg>

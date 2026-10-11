@@ -24,6 +24,53 @@
   date, store images, a dashboard-label review of every privacy answer, an
   owner-operated toolbar check of the 0.8.0 popup, and the store review
   itself are still pending. Nothing here claims compliance or approval.
+- **Update for Task 11 (version 0.8.0 unchanged, 2026-10-11):** the store
+  images are **done** (see [Task 11 status](#task-11-status-080-store-assets)
+  and [assets.md](assets.md)): a padded 128 px icon in the package, a
+  440×280 promotional tile and three 1280×800 screenshots of the production
+  ZIP. The verdict stays **not ready to submit**. Still pending: publisher
+  name and contact, a hosted policy URL and effective date, distribution
+  choices, a dashboard-label review of every privacy answer, an
+  owner-operated toolbar check of 0.8.0 (**not run**), real refund wording,
+  and the store review itself.
+
+## Task 11 status (0.8.0, store assets)
+
+Facts (details, captions and provenance in [assets.md](assets.md)):
+
+- **Icon (R14).** `public/icons/icon-128.png` is now rendered from
+  `assets-src/icon-store.svg`. Measured from the PNG, its artwork spans
+  x/y 16–111 (96×96), with every pixel outside it fully transparent
+  (≥ 16 px margin). It was 4–123 in the 0.6.0 audit below. The
+  16/32/48 toolbar icons, the manifest, permissions, CSP, minimum Chrome
+  version, storage formats and all flows are unchanged. Version 0.8.0 and
+  data-practices version 1 are kept.
+- **Promotional tile (R15).** `store-assets/small-promo-tile-440x280.png`
+  from an editable SVG. It is brand-led, with no text or claims.
+- **Screenshots (R15).** Three 1280×800 PNGs in `store-assets/`. They were
+  captured from the **extracted production beta ZIP** in a disposable
+  profile, through the real disclosure, passphrase setup and case forms,
+  with synthetic data labelled `Synthetic`:
+  1. overview and case list;
+  2. one item's merchant report vs confirmed receipt;
+  3. **Prepare case summary** with details omitted.
+
+  The capture harness cannot click Chrome's real toolbar button, so the
+  screenshots do not show that a toolbar grant works. They also show no
+  capture or refund preview.
+- **Reproducible.** `npm run assets:store` (package, render, capture,
+  validate, report). On every run, CI uploads a separate
+  `refund-reconciler-store-assets` artifact whose report names the exact
+  beta ZIP SHA-256 and head commit. The committed copies are labelled
+  `local-precommit`, not final-head.
+- Evidence: `tests/store/store-assets.spec.ts` (scenario assertions and
+  worker cross-check), `tests/unit/store-assets.test.ts` (dimensions, count,
+  opacity, icon alpha bounds, report labelling, package exclusion), and
+  [../validation.md](../validation.md#task-11-store-assets-for-080-2026-10-11).
+
+Not done here: a marquee image (optional), screenshots 4–5, any upload, and
+every publisher or owner input listed under
+[Publisher inputs](#publisher-inputs-pending).
 
 ## Task 10 status (0.8.0)
 
@@ -230,8 +277,8 @@ Status values: **Met** (fact), **Gap** (fact, with work needed),
 | R11 | Limited Use affirmative statement on a website belonging to the extension (Limited Use; FAQ *Limited uses* Q1) | None hosted | — | **Pending** | Included in the draft policy; needs hosting |
 | R12 | Privacy policy, dashboard answers and behaviour must be consistent (FAQ *Simplifying* Q3) | The drafts were checked against the code (see [Consistency](#consistency-check)). Stale in-product help copy remains | `src/ui/help.ts` | **Gap** (copy) | See [Stale copy](#stale-in-product-copy) |
 | R13 | Don't publicly disclose financial or payment information (Handling Requirements; FAQ Q11) | The extension publishes nothing. Users can export and share files themselves | F9, F10 | **Met** | Keep the warnings about plaintext exports |
-| R14 | 128×128 PNG icon with 96×96 artwork and 16 px transparent padding (Images: Extension icon, Icon size) | 128×128 PNG. Opaque artwork spans x/y 4–123 (120×120 with a 4 px margin) | `assets-src/icon.svg` (`rect x=4 width=120`); measured from `public/icons/icon-128.png` | **Gap** | A padded store icon (an asset change, done later) |
-| R15 | Small promo tile 440×280 (required); screenshots 1280×800 or 640×400, at least 1 (Images) | None exist | — | **Gap** | See [Assets](#remaining-asset-work) |
+| R14 | 128×128 PNG icon with 96×96 artwork and 16 px transparent padding (Images: Extension icon, Icon size) | 0.6.0: 128×128 PNG. Opaque artwork spans x/y 4–123 (120×120 with a 4 px margin). **Task 11 (0.8.0): artwork x/y 16–111 (96×96), fully transparent outside** | 0.6.0: `assets-src/icon.svg` (`rect x=4 width=120`). Task 11: `assets-src/icon-store.svg`; measured from `public/icons/icon-128.png` by `tests/unit/store-assets.test.ts` | 0.6.0: **Gap**. **Done in Task 11** (fact) | See [assets.md](assets.md) |
+| R15 | Small promo tile 440×280 (required); screenshots 1280×800 or 640×400, at least 1 (Images) | 0.6.0: none exist. **Task 11: one 440×280 tile and three 1280×800 screenshots of the production ZIP** | `store-assets/`, `store-assets/store-assets-report.json`; CI artifact `refund-reconciler-store-assets` | 0.6.0: **Gap**. **Done in Task 11** (fact); not uploaded | See [assets.md](assets.md) |
 | R16 | Publisher identity, contact, policy URL, effective date | Not supplied | — | **Pending** | See [Publisher inputs](#publisher-inputs-pending) |
 
 ## B1. Encryption at rest (unresolved policy question)
@@ -430,6 +477,15 @@ assertion. Runtime copy is unchanged in this documentation PR.
 
 ## Remaining asset work
 
+> **Task 08 plan for 0.6.0 (historical).** Completed for 0.8.0 in Task 11,
+> as recorded in [assets.md](assets.md): the padded icon, the tile and three
+> screenshots. Screenshot 1 uses four synthetic manual cases rather than the
+> built-in demo, because demo cases are excluded from totals. Screenshot 2
+> shows a merchant report and a confirmed receipt without recharge or void
+> history, so it stays legible. Screenshot 3 shows the summary panel alone,
+> because the backup panel is a separate view. The marquee is still
+> skipped. The table and outlines below are the original plan.
+
 Assets should be produced **after** any product changes, from the eventual
 production build, using synthetic data. None are manufactured here.
 
@@ -478,6 +534,8 @@ from the production build and contain no real order data.
 - Distribution choices (visibility, regions), category and language, which
   are dashboard settings.
 - Store support details, if any. The drafts promise none.
+- Final choice of listing images and captions from [assets.md](assets.md),
+  and whether to add more screenshots or the optional marquee.
 
 ## Untested behaviour
 
@@ -497,7 +555,17 @@ from the production build and contain no real order data.
 
 ## Recommended next implementation step
 
-**After Task 10:** the publisher inputs (name, contact, hosted policy URL and
+**After Task 11:** owner and publisher inputs, not code. These are:
+
+- publisher name and contact;
+- a hosted policy URL and effective date;
+- distribution choices;
+- a dashboard-label review of the privacy answers;
+- an owner-operated toolbar check of the 0.8.0 popup.
+
+Store images are done ([assets.md](assets.md)).
+
+*After Task 10 (store images since done in Task 11):* the publisher inputs (name, contact, hosted policy URL and
 effective date), store images, a dashboard-label review of the privacy
 answers, and an owner-operated toolbar check of the 0.8.0 popup. B1 (Task 09)
 and B2 (Task 10) are implemented.

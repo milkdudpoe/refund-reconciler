@@ -5,16 +5,63 @@ private data, browser profiles, passphrases or backups are kept in this
 repository. This is not commercial validation, evidence of customer demand
 or Chrome Web Store approval.
 
-## Current status (as of 2026-10-10, version 0.8.0)
+## Current status (as of 2026-10-11, version 0.8.0)
 
 | Check | Status | Source |
 | --- | --- | --- |
+| Store assets (padded 128 px icon, 440×280 tile, three 1280×800 screenshots of the extracted beta ZIP) and the full automated suite | pass locally on the Task 11 branch; CI and the `refund-reconciler-store-assets` artifact are recorded in the Task 11 pull request | [Task 11](#task-11-store-assets-for-080-2026-10-11) |
 | Automated suites, extracted-ZIP smoke test, same-installation updates 0.5.0, 0.6.0 and 0.7.0 → 0.8.0 (bundled Chromium) | pass locally on the Task 10 branch; CI is recorded in the Task 10 pull request | [Task 10](#task-10-080-data-practices-disclosure-and-agreement-2026-10-10) |
 | Toolbar access on the public amazon.com home page (desktop Chrome), **0.8.0** | **not run**: the popup changed (nothing before agreement, nothing while locked), so a new owner-operated check is needed | — |
 | Toolbar access, **0.7.0** | **not run** | — |
 | Toolbar access, **0.6.0** (context only) | pass, owner-reported (not independently reproduced) | [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
 | Real Amazon refund wording (optional) | **untested** | — |
 | Update in place through the `chrome://extensions` UI (optional) | **untested** | — |
+
+## Task 11: store assets for 0.8.0 (2026-10-11)
+
+What changed ([store/assets.md](store/assets.md)): the packaged
+`icons/icon-128.png` is now the padded store icon (artwork x/y 16–111,
+96×96, fully transparent outside); the 16/32/48 icons, manifest, permissions,
+CSP, minimum Chrome version, storage formats, encryption and every flow are
+unchanged; version 0.8.0 and data-practices version 1 kept. New listing
+images (not in the ZIP): a 440×280 promotional tile and three 1280×800
+screenshots captured from the extracted beta ZIP through the real UI with
+synthetic data. Started from `main` at `aa0225a` (merge of PR #10, the same
+tree as the reviewed `b860783`).
+
+Automated evidence (Linux container, Playwright 1.56.1, bundled Chromium
+141.0.7390.37):
+
+- `tests/store/store-assets.spec.ts` (2 tests, run by `npm run
+  assets:store`): tile rendered at 440×280; screenshots from the ZIP checked
+  against its `.sha256` and report, in a disposable profile, after the real
+  agreement and passphrase setup; every pictured state asserted in the UI and
+  the overview ($42.50 unresolved, 1 unknown, 3 attention, 1 review, no demo
+  cases) and item figures cross-checked against the worker's `read`; no
+  notice, open form or password field at capture.
+- `tests/unit/store-assets.test.ts` (7 tests): icon alpha bounds and
+  16 px transparent margin (and rejection of a 4 px or 15 px margin and of
+  other sizes), PNG decoding, committed image count, dimensions and full-bleed
+  opacity, the tile source has no text or external references, the committed
+  report is labelled `local-precommit` and matches the files, and listing
+  files are refused by the package allowlist.
+- ZIP inspection (`unzip -l`, `sha256sum -c`, extracted bytes): 13 production
+  files, the padded `icon-128.png`, `icon-16/32/48.png` byte-identical to
+  `aa0225a`, `manifest.json` identical, permissions `storage, activeTab,
+  scripting`; no store sources, screenshots, reports or profiles.
+
+Local run on the Task 11 working tree (assets and docs not yet committed;
+tooling at `7dab474`): one complete `npm run check`: typecheck, lint,
+**392** unit tests (385 + 7), **118** browser tests, the extracted-ZIP smoke
+test (1) and the three update checks from 0.5.0, 0.6.0 and 0.7.0 (3), all
+passed; `npm run assets:store` passed; `git diff --check` clean. These are
+local results, not CI; CI for the final head and its store-assets artifact
+are recorded in the Task 11 pull request.
+
+Not covered: a real toolbar click on 0.8.0 (Check 1 is still **not run**;
+the screenshot harness does not exercise Chrome's toolbar grant), real
+Amazon refund wording, updating through the `chrome://extensions` UI,
+publisher inputs, a hosted policy, any upload and any store review.
 
 ## Task 10.1: recovery wording and uncertain agreement (2026-10-10)
 

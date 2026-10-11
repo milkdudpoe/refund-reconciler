@@ -23,6 +23,8 @@ export class ExtensionSession {
     readonly userDataDir: string,
     /** The unpacked extension to load: the production dist/ unless a test copy is given. */
     readonly extensionDir: string = DIST,
+    /** Extra persistent-context options (viewport, scale, locale, time zone); the extension flags are always set here. */
+    readonly contextOptions: { viewport?: { width: number; height: number }; deviceScaleFactor?: number; locale?: string; timezoneId?: string } = {},
   ) {}
 
   async launch(): Promise<void> {
@@ -30,6 +32,7 @@ export class ExtensionSession {
       throw new Error(`${this.extensionDir} has no manifest.json; run \`npm run build\` (or \`npm run package:beta\` for the archive test) first.`);
     }
     this.context = await chromium.launchPersistentContext(this.userDataDir, {
+      ...this.contextOptions,
       channel: 'chromium',
       args: [`--disable-extensions-except=${this.extensionDir}`, `--load-extension=${this.extensionDir}`],
     });
