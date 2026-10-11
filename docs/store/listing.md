@@ -2,9 +2,9 @@
 
 > **Draft, not submitted.** This text describes beta 0.8.0 as it is built
 > today. Do not submit it until the open items in
-> [readiness.md](readiness.md) are resolved: a hosted privacy policy and its
-> effective date (publisher MJUD and contact `exiledeals@gmail.com` are
-> supplied; site files are in [publisher-site.md](publisher-site.md)), a real toolbar check of 0.8.0 and the review itself
+> [readiness.md](readiness.md) are resolved: a hosted privacy policy (publisher
+> MJUD and contact `exiledeals@gmail.com` are supplied; the site is finalized
+> for publication but not deployed, see [publisher-site.md](publisher-site.md)), a real toolbar check of 0.8.0 and the review itself
 > (encryption at rest shipped in 0.7.0; the in-product disclosure and
 > agreement step in 0.8.0). The store images (padded icon, promotional tile
 > and three screenshots, Task 11) are done but not uploaded; files,

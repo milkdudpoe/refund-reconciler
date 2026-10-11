@@ -1,7 +1,7 @@
 // The publication gate (npm run site:publication-check): the extra
 // requirements for actually publishing the site, on top of site:check. Reads
-// only; it never fills in dates, removes notes or rewrites the policy. The
-// draft prepared for review fails it by design, while site:check still passes.
+// only; it never fills in dates, removes notes or rewrites the policy. A draft
+// policy or site fails it by design, while site:check still passes.
 // See docs/store/publisher-site.md.
 
 import { readFile } from 'node:fs/promises';

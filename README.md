@@ -56,7 +56,7 @@ npm run icons       # re-render public/icons/*.png from assets-src/*.svg (after 
 npm run assets:store  # package:beta, then store listing images from the extracted ZIP (see docs/store/assets.md)
 npm run site:policy   # regenerate both policy HTML copies from docs/store/privacy-policy.md (see docs/store/publisher-site.md)
 npm run site:check    # check the static publisher site and that the policy copies are current
-npm run site:publication-check  # site:check plus the publication requirements; refuses the current draft by design
+npm run site:publication-check  # site:check plus the publication requirements (passes the finalized site; deploys nothing)
 npm run check       # typecheck, lint, unit, browser, package and update tests
 ```
 
@@ -74,15 +74,16 @@ explanation are in [docs/beta.md](docs/beta.md).
 
 **Chrome Web Store drafts (not a release).** [docs/store/](docs/store/readiness.md)
 holds a readiness assessment, listing text, a draft privacy policy and draft
-dashboard privacy answers. They are unpublished drafts; the publisher (MJUD)
-and contact (exiledeals@gmail.com) are filled in, the policy URL and effective
-date are pending. 0.7.0 implemented the at-rest encryption the assessment recommended
+dashboard privacy answers. The publisher (MJUD) and contact
+(exiledeals@gmail.com) are filled in; the privacy policy and site are
+finalized for publication on GitHub Pages (owner-approved, candidate effective
+date 2026-10-11) but not yet deployed, so the policy URL is pending. 0.7.0 implemented the at-rest encryption the assessment recommended
 and 0.8.0 the in-product disclosure and agreement (B2). Task 11 added the
 store images (a padded 128 px icon, a promotional tile and three screenshots
 of the production ZIP with synthetic data; see
 [docs/store/assets.md](docs/store/assets.md)); they are not uploaded.
 Task 12 prepared a small static publisher site in `publisher-site/` (home,
-privacy, support; not hosted; see
+privacy, support; finalized in Task 14, not yet deployed; see
 [docs/store/publisher-site.md](docs/store/publisher-site.md)). A hosted policy
 and its effective date, the dashboard privacy labels, a real toolbar check and
 the store review are still pending and block submission; see

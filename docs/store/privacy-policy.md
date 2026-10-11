@@ -1,14 +1,8 @@
 # Refund Reconciler privacy policy
 
-> **Unpublished draft, not yet in effect.** This policy has not been
-> published and does not apply to anyone yet. It takes effect only when it is
-> published with an effective date. It describes the current build and is
-> not legal advice.
-
 - **Publisher:** MJUD
 - **Contact:** [exiledeals@gmail.com](mailto:exiledeals@gmail.com)
-- **Effective date:** not yet effective [PENDING: set to the date this policy is first published]
-- **Prepared for review:** 2026-10-11 (this is not an effective date)
+- **Effective date:** 2026-10-11
 - **Applies to:** Refund Reconciler (local preview) Chrome extension, version 0.8.0, and the Refund Reconciler website
 
 ## Summary
@@ -194,8 +188,7 @@ The Refund Reconciler website consists of plain pages with no cookies,
 scripts, analytics, advertising, forms, embedded content or third-party
 resources.
 
-- **Planned host [PENDING: confirm when the site is published]:** GitHub
-  Pages. Like any web host, it receives the request your browser makes when
+- **Host:** GitHub Pages. Like any web host, it receives the request your browser makes when
   you open a page, including your IP address. GitHub states that it logs and
   stores visitors' IP addresses for security purposes; see the
   [GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).

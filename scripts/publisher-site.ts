@@ -14,8 +14,8 @@
 //   npm run site:publication-check
 //                           site:check plus the publication requirements
 //                           (effective date, no draft notes, banners or
-//                           [PENDING] markers, confirmed host); refuses the
-//                           draft prepared for review (changes nothing)
+//                           [PENDING] markers, confirmed host); refuses a
+//                           draft policy or site (changes nothing)
 //
 // Writes only the named files above; the artifact directory is git-ignored.
 // Nothing here publishes, deploys or contacts any service; deployment is the
@@ -56,7 +56,7 @@ async function artifact(): Promise<void> {
   const report = {
     kind: 'refund-reconciler-publisher-site',
     generation: ci ? 'ci-final-head' : 'local',
-    note: 'Static files prepared for review. Not hosted, deployed or published. This report is not part of the site.',
+    note: 'Static site files staged from the source commit. This report describes them; it is not evidence of hosting, deployment or publication, and it is not part of the site.',
     sourceCommit: process.env.BETA_SOURCE_COMMIT || head,
     checkoutCommit: head,
     workingTreeClean: head === null ? null : dirty.length === 0,

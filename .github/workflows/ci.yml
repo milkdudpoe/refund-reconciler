@@ -63,6 +63,10 @@ jobs:
         run: |
           sha256sum -c refund-reconciler-beta-*.zip.sha256
           unzip -l refund-reconciler-beta-*.zip
+      # The finalized publisher site must pass the publication gate. Read-only:
+      # this deploys nothing (deployment is the separate manual workflow).
+      - name: Publication check of the finalized publisher site
+        run: npm run site:publication-check
       # Static publisher site (docs/store/publisher-site.md): checks it, then
       # stages exactly its files plus a provenance report. Not deployed.
       - name: Check and stage the publisher site
@@ -72,8 +76,12 @@ jobs:
           npm run site:artifact
           report=artifacts/publisher-site/publisher-site-report.json
           test "$(jq -r .sourceCommit "$report")" = "$BETA_SOURCE_COMMIT"
+          test "$(jq -r .checkoutCommit "$report")" = "$(git rev-parse HEAD)"
           test "$(jq -r .generation "$report")" = ci-final-head
+          test "$(jq '.files | length' "$report")" = 7
+          jq '{generation, sourceCommit, checkoutCommit, workingTreeClean, policySource, totalBytes, files}' "$report"
           cd artifacts/publisher-site/site
+          test "$(find . -type f | wc -l)" = 7
           find . -type f | sort
           find . -type f -print0 | sort -z | xargs -0 sha256sum
       # A build artifact for manual testing, not a release or store upload.

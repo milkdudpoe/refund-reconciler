@@ -40,7 +40,7 @@ export async function writeDerivedFiles(root: string, log: (line: string) => voi
 
 /**
  * The ordinary site check (site:check): derived files up to date, then the
- * static checks of the site folder. Reads only. Accepts the draft site.
+ * static checks of the site folder. Reads only. Also accepts a draft site.
  */
 export async function checkSiteSources(root: string): Promise<string[]> {
   const problems: string[] = [];
