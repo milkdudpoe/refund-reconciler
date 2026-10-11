@@ -9,6 +9,7 @@ or Chrome Web Store approval.
 
 | Check | Status | Source |
 | --- | --- | --- |
+| Publisher site (`publisher-site/`) and policy copies: static checks, policy derivation, previews at desktop and 375 px in light and dark | pass locally on the Task 12 branch; CI and the `refund-reconciler-publisher-site` artifact are recorded in the Task 12 pull request. Not hosted | [Task 12](#task-12-publisher-site-2026-10-11) |
 | Store assets (padded 128 px icon, 440×280 tile, three 1280×800 screenshots of the extracted beta ZIP) and the full automated suite | pass locally on the Task 11 branch; CI and the `refund-reconciler-store-assets` artifact are recorded in the Task 11 pull request | [Task 11](#task-11-store-assets-for-080-2026-10-11) |
 | Automated suites, extracted-ZIP smoke test, same-installation updates 0.5.0, 0.6.0 and 0.7.0 → 0.8.0 (bundled Chromium) | pass locally on the Task 10 branch; CI is recorded in the Task 10 pull request | [Task 10](#task-10-080-data-practices-disclosure-and-agreement-2026-10-10) |
 | Toolbar access on the public amazon.com home page (desktop Chrome), **0.8.0** | **not run**: the popup changed (nothing before agreement, nothing while locked), so a new owner-operated check is needed | — |
@@ -16,6 +17,52 @@ or Chrome Web Store approval.
 | Toolbar access, **0.6.0** (context only) | pass, owner-reported (not independently reproduced) | [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
 | Real Amazon refund wording (optional) | **untested** | — |
 | Update in place through the `chrome://extensions` UI (optional) | **untested** | — |
+
+## Task 12: publisher site (2026-10-11)
+
+What changed ([store/publisher-site.md](store/publisher-site.md)): a static
+site in `publisher-site/` (home, privacy, support; plain HTML/CSS and three
+byte-copied local images), publisher **MJUD** and contact
+**exiledeals@gmail.com** (supplied by the owner) in both policy drafts, a
+renderer that derives both policy HTML forms from
+`docs/store/privacy-policy.md`, and a separate CI artifact
+`refund-reconciler-publisher-site`. No runtime code, manifest, permission,
+icon, dependency, storage format or data-practices version changed; 0.8.0
+and data-practices version 1 are kept. Started from `main` at `2f1dce2`
+(merge of PR #11, containing the reviewed Task 11 head `a9668f0`).
+
+Automated evidence (Linux container, Node 22, Playwright 1.56.1 bundled
+Chromium):
+
+- `tests/unit/publisher-site.test.ts` (7 tests): exact site inventory; no
+  script, form control, embed, inline handler or style, base or refresh;
+  every `img`/`link` is a local site file; every local link and `#fragment`
+  resolves; only `mailto:exiledeals@gmail.com`; both policy HTML forms equal
+  a fresh render of the Markdown; image copies byte-identical to their
+  sources; only the two publication-time `[PENDING]` markers remain; the
+  homepage reaches the Limited Use statement in one link; the package
+  allowlist refuses every site path; the renderer refuses unsupported
+  Markdown.
+- Renderer fidelity: rendering the Task 11 Markdown reproduced the reviewed
+  Task 11 `privacy-policy.html` body exactly (only the title/comment and one
+  bold wrapper around a pending marker differed).
+- Local full run: typecheck, lint, **399** unit tests (392 + 7), **118**
+  browser tests, the extracted-ZIP smoke test (1) and the three update
+  checks (3) passed; `npm run site:check` passed; `git diff --check` clean.
+  The beta ZIP still holds the same 13 production files.
+- Preview (script outside the repository): the site served under
+  `/refund-reconciler/` and opened in bundled Chromium at 1280 and 375 px
+  wide, light and dark. No request left the local server or the subpath; no
+  failed request; no horizontal overflow; every image loaded; one `h1` per
+  page; keyboard order skip link → brand → Home → Privacy → Support →
+  page actions, with a 3 px focus outline, and the skip link moves to
+  `#main`. The mailto links were inspected, never activated; the email
+  wraps within 375 px. Measured text contrast is at least 6:1 for every
+  token pair in both themes.
+
+Not covered: hosting, any live URL or HTTP response, the owner-operated
+0.8.0 toolbar check (**not run**), real refund wording, Developer Dashboard
+labels and any store review.
 
 ## Task 11: store assets for 0.8.0 (2026-10-11)
 

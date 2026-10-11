@@ -63,6 +63,19 @@ jobs:
         run: |
           sha256sum -c refund-reconciler-beta-*.zip.sha256
           unzip -l refund-reconciler-beta-*.zip
+      # Static publisher site (docs/store/publisher-site.md): checks it, then
+      # stages exactly its files plus a provenance report. Not deployed.
+      - name: Check and stage the publisher site
+        env:
+          BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          npm run site:artifact
+          report=artifacts/publisher-site/publisher-site-report.json
+          test "$(jq -r .sourceCommit "$report")" = "$BETA_SOURCE_COMMIT"
+          test "$(jq -r .generation "$report")" = ci-final-head
+          cd artifacts/publisher-site/site
+          find . -type f | sort
+          find . -type f -print0 | sort -z | xargs -0 sha256sum
       # A build artifact for manual testing, not a release or store upload.
       - uses: actions/upload-artifact@v4
         if: success()
@@ -84,6 +97,16 @@ jobs:
             artifacts/store-assets/store-assets-report.json
             artifacts/store-assets/capture.json
             artifacts/store-assets/preview.html
+          if-no-files-found: error
+          retention-days: 14
+      # Only the static site and its report (outside the site folder).
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: refund-reconciler-publisher-site
+          path: |
+            artifacts/publisher-site/site/
+            artifacts/publisher-site/publisher-site-report.json
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
