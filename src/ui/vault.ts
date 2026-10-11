@@ -215,6 +215,9 @@ export function createVaultScreens(host: VaultHost): VaultScreens {
       host.setNotice(res.outcome === 'protected_locked' ? 'info' : okTone, res.message);
     } else if (res.error.code === 'outcome_unknown') {
       say('error', 'The extension’s reply was lost, so the result is not known yet. The current state is shown below; check it before trying again.');
+    } else if (res.error.code === 'consent_required') {
+      // The agreement was removed in another view; the data-practices screen replaces this form.
+      host.setNotice('info', res.error.message);
     } else {
       say('error', res.error.message);
     }

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Refund Reconciler (local preview)",
   "short_name": "Refund Reconciler",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Beta: manually record refund evidence per returned item and track what is unresolved, kept locally and encrypted by passphrase.",
   "minimum_chrome_version": "120",
   "icons": {

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page, Worker } from '@playwright/test';
 import { ExtensionSession, expect } from './fixtures';
-import { eraseTyped, setupViaUi } from './vault-helpers';
+import { acceptViaUi, eraseTyped, setupViaUi } from './vault-helpers';
 
 export async function scratchDir(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), 'refund-reconciler-restore-'));
@@ -181,6 +181,8 @@ export async function eraseViaUi(page: Page, seedCorrupt: (page: Page) => Promis
 export async function resetToFreshLedger(session: ExtensionSession): Promise<void> {
   const page = await session.openDashboard();
   expect(await sendRaw(page, { kind: 'eraseAll', confirm: 'ERASE ALL REFUND RECONCILER DATA' })).toMatchObject({ ok: true, outcome: 'erased' });
+  // The erase removed the agreement too, so the data practices come first again.
+  await acceptViaUi(page);
   await setupViaUi(page);
   await page.close();
 }

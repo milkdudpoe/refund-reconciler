@@ -7,7 +7,7 @@ import { emptyStore, type StoreData } from '../../src/domain/types';
 import { parseBackupEnvelope, parseStore, type ParsedBackup } from '../../src/domain/validate';
 import { MAX_BACKUP_BYTES, buildBackup, restorePayloadDigest, serializeBackup } from '../../src/export/backup';
 import { VAULT_KEY } from '../../src/persistence/storage';
-import { PHRASE, makeWorld, setUp, storedStore, type World } from './vault-fakes';
+import { PHRASE, agree, makeWorld, setUp, storedStore, type World, recordKeys } from './vault-fakes';
 import { HISTORICAL_REFUSED_EXCERPT, richLedger } from '../shared/rich-ledger';
 
 const EXPORTED_AT = '2026-10-09T08:00:00.000Z';
@@ -153,7 +153,7 @@ describe('decideRestore', () => {
 
 describe('restore through the service worker handler (encrypted ledger)', () => {
   async function unlocked(): Promise<World> {
-    const w = makeWorld();
+    const w = await makeWorld();
     await setUp(w);
     return w;
   }
@@ -186,7 +186,7 @@ describe('restore through the service worker handler (encrypted ledger)', () => 
   });
 
   it('restores only into an empty, unlocked ledger: locked, unset and migration-pending destinations are refused', async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     expect(await w.send(request('op-1', { revision: 0, stored: true, epoch: null }))).toMatchObject({ ok: false, error: { code: 'vault_not_ready' } });
     await setUp(w);
     const t = await token(w);
@@ -226,11 +226,11 @@ describe('restore through the service worker handler (encrypted ledger)', () => 
 
   it('never treats corrupt, unsupported, unreadable or locked storage as empty', async () => {
     for (const raw of [{ schemaVersion: 1, revision: 'x', cases: [] }, { schemaVersion: 99, revision: 1, cases: [] }, 'garbage']) {
-      const w = makeWorld();
+      const w = await makeWorld();
       w.local.data.set('refundReconciler.store', raw);
       expect((await w.send(request('op-1', { revision: 0, stored: true, epoch: null }))).ok).toBe(false);
       expect(w.local.data.get('refundReconciler.store')).toEqual(raw);
-      expect(w.local.data.size).toBe(1);
+      expect(recordKeys(w).length).toBe(1);
     }
     const w = await unlocked();
     const t = await token(w);
@@ -276,6 +276,7 @@ describe('restore through the service worker handler (encrypted ledger)', () => 
     for (let cycle = 0; cycle < 3; cycle++) {
       expect(await w.send(ERASE)).toMatchObject({ ok: true, outcome: 'erased' });
       w.restartWorker();
+      await agree(w);
       await setUp(w, `fresh phrase number ${cycle}`);
       // Same request, same id, same original token, sent to a new handler instance.
       expect(await w.send(request('op-1', t))).toMatchObject({ ok: false, error: { code: 'restore_stale' } });

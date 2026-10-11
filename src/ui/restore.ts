@@ -236,6 +236,8 @@ export function createRestoreController(host: RestoreHost): RestoreController {
 
   function classify(result: LedgerState): Destination {
     switch (result.status) {
+      case 'consent_required':
+        return { kind: 'blocked', reason: 'The data practices must be agreed to first.' };
       case 'locked':
         return { kind: 'blocked', reason: 'Your records are locked. Unlock them first.' };
       case 'setup_required':

@@ -1,6 +1,7 @@
 // Builds earlier production versions from their actual source at immutable
 // commits, for the same-installation update check (`npm run test:update`):
-// 0.5.0 (merged Task 05) and 0.6.0 (Task 07.1, the last plaintext version).
+// 0.5.0 (merged Task 05), 0.6.0 (Task 07.1, the last plaintext version) and
+// 0.7.0 (Task 09.1, the first encrypted version, before the consent gate).
 //
 // Everything is written inside one directory the caller created for this
 // check. The repository is only read: `git archive` exports the commit's tree
@@ -24,7 +25,9 @@ export interface Baseline {
 export const BASELINE_050: Baseline = { commit: 'b323930f7d9580f426e7e8fee39b4242143c4844', version: '0.5.0', label: 'Task 05' };
 /** 60e330b: Task 07.1 head (merged in PR #7), the last version that stored the ledger in plaintext. */
 export const BASELINE_060: Baseline = { commit: '60e330b12d195908a44ad341a73e34678a5a697d', version: '0.6.0', label: 'Task 07.1' };
-export const BASELINES: readonly Baseline[] = [BASELINE_050, BASELINE_060];
+/** da47584: reviewed Task 09.1 head (merged in PR #9), the encrypted ledger without the data-practices agreement. */
+export const BASELINE_070: Baseline = { commit: 'da475840933b21eab85553e8b2ad54c3e049bf90', version: '0.7.0', label: 'Task 09.1' };
+export const BASELINES: readonly Baseline[] = [BASELINE_050, BASELINE_060, BASELINE_070];
 
 export function fetchHint(b: Baseline): string {
   return `git fetch --no-tags --depth=1 origin ${b.commit}`;

@@ -10,14 +10,19 @@ export const VAULT_KEY = 'refundReconciler.vault';
 export const MIGRATION_KEY = 'refundReconciler.migration';
 /** Nonprivate marker left by an explicit erase (src/vault/format.ts EraseMarker). */
 export const ERASE_KEY = 'refundReconciler.erased';
+/** Nonprivate receipt of agreement to the data practices (src/consent/receipt.ts). Not part of the ledger or backups. */
+export const CONSENT_KEY = 'refundReconciler.consent';
 
 /** chrome.storage.session only: the unlocked data key, bound to a vault and a generation. */
 export const SESSION_KEY = 'refundReconciler.session';
 /** chrome.storage.session only: changed by every Lock and erase, invalidating earlier session records. */
 export const GENERATION_KEY = 'refundReconciler.sessionGeneration';
 
+/** The keys that describe the stored records. Read only after the consent gate. */
+export const LEDGER_KEYS = [LEGACY_STORE_KEY, VAULT_KEY, MIGRATION_KEY, ERASE_KEY] as const;
+
 /** Every chrome.storage.local key this extension uses. */
-export const LOCAL_KEYS = [LEGACY_STORE_KEY, VAULT_KEY, MIGRATION_KEY, ERASE_KEY] as const;
+export const LOCAL_KEYS = [...LEDGER_KEYS, CONSENT_KEY] as const;
 
 /** The subset of chrome.storage.StorageArea we use, so tests can inject fakes. */
 export interface StorageAreaLike {

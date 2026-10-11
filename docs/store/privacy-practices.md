@@ -1,10 +1,13 @@
 # Privacy practices tab: draft answers
 
-> **Draft answers, not a certification.** They describe beta 0.7.0 as built.
+> **Draft answers, not a certification.** They describe beta 0.8.0 as built.
 > Do not enter or certify them until the open items in
 > [readiness.md](readiness.md) are resolved. B1 (encryption at rest) is
-> implemented in 0.7.0; B2 (in-product disclosure and consent) is still
-> open. After B2 ships, revise the answers. The dashboard's own checkbox labels and
+> implemented in 0.7.0 and B2 (in-product disclosure and agreement,
+> [../consent.md](../consent.md)) in 0.8.0; the answers below were reviewed
+> for 0.8.0 and are unchanged in substance, because the agreement step adds
+> no data type, use or transfer (its receipt holds only a version number and
+> a timestamp). Publisher inputs remain pending. The dashboard's own checkbox labels and
 > definitions were **not inspected** (no developer account), so confirm
 > every label below against the dashboard before answering.
 
@@ -49,11 +52,13 @@ Evidence: `src/persistence/storage.ts`; `src/background/handler.ts`;
 
 **`activeTab`**
 
-> When the user clicks the toolbar button while their records are
-> unlocked, the popup needs temporary access to that one tab. It checks
+> When the user clicks the toolbar button after agreeing to the in-product
+> data-practices explanation and while their records are unlocked, the popup
+> needs temporary access to that one tab. It checks
 > that the page is amazon.com or www.amazon.com and, only if the user then
 > chooses "Capture selected refund text", reads the user's highlighted text
-> there. While the records are locked, the popup does not access the tab. We use activeTab instead of host
+> there. Before agreement, or while the records are locked, the popup does
+> not access the tab. We use activeTab instead of host
 > permissions so the extension has no standing access to any site and
 > nothing runs without a click.
 
@@ -97,15 +102,19 @@ or select it, although the extension does not ask for it.
 | --- | --- | --- | --- | --- |
 | Financial and payment information | **Yes** | Expected refunds, merchant-reported refunds, amounts the user confirmed receiving, recharges, transaction references, the dates of these events (F1–F3, F6) | Requested (amounts); reference and date optional | The core of the product is a payment history for refunds. Treat it as financial information even though there are no card or bank numbers |
 | Website content | **Yes** | The approved excerpt of selected text from an amazon.com page (≤4,000 chars), stored with the merchant report (F5–F6) | Requested for capture only, which is optional | FAQ Q2 lists "capturing data from a web page" as handling. It is stored only after the user approves |
-| Web browsing activity / web history | **Yes (conservative)** | For each approved capture: the page origin and a sanitised path (with at most one order number) (F6). Also the active tab's URL, read when the popup opens **while the records are unlocked** and kept in memory only (F4) | Read on toolbar click; stored only for approved captures | FAQ Q4 defines browsing activity to include "the domains or URLs the browser interacts with". It is not a history of visited pages. If the dashboard's definition is "list of pages visited", the honest answer may still be Yes because URLs are stored. **Unresolved:** confirm against the dashboard definition and choose the more inclusive answer if in doubt. Limited Use permits this only for a user-facing feature described on the store page and in the UI; the listing does describe it |
+| Web browsing activity / web history | **Yes (conservative)** | For each approved capture: the page origin and a sanitised path (with at most one order number) (F6). Also the active tab's URL, read when the popup opens **after agreement and while the records are unlocked** and kept in memory only (F4) | Read on toolbar click; stored only for approved captures | FAQ Q4 defines browsing activity to include "the domains or URLs the browser interacts with". It is not a history of visited pages. If the dashboard's definition is "list of pages visited", the honest answer may still be Yes because URLs are stored. **Unresolved:** confirm against the dashboard definition and choose the more inclusive answer if in doubt. Limited Use permits this only for a user-facing feature described on the store page and in the UI; the listing does describe it |
 | Personally identifiable information | **Yes (conservative), owner decision** | Not requested. Amazon order numbers are stored as order references or detected numbers, and free text (item descriptions, notes, references, sources, void reasons, excerpts) may contain names, addresses or other identifiers if the user types or selects them | Voluntary only, apart from order numbers | An order number identifies a transaction, not a person; it is arguably not an "account number". Under-disclosure is the larger risk (FAQ *Simplifying* Q3). Alternative: answer No and say in the policy that free text may contain what users enter. **Owner to decide** |
-| Authentication information | **Unresolved (0.7.0), owner decision** | The vault passphrase: requested on setup, unlock and migration, processed only on the device to derive the key (PBKDF2), cleared from the page at once, and **never stored, logged or transmitted** (`src/ui/vault.ts`, `src/background/handler.ts`). No site passwords: capture refuses selections inside form fields (`collectSelection`) | Requested (passphrase) | Before 0.7.0 the answer was No. FAQ Q2 counts processing as handling, so the conservative answer is **Yes**, with the policy explaining that the passphrase never leaves the device or persists. Confirm against the dashboard's definition. A user could also type a secret into a note; that is voluntary |
+| Authentication information | **Unresolved (0.7.0/0.8.0), owner decision** | The vault passphrase: requested on setup, unlock and migration, processed only on the device to derive the key (PBKDF2), cleared from the page at once, and **never stored, logged or transmitted** (`src/ui/vault.ts`, `src/background/handler.ts`). No site passwords: capture refuses selections inside form fields (`collectSelection`) | Requested (passphrase) | Before 0.7.0 the answer was No. FAQ Q2 counts processing as handling, so the conservative answer is **Yes**, with the policy explaining that the passphrase never leaves the device or persists. Confirm against the dashboard's definition. A user could also type a secret into a note; that is voluntary |
 | Personal communications | No | — | — | Not read or stored |
 | Health information | No | — | — | — |
 | Location | No | — | No geolocation API; an address typed into free text would fall under PII above | — |
 | User activity (clicks, keystrokes, scrolling) | No | — | — | Only the selection is read, once, on request. No event monitoring |
 | Form data | No (separately) | — | The extension's own forms collect the categories above | FAQ Q4 lists "Form data". Here it is covered by the financial and PII rows; no form data is read from web pages |
 | User-generated content | Covered above | Notes, void reasons | Voluntary | Disclosed in the policy |
+
+The consent receipt (`refundReconciler.consent`: data-practices version and
+the time of agreement) is not user data in any category above: it holds no
+identifier, content or activity. It is disclosed in the policy draft.
 
 ## Certifications
 
@@ -120,8 +129,9 @@ that:
 - user data is not used or transferred to determine creditworthiness or for
   lending: **true**.
 
-**Do not certify yet.** Certifying asserts policy compliance overall, and
-B1 and B2 are open. The Limited Use statement must also be hosted on a site
+**Do not certify yet.** Certifying asserts policy compliance overall.
+B1 and B2 are implemented (0.7.0, 0.8.0), but publisher inputs, the hosted
+policy, the dashboard-label review and the store review are still open. The Limited Use statement must also be hosted on a site
 belonging to the extension. That is pending publisher input; the text is in
 the [policy draft](privacy-policy.md).
 
@@ -135,7 +145,9 @@ are filled in and the policy text matches the build being submitted.
 
 Any of these would change the answers above. They would need an updated
 policy, an updated dashboard answer and a prominent in-product notice before
-release: network requests of any kind, sync, analytics or crash reporting,
+release, and a bump of `DATA_PRACTICES_VERSION` (with updated in-product
+text) so that every installation is asked to agree again before the changed
+practice runs ([../consent.md](../consent.md)): network requests of any kind, sync, analytics or crash reporting,
 accounts, support uploads, AI or remote processing, new capture sites or
 whole-page extraction, new permissions, changes to the encryption, vault or
 backup format, or any change in who can access the data.

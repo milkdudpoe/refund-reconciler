@@ -8,7 +8,7 @@
 - **Publisher:** [PENDING: publisher or developer name]
 - **Contact:** [PENDING: contact email or support URL controlled by the publisher]
 - **Effective date:** [PENDING: set on publication]
-- **Applies to:** Refund Reconciler (local preview) Chrome extension, version 0.7.0
+- **Applies to:** Refund Reconciler (local preview) Chrome extension, version 0.8.0
 
 ## Summary
 
@@ -19,6 +19,15 @@ your device**. The extension does not send this information to the
 publisher or to anyone else. The publisher does not receive, see, sell or
 share it. Stored records are **encrypted** with a key protected by a
 passphrase you choose; files and text you export are not.
+
+**You are asked first.** Before you can enter refund information, set a
+passphrase, restore a backup or use capture, the extension shows an
+explanation of how it handles your data inside the dashboard and asks you to
+choose **Agree and continue**. If you choose **Not now**, nothing is stored or
+changed and these features stay unavailable. Only a small record that you
+agreed (which version of the explanation, and when) is stored in your
+Chrome profile; it contains nothing else about you. You can reread the
+explanation under **Data and privacy** in the dashboard.
 
 ## What information the extension handles
 
@@ -42,12 +51,13 @@ so do not enter information you do not want stored.
 **Information from a web page, only when you capture.** The capture feature
 works only on `https://amazon.com` and `https://www.amazon.com`:
 
-- When you click the Refund Reconciler toolbar button **while your records
-  are unlocked**, Chrome temporarily lets the extension see the address of
-  the tab you are on. The extension uses it only to check whether the page
-  is supported. It is not saved at that point. While your records are
-  locked, or before you have set a passphrase, the toolbar panel does not
-  look at the tab at all; it only offers to open the dashboard.
+- When you click the Refund Reconciler toolbar button **after you have
+  agreed and while your records are unlocked**, Chrome temporarily lets the
+  extension see the address of the tab you are on. The extension uses it only
+  to check whether the page is supported. It is not saved at that point.
+  Before you agree, while your records are locked, or before you have set a
+  passphrase, the toolbar panel does not look at the tab at all; it only
+  offers to open the dashboard.
 - When you then choose **Capture selected refund text**, the extension reads
   the text you highlighted (up to 4,000 characters) and the page's address.
   It does not read the rest of the page, form fields, passwords, cookies or
@@ -102,6 +112,9 @@ any other purpose.
   your browser, against malware or anyone using your device or account, or
   if your passphrase is easy to guess. Protect your device and your
   operating-system account.
+- The record of your agreement is stored separately from your records and
+  is not encrypted; it holds only the explanation's version number and the
+  time you agreed.
 - If you used a version before 0.7.0, your records were stored without
   encryption. When you update, they are encrypted only after you choose a
   passphrase, and older unencrypted copies may remain in Chrome's own files
@@ -129,11 +142,15 @@ any other purpose.
 Records are kept until you delete them, remove the extension, or the Chrome
 profile is deleted or lost.
 
-- **Delete case…** permanently removes a case and all its records.
+- **Delete case…** permanently removes a case and all its records. It is
+  available after you have agreed to the data practices and unlocked your
+  records.
 - **Remove synthetic demo** removes the demo records.
 - If your records are locked (for example because you forgot the
-  passphrase) or stored data cannot be read, the dashboard offers **Erase
-  stored data…**, which erases everything after you type `ERASE`.
+  passphrase), stored data cannot be read, or you have not agreed to the
+  data practices, the dashboard offers **Erase stored data…**, which erases
+  everything, including the record of your agreement, after you type
+  `ERASE`. You do not need to agree in order to erase.
 - **Removing the extension** from Chrome deletes all of its stored records.
   Download a backup first if you want to keep them.
 - Losing or resetting the Chrome profile also loses the records. The
@@ -145,6 +162,8 @@ profile is deleted or lost.
 ## Your choices
 
 Using the extension is optional, and so is every field marked optional.
+Choosing **Not now** on the data-practices explanation keeps any existing
+records unchanged and leaves the extension's data features off.
 Capture is optional and runs only when you ask; you can enter merchant
 reports manually instead. You can view everything stored in the dashboard,
 export it, and delete it as described above.
@@ -158,8 +177,9 @@ Web Store User Data Policy, including the Limited Use requirements.
 
 If a future version handles data differently, for example by adding
 network features or new data types, this policy will be updated
-before that version is released, and the extension will show the change
-prominently. The effective date above shows when this version took effect.
+before that version is released, and the extension will show the changed
+explanation prominently and ask you to agree again before the new practice
+applies. The effective date above shows when this version took effect.
 
 ## Contact
 

@@ -3,9 +3,11 @@
 // explicitly approves a preview; closing or cancelling discards it. Every
 // page-derived value is rendered as literal text.
 //
-// Capture is available only while the ledger is unlocked. Until the service
-// worker confirms that, the popup does not look up the tab's address, read
-// any selection or inject anything; it only offers to open the dashboard.
+// Capture is available only after the data practices were agreed to and while
+// the ledger is unlocked. Until the service worker confirms both (an unlocked
+// read is refused without a current agreement), the popup does not look up
+// the tab's address, read any selection or inject anything; it only offers to
+// open the dashboard. It never asks for agreement itself.
 // The state is checked again when Capture is pressed and after the selection
 // is read, and a Lock or erase in another view discards any preview.
 
@@ -164,7 +166,8 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
         // The preview holds the selected text; a saved/failed phase names an item. Discard both.
         phase = { name: 'idle' };
         notice = null;
-        statusRegion.textContent = 'Your records are locked. Nothing from the page was kept.';
+        statusRegion.textContent =
+          next.status === 'consent_required' ? 'Agreement to the data practices is needed. Nothing from the page was kept.' : 'Your records are locked. Nothing from the page was kept.';
       }
     }
     if (next.status === 'ok') void acquireSourceTab();
@@ -406,8 +409,16 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
   }
 
   function renderLocked(state: Exclude<LedgerState, { status: 'ok' | 'storage_error' }>): Node {
+    // Consent required, locked, setup or migration pending, or unreadable: nothing on the page is read.
     const [text, label] =
-      state.status === 'locked'
+      state.status === 'consent_required'
+        ? [
+            state.reason === 'missing'
+              ? 'Before Refund Reconciler can be used, please read how it handles your data and agree in the dashboard. Capture stays off until then.'
+              : 'The data practices need your agreement again before Refund Reconciler can be used. Review them in the dashboard. Capture stays off until then.',
+            'Open dashboard to review',
+          ]
+        : state.status === 'locked'
         ? ['Your records are locked. Unlock them in the dashboard to capture or record refund evidence.', 'Open dashboard to unlock']
         : state.status === 'setup_required'
           ? ['Protect your records with a passphrase in the dashboard before capturing anything.', 'Open dashboard to set up']
@@ -424,7 +435,7 @@ export function startPopup(root: HTMLElement, statusRegion: HTMLElement, deps: P
   }
 
   function renderBody(): Node {
-    if (load.status === 'loading') return h('p', { class: 'muted' }, 'Checking whether your records are unlocked…');
+    if (load.status === 'loading') return h('p', { class: 'muted' }, 'Checking whether Refund Reconciler is ready…');
     if (load.status !== 'ok' && load.status !== 'storage_error') return renderLocked(load);
     switch (phase.name) {
       case 'idle':

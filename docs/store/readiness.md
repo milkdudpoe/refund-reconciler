@@ -17,6 +17,70 @@
   owner-operated toolbar check of the changed popup, and the store review
   itself are all still pending. The sections below are the Task 08 audit of
   0.6.0 unless they say otherwise.
+- **Update for Task 10 (version 0.8.0, 2026-10-10):** B2's in-product
+  disclosure and explicit agreement is **implemented** (see
+  [Task 10 status](#task-10-status-080)). The verdict stays **not ready to
+  submit**: publisher name and contact, a hosted policy URL and effective
+  date, store images, a dashboard-label review of every privacy answer, an
+  owner-operated toolbar check of the 0.8.0 popup, and the store review
+  itself are still pending. Nothing here claims compliance or approval.
+
+## Task 10 status (0.8.0)
+
+Facts (code and tests on the Task 10 branch; details in
+[../consent.md](../consent.md)):
+
+- **Disclosure before handling.** Before any data feature, the dashboard
+  shows an ordinary, prominent screen, **How Refund Reconciler handles your
+  data**, with the purpose, the typed/imported data types, what optional
+  capture reads and saves and when page access starts, use and sharing
+  (stays in this profile; not sent to the publisher or any service; no
+  sync, advertising or analytics; the user decides about exports), storage
+  and retention (encrypted with a passphrase-protected key, kept until
+  deleted or erased, passphrase not stored, no recovery service, exports
+  plaintext, earlier plaintext and earlier exports not retroactively
+  protected), and the user's choices. The text and the enforced version come
+  from one definition (`src/consent/practices.ts`, `DATA_PRACTICES_VERSION =
+  1`).
+- **Specific agreeing action.** **Agree and continue** stores a nonprivate
+  receipt (`refundReconciler.consent`: format, data-practices version, worker
+  timestamp). **Not now**, opening the dashboard or popup, help links, Data
+  and privacy, and the existing checkboxes are not agreement. The passphrase
+  recovery acknowledgment and the per-capture preview, assignment and
+  **Save** remain separate.
+- **Enforced in the service worker**, not only in the UI: without a valid
+  current receipt, every read, setup, unlock, migration, legacy read, change,
+  demo write and restore is refused before any key derivation, decryption or
+  write. Lock, the typed erase and the agreement itself remain available.
+  The popup performs no tab look-up, selection read or injection before
+  agreement, even with an unlocked 0.7.0 session.
+- **Existing installations** (0.5.0–0.7.0) see the disclosure first after
+  updating; their records and markers stay byte-for-byte unchanged until
+  agreement, then they continue to migration or unlock.
+- **Changed practices** require a version bump, which makes every receipt
+  obsolete and shows the disclosure again before the changed practice runs
+  (Disclosure Requirements: "must prominently disclose data practice
+  changes").
+- **Data and privacy** in the dashboard header shows the same text at any
+  time; rereading never accepts, revokes, or disturbs open work.
+- **Erase stored data…** (typed) also removes the receipt; it is available
+  without agreement.
+- Evidence: `tests/unit/consent.test.ts`, `tests/e2e/consent.spec.ts`, the
+  adapted suites, the extracted-ZIP smoke test, and same-installation update
+  checks from 0.5.0, 0.6.0 and 0.7.0 built from source. See
+  [../validation.md](../validation.md).
+
+Interpretation: this follows the FAQ Q10 wording on the conservative reading
+(disclosure inside the product UI, seen before agreeing, and a specific
+agreeing action before handling). The Disclosure Requirements' "prior to
+installation" wording is still addressed only by the drafted listing and
+policy, which are not published. Whether reviewers accept this flow is
+**not known**.
+
+Still pending: publisher identity and contact, a hosted privacy policy URL
+and effective date (no placeholder links ship in the product), store images,
+dashboard-label confirmation of every privacy answer, an owner-operated
+toolbar check of 0.8.0, real Amazon refund wording, and the store review.
 
 ## Task 09 status (0.7.0)
 
@@ -57,7 +121,8 @@ records are now "stored at rest using a strong encryption method such as
 and whether they would have required it at all, is **not known**; this is
 not a compliance certification.
 
-Still pending: B2 (a one-time disclose-and-agree step before the first
+Still pending at Task 09 (B2 has since been implemented in 0.8.0, see
+[Task 10 status](#task-10-status-080)): B2 (a one-time disclose-and-agree step before the first
 capture or case, re-shown on data-practice changes); publisher name,
 contact, hosted policy URL and effective date; store icon padding,
 promotional tile and screenshots; dashboard-label confirmation of every
@@ -156,11 +221,11 @@ Status values: **Met** (fact), **Gap** (fact, with work needed),
 | R2 | Post a privacy policy in the dashboard (FAQ Q6, Q14; dashboard page "Set a privacy policy") | A draft exists; nothing is hosted | [privacy-policy.md](privacy-policy.md) | **Pending** | Publisher hosts it on a URL they control and enters that URL |
 | R3 | Handle user data securely; encrypt transmissions (Handling Requirements; FAQ Q8) | No transmissions exist | Build scan above | **Met** for transmission | Re-assess if any network feature is ever added |
 | R4 | At-rest encryption (FAQ Q9) | 0.6.0: stored ledger and exports unencrypted. **0.7.0: stored ledger encrypted (passphrase-wrapped AES-256-GCM key); exports remain plaintext by design** | 0.7.0: `src/vault/crypto.ts`, `src/background/handler.ts`, [vault.md](../vault.md); `src/export/backup.ts` `serializeBackup` | **Implemented in 0.7.0** (fact); policy acceptance **unknown** (interpretation) | See [Task 09 status](#task-09-status-070) |
-| R5 | Prominent disclosure plus affirmative consent "prior to installation" (Disclosure Requirements), within the product UI and before collecting or handling (FAQ Q10) | Dashboard and popup headers give partial notice. Capture requires explicit clicks, and saving requires a preview and **Save**. There is no disclosure-and-agree step | `dashboard.html`, `popup.html` headers; `src/popup/popup.ts` `renderBody`; `src/ui/help.ts` | **Gap** | See [B2](#b2-prominent-disclosure-and-affirmative-consent-gap) |
+| R5 | Prominent disclosure plus affirmative consent "prior to installation" (Disclosure Requirements), within the product UI and before collecting or handling (FAQ Q10) | 0.6.0 (audited): dashboard and popup headers give partial notice. Capture requires explicit clicks, and saving requires a preview and **Save**. There is no disclosure-and-agree step. **0.8.0: an in-product disclosure with Agree and continue, enforced by the service worker** | 0.6.0: `dashboard.html`, `popup.html` headers; `src/popup/popup.ts` `renderBody`; `src/ui/help.ts`. 0.8.0: `src/consent/`, `src/ui/consent.ts`, `src/background/handler.ts`, [consent.md](../consent.md) | 0.6.0: **Gap**. **Implemented in 0.8.0** (fact); acceptance **unknown** | See [B2](#b2-prominent-disclosure-and-affirmative-consent-gap) and [Task 10 status](#task-10-status-080) |
 | R6 | Single, narrow purpose (dashboard page "State the extension's purpose") | Per-item refund-evidence tracking. Capture, exports, restore and the overview all serve it | `README.md` scope; feature code | **Met** (interpretation) | Use the wording in [privacy-practices.md](privacy-practices.md) |
 | R7 | Minimum permissions (FAQ *Minimum Permission* Q3; dashboard page "List and justify") | `storage`, `activeTab`, `scripting`. No host permissions, `tabs`, content scripts, `downloads` or `clipboardWrite` | `public/manifest.json`; see [Permissions](#permissions) | **Met** | List the permissions on an about page (FAQ *Minimum Permission* Q4). README and beta.md already do |
 | R8 | No remote code (dashboard page "Declare any remote code") | All code is bundled. CSP `script-src 'self'`. The injected function is bundled `func` | `public/manifest.json` CSP; `src/capture/acquire.ts`; build scan | **Met** | Answer "No" |
-| R9 | Limited Use: use data only for the single purpose; transfer, advertising, creditworthiness and human-reading limits | No transfer, advertising or developer access. Data stays on the device | Build scan; data-flow table | **Met** (fact plus interpretation) | Certify only after B1 and B2 are settled |
+| R9 | Limited Use: use data only for the single purpose; transfer, advertising, creditworthiness and human-reading limits | No transfer, advertising or developer access. Data stays on the device | Build scan; data-flow table | **Met** (fact plus interpretation) | Certify only after the remaining open items (publisher inputs, hosted policy, dashboard labels) are settled; B1 and B2 are implemented |
 | R10 | Web browsing activity only for a user-facing feature described prominently on the store page **and** in the UI (Limited Use) | The page address is used for capture provenance and order matching, after a toolbar click and Capture | F4–F6 | **Met in the UI; Pending on the store page** | The listing must describe capture and its stored page address ([listing.md](listing.md) does) |
 | R11 | Limited Use affirmative statement on a website belonging to the extension (Limited Use; FAQ *Limited uses* Q1) | None hosted | — | **Pending** | Included in the draft policy; needs hosting |
 | R12 | Privacy policy, dashboard answers and behaviour must be consistent (FAQ *Simplifying* Q3) | The drafts were checked against the code (see [Consistency](#consistency-check)). Stale in-product help copy remains | `src/ui/help.ts` | **Gap** (copy) | See [Stale copy](#stale-in-product-copy) |
@@ -218,6 +283,11 @@ Status: **unresolved**. How to resolve it, from cheapest to most certain:
 
 ## B2. Prominent disclosure and affirmative consent (gap)
 
+> **Status (0.8.0):** implemented as described in
+> [Task 10 status](#task-10-status-080) and [../consent.md](../consent.md).
+> The analysis and the "What happens today" table below are the historical
+> Task 08 audit of 0.6.0.
+
 What the policy text says:
 
 - Disclosure Requirements: *"prior to installation, it must: Prominently
@@ -237,7 +307,7 @@ the pre-install disclosure, and an in-product disclose-and-agree step is
 still needed before the first collection. Whether Google expects both cannot
 be settled from these pages alone. The conservative reading is to do both.
 
-What happens today (facts):
+What happened in 0.6.0 (facts at the Task 08 audit):
 
 | Moment | Notice shown | User action | Gap |
 | --- | --- | --- | --- |
@@ -248,7 +318,7 @@ What happens today (facts):
 | Capture (F5) | "To capture a refund record: … highlight the refund line for one item, then choose Capture. You will see a preview; nothing is saved until you approve it." (`src/popup/popup.ts` `renderBody`) | Click **Capture** | The specific action comes **before** the read. The notice does not say that the selected text and page address are read, or that an approved capture is stored unencrypted until deleted. There is no one-time consent |
 | Save (F6) | Preview showing exactly what will be stored ("Selected text", "Source", amount, order, date) | Choose case and item, tick "this amount is the refund for this one item", then **Save merchant report** | Strong approval of each record, but the checkbox confirms item applicability, **not** consent to storage. Retention and encryption are not mentioned |
 
-Required follow-up (later task, not this one): a one-time, in-product
+Required follow-up (recorded by Task 08; implemented in Task 10, 0.8.0): a one-time, in-product
 disclosure screen that (a) names the data types (typed financial evidence,
 selected page text, page address), (b) says where they are stored, whether
 they are protected and how long they are kept, and (c) requires an explicit
@@ -308,8 +378,9 @@ The drafts were checked against the code (facts in the data-flow table):
 
 **Resolved in 0.7.0:** `src/ui/help.ts` now uses the proposed parser wording
 and describes the address read exactly as gated in 0.7.0 (only while the
-records are unlocked; nothing is read while locked). The Task 08 finding is
-kept below for the record.
+records are unlocked; nothing is read while locked). **0.8.0:** it also says
+that nothing is read before the data practices are agreed to, and points to
+**Data and privacy**. The Task 08 finding is kept below for the record.
 
 `src/ui/help.ts`, under "About capturing selected text", said in 0.6.0:
 
@@ -401,8 +472,9 @@ from the production build and contain no real order data.
 - The privacy policy's effective date, set when it is published.
 - Whether the store name stays as the manifest's current
   **"Refund Reconciler (local preview)"** (changing it is a manifest change).
-- Approval of the B2 design. (B1 was decided by the owner for Task 09:
-  implement encryption; done in 0.7.0.)
+- Owner review of the implemented B2 flow (0.8.0) and of the disclosure
+  text. (B1 was decided by the owner for Task 09: implement encryption; done
+  in 0.7.0.)
 - Distribution choices (visibility, regions), category and language, which
   are dashboard settings.
 - Store support details, if any. The drafts promise none.
@@ -414,8 +486,9 @@ from the production build and contain no real order data.
 - Updating through the `chrome://extensions` UI (Check 3).
 - Toolbar access was **owner-reported** for **0.6.0**, not independently
   reproduced, and covers one Chrome version (154.0.8037.98). The 0.7.0 popup
-  changed (unlock gating) and has **not** had an owner-operated toolbar
-  check. See [validation.md](../validation.md).
+  changed (unlock gating) and the 0.8.0 popup changed again (nothing before
+  agreement); neither has had an owner-operated toolbar check. See
+  [validation.md](../validation.md).
 - 0.7.0 KDF timing on users' real computers (only a cloud container was
   measured; see [vault.md](../vault.md#evidence)).
 - Install-dialog permission warnings for this manifest.
@@ -424,10 +497,16 @@ from the production build and contain no real order data.
 
 ## Recommended next implementation step
 
-**After Task 09: B2, the in-product disclosure and consent step** (and the
-toolbar re-check of the 0.7.0 popup), now that the storage behaviour it must
-describe is final. The Task 08 recommendation below (Task 09, at-rest
-protection) has been implemented.
+**After Task 10:** the publisher inputs (name, contact, hosted policy URL and
+effective date), store images, a dashboard-label review of the privacy
+answers, and an owner-operated toolbar check of the 0.8.0 popup. B1 (Task 09)
+and B2 (Task 10) are implemented.
+
+*Earlier recommendation (after Task 09, implemented in Task 10):* B2, the
+in-product disclosure and consent step (and the toolbar re-check of the
+0.7.0 popup), now that the storage behaviour it must describe is final. The
+Task 08 recommendation below (Task 09, at-rest protection) has been
+implemented.
 
 **Task 08 recommendation (implemented in Task 09):** local at-rest
 protection of the stored ledger (passphrase-wrapped data key). This resolves

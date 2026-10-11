@@ -1,9 +1,11 @@
 # Chrome Web Store listing (draft)
 
-> **Draft, not submitted.** This text describes beta 0.7.0 as it is built
+> **Draft, not submitted.** This text describes beta 0.8.0 as it is built
 > today. Do not submit it until the open items in
-> [readiness.md](readiness.md) are resolved, especially the in-product
-> disclosure and consent step (encryption at rest is implemented in 0.7.0).
+> [readiness.md](readiness.md) are resolved: publisher inputs, a hosted
+> privacy policy, store images, a real toolbar check of 0.8.0 and the
+> review itself (encryption at rest shipped in 0.7.0; the in-product
+> disclosure and agreement step in 0.8.0).
 > No customers, testimonials, pricing, affiliations or results are claimed.
 
 ## Name
@@ -57,7 +59,8 @@ between items.
 
 **Optional: capture a refund line from an Amazon US page (preview)**
 
-While your records are unlocked, on `amazon.com` or `www.amazon.com`, you
+After you have agreed to the data practices, and while your records are
+unlocked, on `amazon.com` or `www.amazon.com`, you
 can highlight the refund line for one item, click the toolbar button and
 choose **Capture selected refund text**. The extension reads only the
 highlighted text and the page address,
@@ -84,6 +87,9 @@ manually instead.
 
 **Where your data is kept**
 
+Before you can enter anything, the dashboard explains how your data is
+handled and asks you to choose **Agree and continue** (or **Not now**, which
+changes nothing). You can reread it under **Data and privacy**.
 Everything stays in this Chrome profile, in the extension's local storage.
 There is no account, server, sync, analytics or advertising, and the
 developer receives none of your data. Stored records are **encrypted** with
@@ -112,7 +118,10 @@ below is synthetic.
 
 1. Install the extension and pin **Refund Reconciler** from the puzzle-piece
    menu.
-2. Click the toolbar icon, then **Open dashboard to set up**. On **Protect
+2. Click the toolbar icon, then **Open dashboard to review**. The dashboard
+   shows **How Refund Reconciler handles your data**; choose **Agree and
+   continue** (**Not now** leaves every data feature off and stores nothing;
+   **Data and privacy** at the top shows the same text later). On **Protect
    your records**, enter any test passphrase of at least 12 characters (for
    example `reviewer test phrase 01`) twice, tick the acknowledgment and
    choose **Protect my records**. The **How to use Refund Reconciler** guide
@@ -138,7 +147,8 @@ below is synthetic.
 6. Restore: delete all cases (**Delete case…** on each, and **Remove
    synthetic demo**), then use **Restore from a JSON backup…** with the file
    from step 5.
-7. Capture (optional, no account needed; the records must be unlocked):
+7. Capture (optional, no account needed; after agreement, with the records
+   unlocked):
    open `https://www.amazon.com`,
    highlight any ordinary text (for example a product name), click the
    toolbar icon and choose **Capture selected refund text**. Expected:

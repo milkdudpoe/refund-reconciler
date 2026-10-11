@@ -4,7 +4,7 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BASELINES, BASELINE_050, BASELINE_060, fetchHint } from '../update/baseline';
+import { BASELINES, BASELINE_050, BASELINE_060, BASELINE_070, fetchHint } from '../update/baseline';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
@@ -18,10 +18,11 @@ function stepIndex(workflow: string, step: string): number {
 }
 
 describe('update check wiring', () => {
-  it('pins immutable full commit ids of the two earlier production versions', () => {
-    expect(BASELINES.map((b) => b.version)).toEqual(['0.5.0', '0.6.0']);
+  it('pins immutable full commit ids of the three earlier production versions', () => {
+    expect(BASELINES.map((b) => b.version)).toEqual(['0.5.0', '0.6.0', '0.7.0']);
     expect(BASELINE_050.commit).toBe('b323930f7d9580f426e7e8fee39b4242143c4844');
     expect(BASELINE_060.commit).toBe('60e330b12d195908a44ad341a73e34678a5a697d');
+    expect(BASELINE_070.commit).toBe('da475840933b21eab85553e8b2ad54c3e049bf90');
     for (const b of BASELINES) expect(b.commit).toMatch(/^[0-9a-f]{40}$/);
   });
 

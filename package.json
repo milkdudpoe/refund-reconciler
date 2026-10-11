@@ -1,8 +1,8 @@
 {
   "name": "refund-reconciler",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
-  "description": "Local Chrome extension (beta 0.7.0) for tracking per-item return/refund evidence: passphrase-encrypted local ledger, manual entry, approved selected-text capture, exports, restore, case overview and an installable beta package.",
+  "description": "Local Chrome extension (beta 0.8.0) for tracking per-item return/refund evidence: in-product data disclosure and agreement, passphrase-encrypted local ledger, manual entry, approved selected-text capture, exports, restore, case overview and an installable beta package.",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"

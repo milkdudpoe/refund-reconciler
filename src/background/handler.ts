@@ -10,17 +10,27 @@
 // The ledger is decrypted here only, with a data key held in this worker's
 // memory and, for suspension recovery, in chrome.storage.session. Pages never
 // receive key material. See docs/vault.md for the states and failure rules.
+//
+// Consent gate (docs/consent.md): before any request that reads, unlocks,
+// sets up, migrates or changes records, the worker reads only the nonprivate
+// consent receipt. Unless it is a valid receipt for the current
+// DATA_PRACTICES_VERSION, the request is refused before any key derivation,
+// decryption, ledger read or write. Lock, the typed erase and the agreement
+// itself are the only actions available without it.
 
 import { applyCommand } from '../domain/ledger';
 import { decideRestore } from '../domain/restore';
 import { SCHEMA_VERSION, type StoreData } from '../domain/types';
 import { isId, parseStore } from '../domain/validate';
 import { restorePayloadDigest } from '../export/backup';
+import { DATA_PRACTICES_VERSION } from '../consent/practices';
+import { makeReceipt, parseConsent } from '../consent/receipt';
 import {
+  CONSENT_KEY,
   ERASE_KEY,
   GENERATION_KEY,
+  LEDGER_KEYS,
   LEGACY_STORE_KEY,
-  LOCAL_KEYS,
   MIGRATION_KEY,
   SESSION_KEY,
   VAULT_KEY,
@@ -44,7 +54,7 @@ import {
 import { checkPassphrase } from '../vault/passphrase';
 import type { LedgerState } from '../vault/state';
 import { sameJson } from '../vault/compare';
-import { parseRequest, type AnyRequest, type LegacyReadResponse, type ReadResponse, type Request, type Response, type VaultResponse } from './messages';
+import { parseRequest, type AnyRequest, type ConsentResponse, type LegacyReadResponse, type ReadResponse, type Request, type Response, type VaultResponse } from './messages';
 
 export interface HandlerDeps {
   local: StorageAreaLike;
@@ -58,7 +68,7 @@ export interface HandlerDeps {
   now?: () => string;
   /** Random ids for vaults, session generations and erase markers. */
   newId?: () => string;
-  /** Tells open pages that the vault state changed (lock, unlock, setup, migration, erase). Carries no data. */
+  /** Tells open pages that the vault or consent state changed (agreement, lock, unlock, setup, migration, erase). Carries no data. */
   broadcast?: () => void;
 }
 
@@ -83,6 +93,7 @@ class SessionReadError extends Error {}
 
 const vaultErr = (code: Extract<VaultResponse, { ok: false }>['error']['code'], message: string): VaultResponse => ({ ok: false, error: { code, message } });
 const vaultOk = (outcome: Extract<VaultResponse, { ok: true }>['outcome'], message: string): VaultResponse => ({ ok: true, outcome, message });
+const consentErr = (code: Extract<ConsentResponse, { ok: false }>['error']['code'], message: string): ConsentResponse => ({ ok: false, error: { code, message } });
 const mutationErr = (code: Extract<Response, { ok: false }>['error']['code'], message: string): Response => ({ ok: false, error: { code, message } });
 
 function legacyCases(store: StoreData): number {
@@ -103,7 +114,7 @@ export function createHandler(deps: HandlerDeps): Handler {
   async function inspect(): Promise<Inspected> {
     let raw: Record<string, unknown>;
     try {
-      raw = await local.get([...LOCAL_KEYS]);
+      raw = await local.get([...LEDGER_KEYS]);
     } catch (err) {
       return { kind: 'final', state: { status: 'storage_error', error: describeError(err) }, legacy: null };
     }
@@ -556,7 +567,8 @@ export function createHandler(deps: HandlerDeps): Handler {
   async function eraseAll(): Promise<VaultResponse> {
     await revokeSession();
     try {
-      await local.remove([LEGACY_STORE_KEY, VAULT_KEY, MIGRATION_KEY]);
+      // The consent receipt goes in the same removal: a new start shows the data practices again.
+      await local.remove([LEGACY_STORE_KEY, VAULT_KEY, MIGRATION_KEY, CONSENT_KEY]);
     } catch (err) {
       broadcast();
       return vaultErr('write_rejected', `Chrome refused to remove the stored records, so they may be unchanged: ${describeError(err)}`);
@@ -568,7 +580,56 @@ export function createHandler(deps: HandlerDeps): Handler {
       return vaultErr('erase_incomplete', `Stored records were removed, but the new erase marker could not be written: ${describeError(err)} Earlier restore approvals still cannot apply, because a new vault always gets a new identity.`);
     }
     broadcast();
-    return vaultOk('erased', 'Stored data erased. Set up a new passphrase to start again.');
+    return vaultOk('erased', 'Stored data erased, including your agreement to the data practices. To start again, review them and set up a new passphrase.');
+  }
+
+  // ---- Consent ----
+
+  type Gate = { ok: true } | { ok: false; reason: 'missing' | 'obsolete' | 'invalid' } | { ok: false; reason: 'storage_error'; error: string };
+
+  /** Reads only the consent receipt. Never touches the ledger keys. */
+  async function consentGate(): Promise<Gate> {
+    let raw: Record<string, unknown>;
+    try {
+      raw = await local.get(CONSENT_KEY);
+    } catch (err) {
+      return { ok: false, reason: 'storage_error', error: describeError(err) };
+    }
+    const c = parseConsent(raw[CONSENT_KEY]);
+    return c.status === 'accepted' ? { ok: true } : { ok: false, reason: c.status };
+  }
+
+  async function acceptDataPractices(version: number): Promise<ConsentResponse> {
+    if (version !== DATA_PRACTICES_VERSION) {
+      return consentErr('version_mismatch', `This version of Refund Reconciler shows data practices version ${DATA_PRACTICES_VERSION}, not ${version}. Nothing was stored; reload the dashboard and review them again.`);
+    }
+    const gate = await consentGate();
+    if (gate.ok) return { ok: true, outcome: 'already_accepted', message: 'You have already agreed to these data practices. Nothing was changed.' };
+    if (gate.reason === 'storage_error') return consentErr('storage_error', `Your current agreement could not be read, so nothing was stored: ${gate.error}`);
+    try {
+      // Replaces only an obsolete or damaged receipt; the records are not touched.
+      await local.set({ [CONSENT_KEY]: makeReceipt(now()) });
+    } catch (err) {
+      return consentErr('write_rejected', `Chrome refused to store your agreement, so it was not recorded: ${describeError(err)}`);
+    }
+    broadcast();
+    return { ok: true, outcome: 'accepted', message: 'Thank you. Your agreement is stored in this browser profile.' };
+  }
+
+  /** The refusal a gated request gets without a current agreement. Nothing was read beyond the receipt. */
+  function gateRefusal(req: AnyRequest, gate: Exclude<Gate, { ok: true }>): unknown {
+    if (gate.reason === 'storage_error') {
+      const message = `Your agreement to the data practices could not be read, so nothing else was read or changed: ${gate.error}`;
+      if (req.kind === 'read') return { ok: true, ledger: { status: 'storage_error', error: message } } satisfies ReadResponse;
+      if (req.kind === 'readLegacy') return { ok: false, error: { code: 'storage_error', message } } satisfies LegacyReadResponse;
+      if (req.kind === 'mutate' || req.kind === 'restore') return mutationErr('storage_error', message);
+      return vaultErr('storage_error', message);
+    }
+    const message = 'Review the data practices in the dashboard and choose Agree and continue first. Nothing was read or changed.';
+    if (req.kind === 'read') return { ok: true, ledger: { status: 'consent_required', reason: gate.reason, version: DATA_PRACTICES_VERSION } } satisfies ReadResponse;
+    if (req.kind === 'readLegacy') return { ok: false, error: { code: 'consent_required', message } } satisfies LegacyReadResponse;
+    if (req.kind === 'mutate' || req.kind === 'restore') return mutationErr('consent_required', message);
+    return vaultErr('consent_required', message);
   }
 
   // ---- Dispatch ----
@@ -592,6 +653,8 @@ export function createHandler(deps: HandlerDeps): Handler {
         return lock();
       case 'eraseAll':
         return eraseAll();
+      case 'acceptDataPractices':
+        return acceptDataPractices(req.version);
     }
   }
 
@@ -599,6 +662,7 @@ export function createHandler(deps: HandlerDeps): Handler {
     const message = `Extension storage could not be restricted to this extension’s own pages, so nothing was read, written or unlocked: ${error}`;
     if (req.kind === 'read') return { ok: true, ledger: { status: 'storage_unavailable', error } } satisfies ReadResponse;
     if (req.kind === 'mutate' || req.kind === 'restore') return mutationErr('storage_error', message);
+    if (req.kind === 'acceptDataPractices') return consentErr('storage_unavailable', message);
     return vaultErr('storage_unavailable', message);
   }
 
@@ -614,12 +678,19 @@ export function createHandler(deps: HandlerDeps): Handler {
       return unavailable(req, describeError(err));
     }
     try {
+      // Lock, erase and the agreement itself never need a prior agreement.
+      if (req.kind !== 'lock' && req.kind !== 'eraseAll' && req.kind !== 'acceptDataPractices') {
+        const gate = await consentGate();
+        if (!gate.ok) return gateRefusal(req, gate);
+      }
       return await processRequest(req);
     } catch (err) {
       // Mutations throw only before their write (e.g. an unsafe monetary sum), so nothing was written.
       if (req.kind === 'mutate' || req.kind === 'restore') return mutationErr('not_applied', `The change could not be applied, so nothing was written: ${describeError(err)}`);
       if (req.kind === 'read') return { ok: true, ledger: { status: 'storage_error', error: describeError(err) } } satisfies ReadResponse;
+      if (req.kind === 'readLegacy') return { ok: false, error: { code: 'storage_error', message: describeError(err) } } satisfies LegacyReadResponse;
       broadcast();
+      if (req.kind === 'acceptDataPractices') return consentErr('outcome_unknown', `An unexpected error stopped the agreement (${describeError(err)}). The current state is shown; check it before trying again.`);
       return vaultErr('outcome_unknown', `An unexpected error stopped this action, and it may have been partly completed (${describeError(err)}). The current state is shown; check it before trying again.`);
     }
   }

@@ -3,7 +3,8 @@
 // else). Cryptography is never faked: the handler uses real WebCrypto.
 
 import { createHandler, type Handler } from '../../src/background/handler';
-import type { StorageAreaLike } from '../../src/persistence/storage';
+import { DATA_PRACTICES_VERSION } from '../../src/consent/practices';
+import { CONSENT_KEY, type StorageAreaLike } from '../../src/persistence/storage';
 
 export type Op = { area: string; type: 'get' | 'set' | 'remove' | 'bytes'; keys: string[] };
 /** reject: the call fails and nothing is applied. hang: never settles (the worker is "killed" there). commit-hang: applied, then never settles. */
@@ -83,7 +84,13 @@ export function testNow(): string {
   return new Date(Date.UTC(2026, 9, 1, 0, 0, clock)).toISOString();
 }
 
-export function makeWorld(): World {
+/**
+ * A new world. By default it agrees to the current data practices through the
+ * handler's own `acceptDataPractices` request (never by seeding a receipt),
+ * then clears the operation log and broadcast count, so tests observe only
+ * what follows. `{ consent: false }` leaves the agreement missing.
+ */
+export async function makeWorld(opts: { consent?: boolean } = {}): Promise<World> {
   const log: Op[] = [];
   const local = new FakeArea('local', log);
   const session = new FakeArea('session', log);
@@ -115,7 +122,24 @@ export function makeWorld(): World {
     send: (msg) => world.handler.handle(msg) as Promise<never>,
   };
   world.restartWorker();
+  if (opts.consent !== false) {
+    const res = (await world.send({ kind: 'acceptDataPractices', version: DATA_PRACTICES_VERSION })) as { ok?: boolean };
+    if (res.ok !== true) throw new Error(`agreement failed: ${JSON.stringify(res)}`);
+    log.length = 0;
+    world.broadcasts = 0;
+  }
   return world;
+}
+
+/** Agrees to the current data practices through the handler (for example again after an erase). */
+export async function agree(world: World): Promise<void> {
+  const res = await world.send<{ ok: boolean }>({ kind: 'acceptDataPractices', version: DATA_PRACTICES_VERSION });
+  if (!res.ok) throw new Error(`agreement failed: ${JSON.stringify(res)}`);
+}
+
+/** The chrome.storage.local keys other than the consent receipt (which is not part of the records). */
+export function recordKeys(world: World): string[] {
+  return [...world.local.data.keys()].filter((k) => k !== CONSENT_KEY);
 }
 
 export async function setUp(world: World, phrase = PHRASE): Promise<void> {

@@ -1,6 +1,6 @@
 import { STORE_KEY, createCase, expect, itemCard, recordForItem, test } from './fixtures';
 import { overridePageReads, seed } from './export-helpers';
-import { VAULT_KEY, decryptedRaw, eraseTyped, setupViaUi } from './vault-helpers';
+import { CONSENT_KEY, VAULT_KEY, acceptViaUi, decryptedRaw, eraseTyped, setupViaUi } from './vault-helpers';
 
 const EMPTY_LEDGER = { schemaVersion: 1, revision: 0, cases: [], ledgerEpoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) };
 
@@ -15,9 +15,9 @@ test('loads as an MV3 extension with only storage, activeTab and scripting, and 
   await expect(page.getByTestId('empty-state')).toContainText('No cases yet.');
   await expect(page.getByTestId('empty-state')).toContainText('Nothing is captured');
   await expect(page.getByTestId('demo-cases')).toHaveCount(0);
-  // Only the encrypted vault is stored: no plaintext ledger key.
+  // Only the encrypted vault (and the nonprivate consent receipt) is stored: no plaintext ledger key.
   const stored = await page.evaluate(() => chrome.storage.local.get(null));
-  expect(Object.keys(stored)).toEqual([VAULT_KEY]);
+  expect(Object.keys(stored).sort()).toEqual([CONSENT_KEY, VAULT_KEY]);
   expect(await decryptedRaw(page)).toEqual(EMPTY_LEDGER);
 
   // The toolbar action opens the popup (Capture / Open dashboard); the toolbar itself cannot be clicked from Playwright.
@@ -196,10 +196,11 @@ test('unsupported earlier-version data is shown, not reset or migrated, and only
   await page.getByLabel('Type ERASE to confirm').fill('erase');
   await expect(page.getByRole('button', { name: 'Permanently erase' })).toBeDisabled();
   await page.getByRole('button', { name: 'Cancel' }).click();
-  await eraseTyped(page);
-  // Only after explicit confirmation: nothing of the old data remains, only a nonprivate erase marker.
+  await eraseTyped(page, { accept: false });
+  // Only after explicit confirmation: nothing of the old data remains (nor the agreement), only a nonprivate erase marker.
   const after = await page.evaluate(() => chrome.storage.local.get(null));
   expect(after).toEqual({ 'refundReconciler.erased': { format: 'refund-reconciler-erased', formatVersion: 1, epoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) } });
+  await acceptViaUi(page);
   await setupViaUi(page);
   await expect(page.getByTestId('empty-state')).toBeVisible();
   expect(await decryptedRaw(page)).toEqual({ ...EMPTY_LEDGER, ledgerEpoch: (after['refundReconciler.erased'] as { epoch: string }).epoch });

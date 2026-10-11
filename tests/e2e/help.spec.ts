@@ -65,8 +65,10 @@ test('the guide starts closed, works by keyboard and at narrow width, explains t
   await expect(help(page)).not.toHaveAttribute('open');
   await expect(help(page).getByRole('list').first()).toBeHidden();
 
-  // Keyboard: Tab reaches the disclosure from the top of the page; Enter/Space toggle it.
+  // Keyboard: Tab reaches the disclosure from the top of the page (after "Data and privacy"); Enter/Space toggle it.
   await page.locator('body').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#privacy-summary')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(helpSummary(page)).toBeFocused();
   await page.keyboard.press('Enter');
@@ -90,8 +92,8 @@ test('the guide starts closed, works by keyboard and at narrow width, explains t
   await expect(help(page).getByText('About capturing selected text')).toBeFocused();
   await page.keyboard.press('Space');
   await expect(help(page)).toContainText('tested only on synthetic examples, not on real Amazon refund pages');
-  await expect(help(page)).toContainText('Capture works only while your records are unlocked');
-  await expect(help(page)).toContainText('While your records are locked, the toolbar popup reads nothing from the page');
+  await expect(help(page)).toContainText('Capture works only after you have agreed to the data practices (Data and privacy) and while your records are unlocked');
+  await expect(help(page)).toContainText('Before you agree, or while your records are locked, the toolbar popup reads nothing from the page');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await helpSummary(page).focus();

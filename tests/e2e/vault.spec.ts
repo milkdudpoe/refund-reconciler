@@ -14,7 +14,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { ExtensionSession, createCase, expect, itemCard, recordForItem, test } from './fixtures';
 import { clipboardCalls, countDownloads, gateClipboard, holdNextRead, openSummary, releaseHeldRead, restoreClipboard, waitForHeldRead } from './export-helpers';
 import { holdNextReply, releaseSend, saveBackupDownload, scratchDir, sendRaw, waitForHeldSend } from './restore-helpers';
-import { LEGACY_KEY, TEST_PHRASE, VAULT_KEY, decryptedRaw, eraseTyped, fillNewPassphrase, ledgerStatus, migrateViaUi, setupViaUi, unlockViaUi, vaultScreen } from './vault-helpers';
+import { LEGACY_KEY, TEST_PHRASE, VAULT_KEY, decryptedRaw, eraseTyped, fillNewPassphrase, ledgerStatus, migrateViaUi, setupViaUi, storedRecords, unlockViaUi, vaultScreen } from './vault-helpers';
 import { richLegacyLedger } from '../shared/rich-ledger';
 
 const CANARY = 'SYNTHETIC-CANARY-7f3a9c';
@@ -100,7 +100,8 @@ test('fresh install: “Protect your records” comes first, explains the limits
   await again.fill(TEST_PHRASE);
   await page.getByRole('button', { name: 'Protect my records' }).click();
   await expect(page.locator('#vault-ack-error')).toContainText('no recovery');
-  expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual({});
+  // Only the agreement (given before this screen) is stored; no records.
+  expect(await storedRecords(page)).toEqual({});
 
   // Show/hide is a real toggle of the input type.
   await expect(pass).toHaveAttribute('type', 'password');
@@ -129,7 +130,7 @@ test('a canary typed through the real UI is never in persistent storage or exten
   await recordForItem(page, `${CANARY} kettle`, 'Confirm money received', '12.00', { note: `${CANARY} note`, reference: `${CANARY}-REF` });
   // Current persistent storage: only the vault envelope, no plaintext.
   const local = await page.evaluate(() => chrome.storage.local.get(null));
-  expect(Object.keys(local)).toEqual([VAULT_KEY]);
+  expect(Object.keys(await storedRecords(page))).toEqual([VAULT_KEY]);
   expect(JSON.stringify(local)).not.toContain(CANARY);
   expect(JSON.stringify(await decryptedRaw(page))).toContain(`${CANARY} note`);
   // The unwrapped key lives only in session (memory) storage while unlocked.
@@ -348,7 +349,7 @@ test('damaged ciphertext or a damaged wrapped key is never reset; erase is avail
   // Forgot the passphrase: typed erase from the locked screen.
   await eraseTyped(page);
   await expect(page.getByText('Stored data was erased.')).toBeVisible();
-  expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual({ 'refundReconciler.erased': expect.objectContaining({ format: 'refund-reconciler-erased' }) });
+  expect(await storedRecords(page)).toEqual({ 'refundReconciler.erased': expect.objectContaining({ format: 'refund-reconciler-erased' }) });
   await setupViaUi(page, 'a new synthetic phrase 02');
   await expect(page.getByTestId('empty-state')).toBeVisible();
   // The pre-erase session record, even if put back, never opens the new vault.
@@ -393,13 +394,13 @@ test('an earlier version’s plaintext ledger: backup first, everything else blo
     await expect(page.getByTestId('vault-feedback')).toContainText('ordinary, unencrypted JSON file');
     // Changes are blocked at the worker too, and nothing was written by the backup.
     expect(await sendRaw(page, { kind: 'mutate', command: { type: 'loadDemo' } })).toMatchObject({ ok: false, error: { code: 'vault_not_ready' } });
-    expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual({ [LEGACY_KEY]: legacy });
+    expect(await storedRecords(page)).toEqual({ [LEGACY_KEY]: legacy });
 
     await migrateViaUi(page);
     await expect(page.getByTestId('notice')).toContainText('existing records are now encrypted');
     // Exactly the same ledger, now only inside the vault; the plaintext key is gone.
     const local = await page.evaluate(() => chrome.storage.local.get(null));
-    expect(Object.keys(local)).toEqual([VAULT_KEY]);
+    expect(Object.keys(await storedRecords(page))).toEqual([VAULT_KEY]);
     expect(JSON.stringify(local)).not.toContain('PRIVATE-NOTE-RESTORE');
     expect(await decryptedRaw(page)).toEqual(legacy);
     await expect(page.getByTestId('case-row')).toHaveCount(legacy.cases.length);
@@ -464,7 +465,7 @@ test('a migration whose verification could not finish stays blocked with the ori
   await again.getByLabel('Passphrase', { exact: true }).fill(TEST_PHRASE);
   await again.getByRole('button', { name: 'Check and finish' }).click();
   await expect(again.getByRole('heading', { name: 'Your cases' })).toBeVisible({ timeout: 15_000 });
-  expect(Object.keys(await again.evaluate(() => chrome.storage.local.get(null)))).toEqual([VAULT_KEY]);
+  expect(Object.keys(await storedRecords(again))).toEqual([VAULT_KEY]);
   expect(await decryptedRaw(again)).toEqual(legacy);
 });
 

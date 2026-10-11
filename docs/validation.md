@@ -5,15 +5,100 @@ private data, browser profiles, passphrases or backups are kept in this
 repository. This is not commercial validation, evidence of customer demand
 or Chrome Web Store approval.
 
-## Current status (as of 2026-10-10, version 0.7.0)
+## Current status (as of 2026-10-10, version 0.8.0)
 
 | Check | Status | Source |
 | --- | --- | --- |
-| Automated suites, extracted-ZIP smoke test, same-installation updates 0.5.0 → 0.7.0 and 0.6.0 → 0.7.0 (bundled Chromium) | pass at the Task 09.1 head | [Task 09.1](#task-091-stale-replies-after-lock-or-erase-2026-10-10) |
-| Toolbar access on the public amazon.com home page (desktop Chrome), **0.7.0** | **not run**: the popup changed (it reads nothing until unlocked), so a new owner-operated check is needed | — |
+| Automated suites, extracted-ZIP smoke test, same-installation updates 0.5.0, 0.6.0 and 0.7.0 → 0.8.0 (bundled Chromium) | pass locally on the Task 10 branch; CI is recorded in the Task 10 pull request | [Task 10](#task-10-080-data-practices-disclosure-and-agreement-2026-10-10) |
+| Toolbar access on the public amazon.com home page (desktop Chrome), **0.8.0** | **not run**: the popup changed (nothing before agreement, nothing while locked), so a new owner-operated check is needed | — |
+| Toolbar access, **0.7.0** | **not run** | — |
 | Toolbar access, **0.6.0** (context only) | pass, owner-reported (not independently reproduced) | [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
 | Real Amazon refund wording (optional) | **untested** | — |
 | Update in place through the `chrome://extensions` UI (optional) | **untested** | — |
+
+## Task 10.1: recovery wording and uncertain agreement (2026-10-10)
+
+Independent review of the Task 10 head `ebf2722` (against the CI ZIP) found:
+
+1. **Wording:** the shared disclosure said cases could be deleted "with or
+   without agreeing". Only the typed **Erase stored data…** works without
+   agreement; deleting a case needs agreement and unlocked records (the
+   worker correctly refused `deleteCase` while gated). The shared text in
+   `src/consent/practices.ts` now states both conditions separately; README,
+   beta guide, policy drafts and consent.md match. No worker exception was
+   added. Data-practices version stays 1 (a clarification, not a new
+   practice).
+2. **False confirmation:** after a lost `acceptDataPractices` reply, any
+   fresh state other than `consent_required` or `storage_error` was reported
+   as "the current state confirms it", including `storage_unavailable`.
+   `src/ui/consent.ts` now confirms only from a freshly applied read whose
+   state the worker reports only after the gate passed (an explicit list);
+   otherwise it says the agreement cannot be confirmed (or, after a definite
+   `accepted` reply, that it was stored but storage cannot be checked).
+
+Regressions (`tests/e2e/consent.spec.ts`, disclosed page-side fault injection
+at `chrome.runtime.sendMessage`; the worker and storage are real): an
+agreement lost before delivery followed by `storage_unavailable` (no success
+claim, no data features, no receipt; a later real read shows the gate); a
+definite agreement followed by `storage_unavailable`; a committed agreement
+with a lost reply confirmed by a genuine fresh read. The first two **failed on
+the `ebf2722` UI code** and pass with the fix. Deletion: the unit and browser
+tests now also assert that `deleteCase` is refused while gated and that the
+control is absent.
+
+Local run on the Task 10.1 working tree before commit (Linux container): one
+complete `npm run check`: typecheck, lint, **385** unit tests, **118**
+browser tests (115 + 3), the extracted-ZIP smoke test (1) and the three
+update checks (3), all passed; `git diff --check` clean. CI for the final
+head is recorded in PR #10.
+
+## Task 10: 0.8.0 data-practices disclosure and agreement (2026-10-10)
+
+What changed ([consent.md](consent.md)): an in-product disclosure with
+**Agree and continue** / **Not now** before any data feature; a versioned,
+nonprivate consent receipt (`DATA_PRACTICES_VERSION = 1`); enforcement in the
+service worker before any key derivation, decryption or write; **Data and
+privacy** to reread the text; the typed erase also removes the receipt.
+Permissions, ledger schema 1, backup format 1, vault format 1, encryption
+parameters and the session lifecycle are unchanged. Started from the reviewed
+Task 09.1 head `da47584` (merged in PR #9).
+
+Automated evidence (synthetic data only; bundled Chromium 141.0.7390.37 in a
+Linux container):
+
+- `tests/unit/consent.test.ts` (16 tests): receipt and message validation,
+  current/obsolete/invalid receipts, storage errors fail closed, idempotent
+  acceptance, rejected writes, lost replies resolved by a fresh read after a
+  worker restart, refusal of every direct data request with records
+  unchanged and no WebCrypto call (spied), Lock and erase without agreement,
+  erase removing the receipt in the same removal, no revival of earlier
+  restore approvals, and the receipt kept out of the ledger.
+- `tests/e2e/consent.spec.ts` (13 tests, production worker and UI): see
+  [consent.md](consent.md#tests). Shared fixtures agree through the real UI
+  before setup or unlock; dedicated gate tests stay unaccepted; earlier
+  baselines are driven without the gate because they have none.
+- A deliberately weakened worker gate (refusing only `read`) made 4 of the
+  unit tests fail; the code was then restored.
+- Update checks from 0.5.0, 0.6.0 and **0.7.0** (new baseline,
+  `da475840933b21eab85553e8b2ad54c3e049bf90`), each built from its own
+  source and lockfile and updated in place to the unchanged extracted 0.8.0
+  ZIP: agreement required first with storage byte-for-byte unchanged and the
+  popup gated; then migration (0.5.0/0.6.0) or the same encrypted 0.7.0 vault
+  unlocked with its existing passphrase (no reset, no plaintext); restart,
+  export, refused restore into a populated ledger, a new encrypted write, and
+  recovery into a separate profile.
+
+Local run on the Task 10 working tree before commit (Linux container): one
+complete `npm run check`: typecheck, lint, **385** unit tests (369 + 16),
+**115** browser tests (102 + 13), the extracted-ZIP smoke test (1) and the
+three update checks (3), all passed on that run; `git diff --check` clean.
+These are local results, not CI; CI for the final head is recorded in the
+Task 10 pull request.
+
+Not covered: a real toolbar click on 0.8.0 (Check 1 must be run again; the
+0.6.0 owner result does not cover 0.7.0 or 0.8.0), real Amazon refund
+wording, updating through the `chrome://extensions` UI, publisher inputs, a
+hosted policy, store images and any store review.
 
 ## Task 09.1: stale replies after Lock or erase (2026-10-10)
 
@@ -216,7 +301,8 @@ Check a ZIP only against the checksum that came with it.
 ## Reusable manual toolbar checklist
 
 The owner-reported result above covers this check for the 0.6.0 beta only.
-**0.7.0 changed the popup, so this check must be run again for 0.7.0.**
+**0.7.0 and 0.8.0 changed the popup, so this check must be run again for
+0.8.0.** It has not been run for either version.
 Keep the checklist for future builds (for example after a permission,
 manifest or popup change) or for another Chrome version. It needs desktop Chrome and no
 account (details in
@@ -224,10 +310,13 @@ account (details in
 
 1. New, temporary Chrome profile. `chrome://extensions` → Developer mode →
    **Load unpacked** the extracted CI beta ZIP (check it against the
-   `.sha256` that came with it). Pin the icon. From 0.7.0: open the
-   dashboard and complete **Protect your records** with a throwaway
-   passphrase; optionally first confirm that, before setup, the toolbar
-   panel only offers to open the dashboard.
+   `.sha256` that came with it). Pin the icon. 0.8.0: optionally first click
+   the toolbar icon on any page and confirm the panel only offers **Open
+   dashboard to review** and says nothing on the page was read. Then open
+   the dashboard, read the data practices, choose **Agree and continue**,
+   and complete **Protect your records** with a throwaway passphrase
+   (optionally confirm first that, before setup, the panel only offers to
+   open the dashboard).
 2. Open `https://www.amazon.com` (not signed in). Highlight a short piece of
    ordinary text.
 3. Click the toolbar icon → **Capture selected refund text**.

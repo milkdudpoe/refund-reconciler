@@ -175,7 +175,7 @@ describe('malformed amount tokens cannot reach storage (finding 1)', () => {
     expect(h.record('c', forged(excerpt, amountText, cents, 'amazon-us-selection-1'))).toMatchObject({ ok: false, error: { code: 'invalid' } });
     expect(h.case('c').entries.filter((e) => e.kind === 'merchant_report')).toHaveLength(0);
 
-    const w = makeWorld();
+    const w = await makeWorld();
     await setUp(w);
     await w.send({ kind: 'mutate', command: { type: 'createCase', caseId: 'c', orderRef: null, items: [{ itemId: 'a', label: 'K', expectedCents: 7000, expectationEntryId: 'e' }] } });
     expect(await w.send({ kind: 'mutate', command })).toMatchObject({ ok: false, error: { code: 'invalid' } });
@@ -237,7 +237,7 @@ describe('source-page order context at the write boundary (finding 2)', () => {
   });
 
   it('a direct service-worker command with a URL-only mismatch is rejected and nothing is written', async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     await setUp(w);
     await w.send({ kind: 'mutate', command: { type: 'createCase', caseId: 'caseB', orderRef: B, items: [{ itemId: 'a', label: 'K', expectedCents: 7000, expectationEntryId: 'e' }] } });
     const writes = vaultWrites(w);
@@ -321,7 +321,7 @@ describe('captured reports through the service-worker handler (acceptance 5)', (
   const reports = async (w: World) => (await storedStore(w)).cases[0].entries.filter((e: { kind: string }) => e.kind === 'merchant_report');
 
   it('a rejected write saves nothing and a retry with the same capture id saves once', async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     await setUp(w);
     await w.send(create);
     const before = structuredClone(w.local.data.get(VAULT_KEY));
