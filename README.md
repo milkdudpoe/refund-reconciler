@@ -76,17 +76,20 @@ explanation are in [docs/beta.md](docs/beta.md).
 holds a readiness assessment, listing text, a draft privacy policy and draft
 dashboard privacy answers. The publisher (MJUD) and contact
 (exiledeals@gmail.com) are filled in; the privacy policy and site are
-finalized for publication on GitHub Pages (owner-approved, candidate effective
-date 2026-10-11) but not yet deployed, so the policy URL is pending. 0.7.0 implemented the at-rest encryption the assessment recommended
+published on GitHub Pages (owner-approved; first published 2026-10-11
+America/New_York, effective date 2026-10-11) at
+https://milkdudpoe.github.io/refund-reconciler/privacy.html; see
+[docs/store/publication.md](docs/store/publication.md). 0.7.0 implemented the at-rest encryption the assessment recommended
 and 0.8.0 the in-product disclosure and agreement (B2). Task 11 added the
 store images (a padded 128 px icon, a promotional tile and three screenshots
 of the production ZIP with synthetic data; see
 [docs/store/assets.md](docs/store/assets.md)); they are not uploaded.
 Task 12 prepared a small static publisher site in `publisher-site/` (home,
-privacy, support; finalized in Task 14, not yet deployed; see
-[docs/store/publisher-site.md](docs/store/publisher-site.md)). A hosted policy
-and its effective date, the dashboard privacy labels, a real toolbar check and
-the store review are still pending and block submission; see
+privacy, support; finalized in Task 14 and live since Task 15 at
+https://milkdudpoe.github.io/refund-reconciler/; see
+[docs/store/publisher-site.md](docs/store/publisher-site.md)). The dashboard
+privacy labels and distribution choices, a real 0.8.0 toolbar check, real
+refund wording and the store review are still pending and block submission; see
 [docs/store/readiness.md](docs/store/readiness.md).
 
 ## Data practices: read, then agree
@@ -313,7 +316,7 @@ src/popup/        toolbar popup: Open dashboard, capture preview and approval
 public/manifest.json, public/icons/   manifest and generated PNG icons
 assets-src/       editable icon SVGs (icon-store.svg: the padded 128 px icon)
 store-assets/     Chrome Web Store listing images, tile source and provenance report (never shipped)
-publisher-site/   static publisher website: home, privacy, support (never shipped; not hosted yet)
+publisher-site/   static publisher website: home, privacy, support (never shipped; hosted on GitHub Pages)
 scripts/          icon generation, beta packaging and store-asset generation (dev tooling; never shipped)
 tests/unit/       Vitest
 tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,

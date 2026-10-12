@@ -52,7 +52,7 @@
   not confirmed). The workflow has **not been run**; Pages is not enabled
   and no setting was changed. The site stays **unhosted and unpublished**,
   and the verdict stays **not ready to submit**. Ordered remaining steps:
-  [publisher-site.md](publisher-site.md#deployment-procedure-approved-not-yet-performed).
+  [publisher-site.md](publisher-site.md#deployment-procedure-approved-performed-in-task-15).
   (Historical: superseded by the Task 14 update below.)
 - **Update for Task 14 (version 0.8.0 unchanged, 2026-10-11):** the owner
   explicitly **approved publishing** the reviewed site and privacy policy on
@@ -68,7 +68,23 @@
   unverified. The verdict stays **not ready to submit** (0.8.0 toolbar check,
   Developer Dashboard privacy/distribution choices and Google's review
   remain pending). Next steps:
-  [publisher-site.md](publisher-site.md#deployment-procedure-approved-not-yet-performed).
+  [publisher-site.md](publisher-site.md#deployment-procedure-approved-performed-in-task-15).
+  (Historical: superseded by the Task 15 update below.)
+- **Update for Task 15 (version 0.8.0 unchanged, 2026-10-11):** the site and
+  privacy policy are **published and verified live** on GitHub Pages. The
+  owner set the Pages source to GitHub Actions; the manual workflow ran on
+  `main` at `45520db` (the merge of reviewed PR #14, tree identical to its
+  head `5680141`) in
+  [run 38194891795](https://github.com/milkdudpoe/refund-reconciler/actions/runs/38194891795),
+  and the deployment succeeded at 2026-10-12T02:13:31Z UTC
+  (**2026-10-11** 22:13 America/New_York), so the effective date 2026-10-11
+  is the actual first-publication day. All seven live files match the run's
+  report hashes. Policy URL:
+  `https://milkdudpoe.github.io/refund-reconciler/privacy.html`. Record:
+  [publication.md](publication.md). The verdict stays **not ready to
+  submit**: the Developer Dashboard privacy labels, certifications and
+  distribution choices, the owner-operated 0.8.0 toolbar check, real refund
+  wording and Google's review remain pending.
 
 ## Task 12 status (publisher site)
 
@@ -76,13 +92,13 @@
 | --- | --- | --- |
 | Publisher identity | **Supplied and incorporated:** MJUD | Owner (Task 12 instructions); policy drafts, site |
 | Public contact | **Supplied and incorporated:** `exiledeals@gmail.com` (mailto on every site page) | Owner; policy drafts, site |
-| Website | **Publication files finalized (Task 14), deployment not yet performed** (`publisher-site/`: home, privacy, support); owner approved publication on GitHub Pages | [publisher-site.md](publisher-site.md); CI artifact `refund-reconciler-publisher-site` |
-| Hosting | **Candidate: GitHub Pages** (repository is public; Pages not enabled). Owner's plan not inspected; eligibility is confirmed only in Settings → Pages | [publisher-site.md](publisher-site.md#hosting-plan-proposed) |
-| Deployment workflow (Task 13) | **Source prepared, never run**: manual `workflow_dispatch` on `main` only, publication gate before upload, Pages artifact = the seven site files only. Pages source setting and any `github-pages` protection rule are not configured | `.github/workflows/publisher-site-pages.yml`; [publisher-site.md](publisher-site.md#manual-pages-workflow-task-13) |
+| Website | **Published and verified live (Task 15)** at `https://milkdudpoe.github.io/refund-reconciler/` (`publisher-site/`: home, privacy, support); owner approved publication on GitHub Pages | [publication.md](publication.md); [publisher-site.md](publisher-site.md) |
+| Hosting | **GitHub Pages** project site; Pages source set to **GitHub Actions** by the owner (Task 15) | [publisher-site.md](publisher-site.md#hosting-plan-as-planned-in-task-12-now-in-use) |
+| Deployment workflow (Task 13) | **Run once (Task 15), success**: [run 38194891795](https://github.com/milkdudpoe/refund-reconciler/actions/runs/38194891795) on `main` at `45520db`; manual `workflow_dispatch` on `main` only, publication gate before upload, Pages artifact = the seven site files only | `.github/workflows/publisher-site-pages.yml`; [publisher-site.md](publisher-site.md#manual-pages-workflow-task-13) |
 | Publication gate (Task 13) | **Passes the finalized source (Task 14)** and runs in CI; refused the Task 13 draft (historical) | `npm run site:publication-check`; [publisher-site.md](publisher-site.md#publication-gate-task-13) |
-| Public policy URL | **Pending deployment** (proposed, unverified: `https://milkdudpoe.github.io/refund-reconciler/privacy.html`) | — |
-| Policy effective date | **Candidate 2026-10-11** (America/New_York, Task 14); not an established publication date. Reconcile with the actual first successful publication before deployment | [privacy-policy.md](privacy-policy.md) |
-| Limited Use statement on a site belonging to the extension | **Prepared**: one click from the homepage; live only once hosted | `publisher-site/index.html` |
+| Public policy URL | **Live and verified (Task 15):** `https://milkdudpoe.github.io/refund-reconciler/privacy.html`; not yet entered in the dashboard | [publication.md](publication.md) |
+| Policy effective date | **2026-10-11** = the actual first-publication day (2026-10-12T02:13:31Z UTC, 22:13 America/New_York; Task 15) | [privacy-policy.md](privacy-policy.md) |
+| Limited Use statement on a site belonging to the extension | **Live (Task 15)**: one click from the homepage to `privacy.html#chrome-web-store-user-data-policy`, verified in a browser | `publisher-site/index.html` |
 | 0.8.0 owner toolbar check | **Not run.** No owner result was supplied during Task 12; screenshots and automated tests do not substitute for it | [../validation.md](../validation.md) |
 | Developer Dashboard privacy labels, distribution settings, store review | **Pending**; no dashboard login or form was used | [privacy-practices.md](privacy-practices.md) |
 | Real refund wording | **Untested**; the 0.6.0 owner toolbar report stays historical context only | [../validation.md](../validation.md#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
@@ -336,7 +352,7 @@ Status values: **Met** (fact), **Gap** (fact, with work needed),
 | # | Requirement (source) | Current behaviour | Evidence | Status | Follow-up |
 | --- | --- | --- | --- | --- | --- |
 | R1 | Locally stored or processed data must still be disclosed (FAQ Q3, Q14) | The extension handles user data (F1–F11): typed financial evidence, page excerpts and page addresses. Nothing is transmitted | Data-flow table above | **Gap** (no store policy yet) | Host the [draft policy](privacy-policy.md) after publisher fields are filled in |
-| R2 | Post a privacy policy in the dashboard (FAQ Q6, Q14; dashboard page "Set a privacy policy") | A draft exists; nothing is hosted | [privacy-policy.md](privacy-policy.md) | **Pending** | Publisher hosts it on a URL they control and enters that URL |
+| R2 | Post a privacy policy in the dashboard (FAQ Q6, Q14; dashboard page "Set a privacy policy") | A draft exists; nothing is hosted. **Task 15:** hosted at `https://milkdudpoe.github.io/refund-reconciler/privacy.html` | [privacy-policy.md](privacy-policy.md); [publication.md](publication.md) | **Hosted (Task 15)**; dashboard entry **Pending** | Enter the URL in the dashboard |
 | R3 | Handle user data securely; encrypt transmissions (Handling Requirements; FAQ Q8) | No transmissions exist | Build scan above | **Met** for transmission | Re-assess if any network feature is ever added |
 | R4 | At-rest encryption (FAQ Q9) | 0.6.0: stored ledger and exports unencrypted. **0.7.0: stored ledger encrypted (passphrase-wrapped AES-256-GCM key); exports remain plaintext by design** | 0.7.0: `src/vault/crypto.ts`, `src/background/handler.ts`, [vault.md](../vault.md); `src/export/backup.ts` `serializeBackup` | **Implemented in 0.7.0** (fact); policy acceptance **unknown** (interpretation) | See [Task 09 status](#task-09-status-070) |
 | R5 | Prominent disclosure plus affirmative consent "prior to installation" (Disclosure Requirements), within the product UI and before collecting or handling (FAQ Q10) | 0.6.0 (audited): dashboard and popup headers give partial notice. Capture requires explicit clicks, and saving requires a preview and **Save**. There is no disclosure-and-agree step. **0.8.0: an in-product disclosure with Agree and continue, enforced by the service worker** | 0.6.0: `dashboard.html`, `popup.html` headers; `src/popup/popup.ts` `renderBody`; `src/ui/help.ts`. 0.8.0: `src/consent/`, `src/ui/consent.ts`, `src/background/handler.ts`, [consent.md](../consent.md) | 0.6.0: **Gap**. **Implemented in 0.8.0** (fact); acceptance **unknown** | See [B2](#b2-prominent-disclosure-and-affirmative-consent-gap) and [Task 10 status](#task-10-status-080) |
@@ -345,12 +361,12 @@ Status values: **Met** (fact), **Gap** (fact, with work needed),
 | R8 | No remote code (dashboard page "Declare any remote code") | All code is bundled. CSP `script-src 'self'`. The injected function is bundled `func` | `public/manifest.json` CSP; `src/capture/acquire.ts`; build scan | **Met** | Answer "No" |
 | R9 | Limited Use: use data only for the single purpose; transfer, advertising, creditworthiness and human-reading limits | No transfer, advertising or developer access. Data stays on the device | Build scan; data-flow table | **Met** (fact plus interpretation) | Certify only after the remaining open items (publisher inputs, hosted policy, dashboard labels) are settled; B1 and B2 are implemented |
 | R10 | Web browsing activity only for a user-facing feature described prominently on the store page **and** in the UI (Limited Use) | The page address is used for capture provenance and order matching, after a toolbar click and Capture | F4–F6 | **Met in the UI; Pending on the store page** | The listing must describe capture and its stored page address ([listing.md](listing.md) does) |
-| R11 | Limited Use affirmative statement on a website belonging to the extension (Limited Use; FAQ *Limited uses* Q1) | None hosted. **Task 12:** prepared in `publisher-site/` (homepage links to it in one click) | `publisher-site/index.html`, `privacy.html` | **Pending** (not hosted) | Host the reviewed site |
+| R11 | Limited Use affirmative statement on a website belonging to the extension (Limited Use; FAQ *Limited uses* Q1) | None hosted. **Task 12:** prepared in `publisher-site/` (homepage links to it in one click). **Task 15:** live | `publisher-site/index.html`, `privacy.html`; [publication.md](publication.md) | **Met (Task 15)** (fact: hosted; acceptance is Google's) | — |
 | R12 | Privacy policy, dashboard answers and behaviour must be consistent (FAQ *Simplifying* Q3) | The drafts were checked against the code (see [Consistency](#consistency-check)). Stale in-product help copy remains | `src/ui/help.ts` | **Gap** (copy) | See [Stale copy](#stale-in-product-copy) |
 | R13 | Don't publicly disclose financial or payment information (Handling Requirements; FAQ Q11) | The extension publishes nothing. Users can export and share files themselves | F9, F10 | **Met** | Keep the warnings about plaintext exports |
 | R14 | 128×128 PNG icon with 96×96 artwork and 16 px transparent padding (Images: Extension icon, Icon size) | 0.6.0: 128×128 PNG. Opaque artwork spans x/y 4–123 (120×120 with a 4 px margin). **Task 11 (0.8.0): artwork x/y 16–111 (96×96), fully transparent outside** | 0.6.0: `assets-src/icon.svg` (`rect x=4 width=120`). Task 11: `assets-src/icon-store.svg`; measured from `public/icons/icon-128.png` by `tests/unit/store-assets.test.ts` | 0.6.0: **Gap**. **Done in Task 11** (fact) | See [assets.md](assets.md) |
 | R15 | Small promo tile 440×280 (required); screenshots 1280×800 or 640×400, at least 1 (Images) | 0.6.0: none exist. **Task 11: one 440×280 tile and three 1280×800 screenshots of the production ZIP** | `store-assets/`, `store-assets/store-assets-report.json`; CI artifact `refund-reconciler-store-assets` | 0.6.0: **Gap**. **Done in Task 11** (fact); not uploaded | See [assets.md](assets.md) |
-| R16 | Publisher identity, contact, policy URL, effective date | **Task 12:** publisher MJUD and contact `exiledeals@gmail.com` supplied by the owner and incorporated; policy URL and effective date not yet set | Policy drafts; `publisher-site/` | Identity/contact: **Supplied**. URL and date: **Pending** | See [Publisher inputs](#publisher-inputs-pending) and [publisher-site.md](publisher-site.md) |
+| R16 | Publisher identity, contact, policy URL, effective date | **Task 12:** publisher MJUD and contact `exiledeals@gmail.com` supplied by the owner and incorporated; policy URL and effective date not yet set. **Task 15:** URL live, effective date 2026-10-11 | Policy drafts; `publisher-site/`; [publication.md](publication.md) | Identity/contact: **Supplied**. URL and date: **Set (Task 15)** | See [Publisher inputs](#publisher-inputs-pending) and [publisher-site.md](publisher-site.md) |
 
 ## B1. Encryption at rest (unresolved policy question)
 
@@ -596,14 +612,12 @@ Supplied by the owner in Task 12 and incorporated: publisher name **MJUD**
 and public contact **exiledeals@gmail.com** (no existing website). Still
 pending:
 
-- A privacy policy URL hosted on a site the publisher controls; the same
-  site carries the Limited Use statement. Files are prepared in
-  `publisher-site/` and finalized for publication (Task 14; owner approved
-  publishing on GitHub Pages); deployment is not done
-  ([publisher-site.md](publisher-site.md)).
-- The privacy policy's effective date: candidate 2026-10-11, to be
-  reconciled with the actual first publication. (The owner approved the
-  support-email and website wording with the publication approval.)
+- ~~A privacy policy URL hosted on a site the publisher controls~~ and its
+  effective date: **done in Task 15**:
+  `https://milkdudpoe.github.io/refund-reconciler/privacy.html`, effective
+  2026-10-11, with the Limited Use statement on the same site
+  ([publication.md](publication.md)). Entering the URL in the dashboard is
+  still pending.
 - Whether the store name stays as the manifest's current
   **"Refund Reconciler (local preview)"** (changing it is a manifest change).
 - Owner review of the implemented B2 flow (0.8.0) and of the disclosure
@@ -633,12 +647,19 @@ pending:
 
 ## Recommended next implementation step
 
-**After Task 14:** review of the finalized site PR, the reviewed source on
+**After Task 15:** the site and policy are live
+([publication.md](publication.md)). Remaining before submission are owner
+actions, not code: enter the policy URL and the reviewed privacy answers in
+the Developer Dashboard (confirming each label there), choose distribution
+settings, run the owner-operated 0.8.0 toolbar check and check real refund
+wording; then submit for Google's review.
+
+*After Task 14 (historical; done in Task 15):* review of the finalized site PR, the reviewed source on
 `main`, the effective date aligned with the actual publication day, the
 Pages source set to GitHub Actions and an explicit run of the manual
 workflow on `main`, then live HTTPS verification and recording the deployed
 commit, run, date and URLs (ordered steps in
-[publisher-site.md](publisher-site.md#deployment-procedure-approved-not-yet-performed);
+[publisher-site.md](publisher-site.md#deployment-procedure-approved-performed-in-task-15);
 publication is already approved).
 Separately for the extension: distribution choices, the dashboard-label
 review and the 0.8.0 toolbar check.

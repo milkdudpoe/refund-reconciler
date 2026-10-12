@@ -1,0 +1,413 @@
+{
+  "kind": "refund-reconciler-publisher-site-live-verification",
+  "note": "Live checks of the GitHub Pages deployment made from a Claude Code cloud session (HTTP via curl with content decoding; Chromium via Playwright, fresh contexts). Hashes are of the decoded response bodies.",
+  "deployment": {
+    "workflowRun": "https://github.com/milkdudpoe/refund-reconciler/actions/runs/38194891795",
+    "runId": 38194891795,
+    "event": "workflow_dispatch",
+    "ref": "refs/heads/main",
+    "headSha": "45520db72f8ca7d587138f695b23aac514d02529",
+    "deployReportedSuccessAt": "2026-10-12T02:13:31Z",
+    "environment": "github-pages",
+    "pageUrl": "https://milkdudpoe.github.io/refund-reconciler/"
+  },
+  "runReport": {
+    "artifact": "refund-reconciler-publisher-site-report",
+    "artifactId": 11723146105,
+    "zipSha256": "49985c499b3bc557c7b915af980e0b86f5f2784de25ae25f74066ac20561b3bd",
+    "sourceCommit": "45520db72f8ca7d587138f695b23aac514d02529",
+    "checkoutCommit": "45520db72f8ca7d587138f695b23aac514d02529",
+    "workingTreeClean": true,
+    "policySource": {
+      "path": "docs/store/privacy-policy.md",
+      "bytes": 11134,
+      "sha256": "1f1be0c5972a7ab41d09c36e8f5d953eec3430f0c667994230a655ba76581a81"
+    },
+    "totalBytes": 125438
+  },
+  "pagesArtifact": {
+    "artifactId": 11723091577,
+    "zipSha256": "8d86344b40dd521e6480d5acc35f35aadd4930fc3149e344f97e8cff78040a56",
+    "tarEntries": [
+      "assets/example-item-evidence.png",
+      "assets/icon-128.png",
+      "assets/icon-32.png",
+      "index.html",
+      "privacy.html",
+      "styles.css",
+      "support.html"
+    ]
+  },
+  "http": {
+    "checkedAt": "2026-10-12T02:14:12Z",
+    "allFinal200OverHttps": true,
+    "httpRedirectsToHttps": true,
+    "files": {
+      "assets/example-item-evidence.png": {
+        "bytes": 88631,
+        "sha256": "d7d4cc6a01d486813fc0531ffef936713aea1d8377bc595b80578704676aa420",
+        "matchesRunReport": true
+      },
+      "assets/icon-128.png": {
+        "bytes": 2760,
+        "sha256": "0cd9aa34bfcafbca38935475b8b79d48695470ab38681d4a5559e0fa081d5688",
+        "matchesRunReport": true
+      },
+      "assets/icon-32.png": {
+        "bytes": 887,
+        "sha256": "2cbfb0aee96000ae3d2dd470c26049bee8c2c5f2b15b1df21097db9afff6a9e7",
+        "matchesRunReport": true
+      },
+      "index.html": {
+        "bytes": 6419,
+        "sha256": "9fc58e2806f9e4bce74a94480e25bcc38de5ff994d82934e78ca718449e3abf6",
+        "matchesRunReport": true
+      },
+      "privacy.html": {
+        "bytes": 14309,
+        "sha256": "933b28f603929d5d56f5218e7795314aef02fe7984af259044c69e22d6a99870",
+        "matchesRunReport": true
+      },
+      "styles.css": {
+        "bytes": 7635,
+        "sha256": "9ba5870120695666224c3a65fe94c4dee96f5a9465870301ffd7bc0653235e85",
+        "matchesRunReport": true
+      },
+      "support.html": {
+        "bytes": 4797,
+        "sha256": "a9d4e46ce7f4fce2b5a76e06ca1ba45b97d3136c454d67057cfcea9f594b1d90",
+        "matchesRunReport": true
+      }
+    },
+    "notServed404": [
+      "publisher-site-report.json",
+      "refund-reconciler.zip",
+      "README.md",
+      "docs/store/privacy-policy.md",
+      "package.json"
+    ]
+  },
+  "browser": {
+    "checkedAt": "2026-10-12T02:14:40.016Z",
+    "limitedUseLinkCount": 2,
+    "limitedUseLanding": {
+      "url": "https://milkdudpoe.github.io/refund-reconciler/privacy.html#chrome-web-store-user-data-policy",
+      "tag": "H2",
+      "text": "Chrome Web Store User Data Policy",
+      "topInViewport": true
+    },
+    "navStatus": [
+      [
+        "https://milkdudpoe.github.io/refund-reconciler/index.html",
+        200
+      ],
+      [
+        "https://milkdudpoe.github.io/refund-reconciler/privacy.html",
+        200
+      ],
+      [
+        "https://milkdudpoe.github.io/refund-reconciler/support.html",
+        200
+      ],
+      [
+        "https://milkdudpoe.github.io/refund-reconciler/privacy.html#chrome-web-store-user-data-policy",
+        200
+      ]
+    ],
+    "skipLink": {
+      "hash": "#main",
+      "focused": "BODY"
+    },
+    "externalRequests": []
+  },
+  "browserPages": {
+    "desktop/light/index.html": {
+      "status": 200,
+      "title": "Refund Reconciler by MJUD",
+      "horizontalOverflow": false,
+      "images": 2,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": null,
+      "githubPagesHost": false,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "desktop/light/privacy.html": {
+      "status": 200,
+      "title": "Privacy policy | Refund Reconciler",
+      "horizontalOverflow": false,
+      "images": 1,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": "2026-10-11",
+      "githubPagesHost": true,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "desktop/light/support.html": {
+      "status": 200,
+      "title": "Support | Refund Reconciler",
+      "horizontalOverflow": false,
+      "images": 1,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": null,
+      "githubPagesHost": false,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "desktop/dark/index.html": {
+      "status": 200,
+      "title": "Refund Reconciler by MJUD",
+      "horizontalOverflow": false,
+      "images": 2,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": null,
+      "githubPagesHost": false,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "desktop/dark/privacy.html": {
+      "status": 200,
+      "title": "Privacy policy | Refund Reconciler",
+      "horizontalOverflow": false,
+      "images": 1,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": "2026-10-11",
+      "githubPagesHost": true,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "desktop/dark/support.html": {
+      "status": 200,
+      "title": "Support | Refund Reconciler",
+      "horizontalOverflow": false,
+      "images": 1,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": null,
+      "githubPagesHost": false,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "mobile/light/index.html": {
+      "status": 200,
+      "title": "Refund Reconciler by MJUD",
+      "horizontalOverflow": false,
+      "images": 2,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": null,
+      "githubPagesHost": false,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "mobile/light/privacy.html": {
+      "status": 200,
+      "title": "Privacy policy | Refund Reconciler",
+      "horizontalOverflow": false,
+      "images": 1,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": "2026-10-11",
+      "githubPagesHost": true,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "mobile/light/support.html": {
+      "status": 200,
+      "title": "Support | Refund Reconciler",
+      "horizontalOverflow": false,
+      "images": 1,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": null,
+      "githubPagesHost": false,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "mobile/dark/index.html": {
+      "status": 200,
+      "title": "Refund Reconciler by MJUD",
+      "horizontalOverflow": false,
+      "images": 2,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": null,
+      "githubPagesHost": false,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "mobile/dark/privacy.html": {
+      "status": 200,
+      "title": "Privacy policy | Refund Reconciler",
+      "horizontalOverflow": false,
+      "images": 1,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": "2026-10-11",
+      "githubPagesHost": true,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    },
+    "mobile/dark/support.html": {
+      "status": 200,
+      "title": "Support | Refund Reconciler",
+      "horizontalOverflow": false,
+      "images": 1,
+      "imagesLoaded": true,
+      "mailto": [
+        "mailto:exiledeals@gmail.com"
+      ],
+      "scripts": 0,
+      "forms": 0,
+      "iframes": 0,
+      "hasMJUD": true,
+      "pendingOrDraft": false,
+      "effectiveDate": null,
+      "githubPagesHost": false,
+      "firstTabFocus": {
+        "tag": "A",
+        "href": "#main",
+        "text": "Skip to content",
+        "outline": "solid 3px",
+        "visible": true
+      }
+    }
+  }
+}
