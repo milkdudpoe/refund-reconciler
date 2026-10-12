@@ -1,25 +1,22 @@
 # Publisher site and privacy-policy handoff (Tasks 12 to 14)
 
-> **Current status (Task 14): publication files finalized, deployment not
-> yet performed.** The owner explicitly approved publishing the reviewed site
-> and privacy policy on GitHub Pages under **MJUD**, with
+> **Current status (Task 15): published and verified live.** The approved
+> site and privacy policy are on GitHub Pages at
+> `https://milkdudpoe.github.io/refund-reconciler/` since
+> **2026-10-11 (America/New_York)**, first deployed by
+> [run 38194891795](https://github.com/milkdudpoe/refund-reconciler/actions/runs/38194891795)
+> from `main` at `45520db` (2026-10-12T02:13:31Z UTC). The effective date
+> 2026-10-11 is the actual first-publication day. All seven live files match
+> the run's report hashes. Full record: [publication.md](publication.md).
+> Nothing was submitted to the Chrome Web Store and no email was sent; the
+> extension is still an unpublished beta.
+>
+> *Historical (Task 14):* the owner explicitly approved publishing the
+> reviewed site and privacy policy on GitHub Pages under **MJUD**, with
 > `exiledeals@gmail.com` as the public support contact ("I approve
 > publishing."); that approval covers the reviewed support-email wording and
-> the GitHub Pages host, and it persists. Task 14 applied the reviewed final
-> edits to the source and the real files now **pass**
-> `npm run site:publication-check`. Nothing has been hosted or deployed:
-> Pages is not enabled, the manual workflow has **never been run**, no
-> setting was changed, nothing was merged by Claude Code, nothing was
-> submitted to the Chrome Web Store and no email was sent. The proposed URLs
-> below are **not live** and were not requested.
->
-> **Candidate publication date: 2026-10-11** (the calendar date in
-> America/New_York when Task 14 ran). It is the policy's effective date as
-> prepared for the upcoming deployment; **publication has not happened**, and
-> choosing the date does not make the policy live. Before the workflow runs,
-> the date must be reconciled with the day of the actual first successful
-> publication: if review or deployment moves to another day, the effective
-> date (and any copy stating it) is updated in a small reviewed change first.
+> the GitHub Pages host. Task 14 finalized the files with the candidate
+> effective date 2026-10-11, before any deployment.
 >
 > Task 13 added the manual-only deployment workflow source
 > (`.github/workflows/publisher-site-pages.yml`) and the read-only
@@ -99,11 +96,13 @@ other document. The site folder is not under `public/` and the beta
 packager's allowlist (`scripts/beta/verify.ts`) refuses every site path, so
 the site never enters the extension package.
 
-## Hosting plan (proposed)
+## Hosting plan (as planned in Task 12; now in use)
 
-**Candidate:** GitHub Pages, a project site for this repository.
+**Host:** GitHub Pages, a project site for this repository (published in
+Task 15; see [publication.md](publication.md)). The checks below are the
+historical pre-publication notes.
 
-Checked on 2026-10-11 (read-only):
+Checked on 2026-10-11 (read-only, before publication):
 
 - The repository `milkdudpoe/refund-reconciler` is **public** and Pages is
   **not enabled** (`has_pages: false`, GitHub API via the session's GitHub
@@ -114,13 +113,13 @@ Checked on 2026-10-11 (read-only):
   **Settings → Pages**.
 - Project sites are served at `http(s)://<owner>.github.io/<repositoryname>`
   ([What is GitHub Pages?](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)).
-  The **proposed, unverified** URLs are therefore:
+  The proposed URLs were therefore (verified live in Task 15):
   - `https://milkdudpoe.github.io/refund-reconciler/`
   - `https://milkdudpoe.github.io/refund-reconciler/privacy.html`
   - `https://milkdudpoe.github.io/refund-reconciler/support.html`
 
-  No domain ownership, HTTP response or certificate has been checked; none
-  of these URLs exists yet.
+  (Task 12: not yet checked. Task 15: all three return 200 over HTTPS; see
+  [publication.md](publication.md).)
 - **Visitor logging:** the same page says that when a Pages site is visited,
   the visitor's IP address is logged and stored for security purposes,
   whether or not the visitor is signed in to GitHub. The policy's
@@ -140,7 +139,7 @@ Checked on 2026-10-11 (read-only):
   deploys them with `actions/deploy-pages`
   ([Using custom workflows with GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages),
   [Configuring a publishing source](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)).
-  Its source exists since Task 13; it has not been run. The existing CI
+  Its source exists since Task 13; it was first run in Task 15. The existing CI
   workflow's permissions are unchanged (`contents: read`, no deployment).
 
 If GitHub Pages is not used, the folder can be uploaded unchanged to any
@@ -169,9 +168,9 @@ These are interpretations for planning, not a compliance certification.
 
 - **Website and policy publication** has the owner's explicit approval
   (MJUD, `exiledeals@gmail.com`, the **If you email MJUD** wording and the
-  GitHub Pages host). It still needs the review of this final source, the
-  effective date aligned with the actual publication day, the deployment
-  itself and the verified final URLs. It does **not** need store approval or a submitted extension:
+  GitHub Pages host). **Done in Task 15:** reviewed source on `main`,
+  deployed on the effective-date day and verified live
+  ([publication.md](publication.md)). It did **not** need store approval or a submitted extension:
   the policy reviewers read must exist before submission.
 - **Extension submission** additionally needs: the hosted policy URL entered
   in the dashboard, the exact Developer Dashboard privacy labels and
@@ -238,7 +237,8 @@ or their date.
 
 ## Manual Pages workflow (Task 13)
 
-`.github/workflows/publisher-site-pages.yml` (**not run**):
+`.github/workflows/publisher-site-pages.yml` (not run in Task 13; first run in Task 15,
+[run 38194891795](https://github.com/milkdudpoe/refund-reconciler/actions/runs/38194891795)):
 
 - **Trigger:** `workflow_dispatch` only. Both jobs run only when the
   selected ref is `refs/heads/main`; any other branch or tag is skipped and
@@ -271,12 +271,14 @@ Checked in Task 13 without running anything: `actionlint` 1.7.7 reports no
 problems in either workflow, and the triggers, permissions, branch
 condition, `needs` and upload path above were inspected in the YAML. The
 publication text is finalized as of Task 14, so the gate no longer stops a
-run on `main`; the workflow has still not been run.
+run on `main`. (It was first run in Task 15; see [publication.md](publication.md).)
 
-## Deployment procedure (approved, not yet performed)
+## Deployment procedure (approved; performed in Task 15)
 
-Publication is approved by the owner; that approval covers these steps and
-no further approval is needed. None of them has been performed.
+Publication was approved by the owner. All five steps were performed in
+Task 15 (step 2 needed no change: the deployment succeeded on 2026-10-11 in
+America/New_York); see [publication.md](publication.md). A rerun of the
+workflow redeploys the same files and is not a new first publication.
 
 1. **Review.** Independent review of the Task 14 pull request (this final
    source); the reviewed revision lands on `main` with CI green.

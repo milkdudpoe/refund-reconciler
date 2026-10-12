@@ -9,8 +9,8 @@
 > no data type, use or transfer (its receipt holds only a version number and
 > a timestamp). Publisher MJUD and contact `exiledeals@gmail.com` were
 > supplied in Task 12; the owner approved publishing the policy on GitHub
-> Pages and its files are finalized (candidate effective date 2026-10-11,
-> Task 14), but it is not deployed and the hosted URL remains pending. The dashboard's own checkbox labels and
+> Pages, and it has been live since 2026-10-11 (America/New_York; effective
+> date 2026-10-11, Task 15, [publication.md](publication.md)). The dashboard's own checkbox labels and
 > definitions were **not inspected** (no developer account), so confirm
 > every label below against the dashboard before answering.
 
@@ -133,11 +133,11 @@ that:
   lending: **true**.
 
 **Do not certify yet.** Certifying asserts policy compliance overall.
-B1 and B2 are implemented (0.7.0, 0.8.0), but the hosted policy, the
+B1 and B2 are implemented (0.7.0, 0.8.0) and the policy is hosted, but the
 dashboard-label review and the store review are still open. The Limited Use
-statement must also be hosted on a site belonging to the extension. The site
-is finalized for publication but not deployed
-([publisher-site.md](publisher-site.md)); the text is in the
+statement is hosted on the extension's site, one click from the homepage
+(`privacy.html#chrome-web-store-user-data-policy`, verified live in Task 15;
+[publication.md](publication.md)); the text is in the
 [policy](privacy-policy.md).
 
 Voluntary support email to MJUD is not data the extension collects: the
@@ -146,16 +146,15 @@ extension never sends anything, and the policy describes email separately
 
 ## Privacy policy URL
 
-**[PENDING: privacy policy URL on a site the publisher controls]**. Proposed,
-not live: `https://milkdudpoe.github.io/refund-reconciler/privacy.html`
-(GitHub Pages project site; see [publisher-site.md](publisher-site.md)). The
-site's `privacy.html` carries the complete policy, generated from
-[privacy-policy.md](privacy-policy.md). Publication is owner-approved and the
-files are finalized (candidate effective date 2026-10-11, to be aligned with
-the actual first publication); the URL is entered here only after the
-deployment is verified live, with the policy text matching the build being
-submitted. A support URL, if the dashboard asks for one, would be the
-site's `support.html`.
+`https://milkdudpoe.github.io/refund-reconciler/privacy.html`: **live and
+verified** (GitHub Pages project site, first published 2026-10-11
+America/New_York from `main` at `45520db`; effective date 2026-10-11; see
+[publication.md](publication.md)). The page carries the complete policy,
+generated from [privacy-policy.md](privacy-policy.md). It has **not** been
+entered in the Developer Dashboard yet; before entering it, confirm the
+policy text still matches the build being submitted. A support URL, if the
+dashboard asks for one, is
+`https://milkdudpoe.github.io/refund-reconciler/support.html`.
 
 ## Changes that would require fresh disclosure
 
