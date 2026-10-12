@@ -1,8 +1,10 @@
 # Privacy practices tab: draft answers
 
-> **Draft answers, not a certification.** They describe beta 0.8.0 as built.
-> Do not enter or certify them until the open items in
-> [readiness.md](readiness.md) are resolved. B1 (encryption at rest) is
+> **Proposed answers, not a certification.** They describe beta 0.8.0 as
+> built. The owner enters them and decides the certifications in the
+> Developer Dashboard; the handoff copy is
+> [handoff/privacy-and-permissions.md](handoff/privacy-and-permissions.md)
+> ([submission-handoff.md](submission-handoff.md)). B1 (encryption at rest) is
 > implemented in 0.7.0 and B2 (in-product disclosure and agreement,
 > [../consent.md](../consent.md)) in 0.8.0; the answers below were reviewed
 > for 0.8.0 and are unchanged in substance, because the agreement step adds
@@ -132,9 +134,12 @@ that:
 - user data is not used or transferred to determine creditworthiness or for
   lending: **true**.
 
-**Do not certify yet.** Certifying asserts policy compliance overall.
-B1 and B2 are implemented (0.7.0, 0.8.0) and the policy is hosted, but the
-dashboard-label review and the store review are still open. The Limited Use
+**Not certified.** Certifying is the owner's own declaration of policy
+compliance for the submission. B1 and B2 are implemented (0.7.0, 0.8.0) and
+the policy is hosted; what remains before certifying is pre-submission work:
+the owner's reading of the dashboard's own data-type definitions and wording,
+and the 0.8.0 desktop Chrome check. Google's review comes after submission
+and is not a prerequisite for certifying. The Limited Use
 statement is hosted on the extension's site, one click from the homepage
 (`privacy.html#chrome-web-store-user-data-policy`, verified live in Task 15;
 [publication.md](publication.md)); the text is in the

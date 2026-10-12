@@ -1,0 +1,52 @@
+Refund Reconciler {{VERSION}}: test instructions for Chrome Web Store review
+
+No account, login, payment or shared credentials are needed. Choose any
+throwaway passphrase yourself. Use only made-up data; nothing in these steps
+sends data anywhere.
+
+1. Disclosure and setup
+   - Pin Refund Reconciler from the puzzle-piece menu and click its toolbar
+     icon. Before agreement the popup offers only "Open dashboard to review".
+   - In the dashboard, read "How Refund Reconciler handles your data" and
+     choose "Agree and continue". ("Not now" changes nothing and stores
+     nothing. "Data and privacy" at the top shows the same text later.)
+   - On "Protect your records", enter a throwaway passphrase of at least 12
+     characters twice, tick the acknowledgment and choose "Protect my
+     records".
+
+2. Manual recording (synthetic data)
+   - Choose "Create case", enter the order reference TEST-0001 and one item
+     "Test item" with an expected refund of 35.00, then "Save case". Open
+     the case.
+   - "Record merchant report" of 35.00: the merchant report is shown, but no
+     money is confirmed.
+   - "Confirm money received" of 20.00: $20.00 confirmed against $35.00
+     expected.
+   - "Record recharge" of 5.00: the confirmed net amount drops to $15.00.
+   - Optional: "Load synthetic demo" at the bottom of the case list adds two
+     labelled fake cases; "Remove synthetic demo" deletes them.
+
+3. Summary and backup
+   - On the case, "Prepare case summary…" shows plain text to Copy or
+     Download. Evidence details stay out unless included.
+   - On the list, "Your data" > "Download all data (JSON)…" saves an
+     unencrypted backup file.
+
+4. Lock and unlock
+   - Choose "Lock now". The records are hidden; the toolbar popup now offers
+     only "Open dashboard to unlock".
+   - Enter the same passphrase and choose "Unlock". The case is shown again.
+
+5. Optional: selected-text capture refusing ordinary text
+   - With the records unlocked, open https://www.amazon.com (no sign-in),
+     highlight ordinary text such as a product name, click the toolbar icon
+     and choose "Capture selected refund text".
+   - Expected: "Cannot propose a report from this selection", with a reason.
+     Choose "Discard"; nothing is saved.
+   - On another https site, Capture reports that only pages on amazon.com
+     or www.amazon.com are supported.
+
+Limitation: the capture feature recognises only certain US-dollar refund
+wording. It has been tested on example text only, not on real Amazon refund
+pages; saving a captured report needs a real refund line for one item, which
+review does not require. Manual entry covers the same records.

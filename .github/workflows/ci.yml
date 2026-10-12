@@ -84,6 +84,35 @@ jobs:
           test "$(find . -type f | wc -l)" = 7
           find . -type f | sort
           find . -type f -print0 | sort -z | xargs -0 sha256sum
+      # Owner handoff for the unlisted beta (docs/store/submission-handoff.md):
+      # the verified ZIP and store images above, unchanged, plus paste-ready
+      # text. Builds nothing and refuses missing, changed or mismatched inputs.
+      # Prepares files only: nothing is uploaded to or submitted in the store.
+      - name: Assemble and check the store handoff
+        env:
+          BETA_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          npm run store:handoff
+          report=artifacts/store-handoff/store-handoff-report.json
+          zip_sha=$(cut -d' ' -f1 artifacts/beta/refund-reconciler-beta-*.zip.sha256)
+          test "$(jq -r .package.sha256 "$report")" = "$zip_sha"
+          test "$(jq -r .sourceCommit "$report")" = "$BETA_SOURCE_COMMIT"
+          test "$(jq -r .checkoutCommit "$report")" = "$(git rev-parse HEAD)"
+          test "$(jq -r .generation "$report")" = ci-final-head
+          test "$(jq -r .storeAssets.generation "$report")" = ci-final-head
+          cd artifacts/store-handoff
+          sha256sum -c refund-reconciler-store-handoff-*.zip.sha256
+          rm -rf extracted && mkdir extracted
+          unzip -q refund-reconciler-store-handoff-*.zip -d extracted
+          (cd extracted && jq -r '.files[] | "\(.sha256)  \(.path)"' inventory.json | sha256sum -c --quiet)
+          test "$(find extracted -type f | wc -l)" = "$(( $(jq '.files | length' extracted/inventory.json) + 1 ))"
+          cmp extracted/extension/refund-reconciler-beta-*.zip ../beta/refund-reconciler-beta-*.zip
+          # Handoff material never enters the extension or the site.
+          unexpected=$(unzip -Z1 ../beta/refund-reconciler-beta-*.zip | grep -v -E '^(manifest\.json|(dashboard|popup)\.html|(dashboard|popup|background)\.js|chunks/[A-Za-z0-9_-]+\.js|assets/[A-Za-z0-9_-]+\.css|icons/icon-(16|32|48|128)\.png)$' || true)
+          test -z "$unexpected"
+          test "$(find ../publisher-site/site -type f | wc -l)" = 7
+          rm -rf extracted
+          jq '{generation, sourceCommit, checkoutCommit, run, package, storeAssets, handoff, inventory, files: [.files[] | {path, bytes, sha256}]}' store-handoff-report.json
       # A build artifact for manual testing, not a release or store upload.
       - uses: actions/upload-artifact@v4
         if: success()
@@ -105,6 +134,17 @@ jobs:
             artifacts/store-assets/store-assets-report.json
             artifacts/store-assets/capture.json
             artifacts/store-assets/preview.html
+          if-no-files-found: error
+          retention-days: 14
+      # The owner's store handoff: one archive, its checksum and its report.
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: refund-reconciler-store-handoff
+          path: |
+            artifacts/store-handoff/refund-reconciler-store-handoff-*.zip
+            artifacts/store-handoff/refund-reconciler-store-handoff-*.zip.sha256
+            artifacts/store-handoff/store-handoff-report.json
           if-no-files-found: error
           retention-days: 14
       # Only the static site and its report (outside the site folder).

@@ -5,14 +5,15 @@ private data, browser profiles, passphrases or backups are kept in this
 repository. This is not commercial validation, evidence of customer demand
 or Chrome Web Store approval.
 
-## Current status (as of 2026-10-11, version 0.8.0)
+## Current status (as of 2026-10-12, version 0.8.0)
 
 | Check | Status | Source |
 | --- | --- | --- |
+| Store handoff (`npm run store:handoff`): tested ZIP, images and paste-ready text bundled; independent extraction and twelve refusal probes | pass locally (precommit, labelled `local`); the final-head CI run and `refund-reconciler-store-handoff` artifact are recorded in the Task 16 pull request. Prepared only, not uploaded or submitted | [submission-handoff.md](store/submission-handoff.md) |
 | Publisher site (`publisher-site/`) and policy copies: static checks, policy derivation, previews at desktop and 375 px in light and dark | pass locally on the Task 12 branch; CI and the `refund-reconciler-publisher-site` artifact are recorded in the Task 12 pull request. Not hosted | [Task 12](#task-12-publisher-site-2026-10-11) |
 | Store assets (padded 128 px icon, 440×280 tile, three 1280×800 screenshots of the extracted beta ZIP) and the full automated suite | pass locally on the Task 11 branch; CI and the `refund-reconciler-store-assets` artifact are recorded in the Task 11 pull request | [Task 11](#task-11-store-assets-for-080-2026-10-11) |
 | Automated suites, extracted-ZIP smoke test, same-installation updates 0.5.0, 0.6.0 and 0.7.0 → 0.8.0 (bundled Chromium) | pass locally on the Task 10 branch; CI is recorded in the Task 10 pull request | [Task 10](#task-10-080-data-practices-disclosure-and-agreement-2026-10-10) |
-| Toolbar access on the public amazon.com home page (desktop Chrome), **0.8.0** | **not run**: the popup changed (nothing before agreement, nothing while locked), so a new owner-operated check is needed | — |
+| Toolbar access on the public amazon.com home page (desktop Chrome), **0.8.0** | **not run**: the popup changed (nothing before agreement, nothing while locked), so a new owner-operated check is needed. Steps and reply template: `OWNER-START-HERE.md` in the store handoff | [template](store/handoff/OWNER-START-HERE.md#desktop-chrome-check-version) |
 | Toolbar access, **0.7.0** | **not run** | — |
 | Toolbar access, **0.6.0** (context only) | pass, owner-reported (not independently reproduced) | [Task 08](#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
 | Real Amazon refund wording (optional) | **untested** | — |

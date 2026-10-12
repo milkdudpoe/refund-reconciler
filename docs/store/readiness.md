@@ -84,7 +84,23 @@
   [publication.md](publication.md). The verdict stays **not ready to
   submit**: the Developer Dashboard privacy labels, certifications and
   distribution choices, the owner-operated 0.8.0 toolbar check, real refund
-  wording and Google's review remain pending.
+  wording and Google's review remain pending. (Historical: superseded by the
+  Task 16 update below.)
+- **Update for Task 16 (version 0.8.0 unchanged, 2026-10-12):** the owner
+  chose an **unlisted free beta**. The submission is **prepared**, not
+  uploaded, submitted, approved or published: `npm run store:handoff`
+  bundles the tested ZIP (SHA-256 `79cc8f5e…65bfd8`), the listing images,
+  paste-ready description, reviewer and privacy text and the owner's steps,
+  and CI uploads it as `refund-reconciler-store-handoff`
+  ([submission-handoff.md](submission-handoff.md)). Remaining **before the
+  owner submits** (owner actions): the 0.8.0 desktop Chrome check (**not
+  run**), an explicit decision on submitting with real refund wording
+  untested, developer account setup, and the owner's own dashboard privacy
+  declarations and certifications. Category (Productivity) and regions
+  (United States) are recommendations awaiting the owner. Google's review
+  happens **after** submission and is not a prerequisite for submitting or
+  certifying. A live policy URL does not establish verified-publisher status
+  or account setup; neither has been checked.
 
 ## Task 12 status (publisher site)
 
@@ -100,7 +116,9 @@
 | Policy effective date | **2026-10-11** = the actual first-publication day (2026-10-12T02:13:31Z UTC, 22:13 America/New_York; Task 15) | [privacy-policy.md](privacy-policy.md) |
 | Limited Use statement on a site belonging to the extension | **Live (Task 15)**: one click from the homepage to `privacy.html#chrome-web-store-user-data-policy`, verified in a browser | `publisher-site/index.html` |
 | 0.8.0 owner toolbar check | **Not run.** No owner result was supplied during Task 12; screenshots and automated tests do not substitute for it | [../validation.md](../validation.md) |
-| Developer Dashboard privacy labels, distribution settings, store review | **Pending**; no dashboard login or form was used | [privacy-practices.md](privacy-practices.md) |
+| Developer Dashboard privacy labels and certifications | **Pending owner declarations** (before submission); no dashboard login or form was used | [privacy-practices.md](privacy-practices.md), [submission-handoff.md](submission-handoff.md) |
+| Distribution | **Owner chose unlisted, free (Task 16).** Category Productivity and region United States are recommendations, not yet confirmed | [submission-handoff.md](submission-handoff.md) |
+| Google's review | **After submission**; not started | — |
 | Real refund wording | **Untested**; the 0.6.0 owner toolbar report stays historical context only | [../validation.md](../validation.md#task-08-owner-reported-toolbar-check-reported-2026-10-10) |
 
 What the policy drafts now add (data practices of the extension unchanged):
@@ -623,8 +641,9 @@ pending:
 - Owner review of the implemented B2 flow (0.8.0) and of the disclosure
   text. (B1 was decided by the owner for Task 09: implement encryption; done
   in 0.7.0.)
-- Distribution choices (visibility, regions), category and language, which
-  are dashboard settings.
+- ~~Visibility and free versus paid~~: **unlisted, free** (owner, Task 16).
+  Regions, category and language are still dashboard settings to confirm;
+  recommended: United States, Productivity, English.
 - Store support details, if any. The drafts promise none.
 - Final choice of listing images and captions from [assets.md](assets.md),
   and whether to add more screenshots or the optional marquee.
@@ -647,12 +666,19 @@ pending:
 
 ## Recommended next implementation step
 
-**After Task 15:** the site and policy are live
-([publication.md](publication.md)). Remaining before submission are owner
-actions, not code: enter the policy URL and the reviewed privacy answers in
-the Developer Dashboard (confirming each label there), choose distribution
-settings, run the owner-operated 0.8.0 toolbar check and check real refund
-wording; then submit for Google's review.
+**After Task 16:** the handoff is prepared
+([submission-handoff.md](submission-handoff.md)). Remaining are owner
+actions, not code: run the 0.8.0 desktop Chrome check, decide explicitly on
+the untested real refund wording, set up the developer account, upload the
+inner ZIP, enter the listing and privacy answers (confirming each label
+there), set distribution to unlisted and free, and submit. Google then
+reviews the submission.
+
+*After Task 15 (historical):* the site and policy are live
+([publication.md](publication.md)). Remaining before submission were owner
+actions: enter the policy URL and the reviewed privacy answers in the
+Developer Dashboard, choose distribution settings, run the owner-operated
+0.8.0 toolbar check and check real refund wording; then submit.
 
 *After Task 14 (historical; done in Task 15):* review of the finalized site PR, the reviewed source on
 `main`, the effective date aligned with the actual publication day, the

@@ -120,7 +120,10 @@ light and dark):
 
 Limitations: one browser engine (Chromium) and automated checks only; no
 screen reader, no other browsers. The beta ZIP's absence was checked by
-artifact contents and a 404 probe of its name.
+artifact contents and a 404 probe. (Clarification, Task 16: the recorded
+probe used the name `refund-reconciler.zip`; the independent review also
+probed the actual `refund-reconciler-beta-0.8.0.zip` and got 404. The JSON
+is left as recorded.)
 
 ## Still pending (not established by publication)
 
@@ -128,8 +131,10 @@ artifact contents and a 404 probe of its name.
   privacy labels, certifications and distribution choices.
 - The owner-operated **0.8.0** toolbar check.
 - Real refund wording.
-- Submission and Google's review. No store listing, asset upload,
-  extension change or email was made.
+- Submission by the owner, after which Google reviews it. No store
+  listing, asset upload, extension change or email was made. The handoff
+  for the owner's unlisted free beta submission is
+  [submission-handoff.md](submission-handoff.md) (Task 16).
 
 This record's PR is a documentation change only; its head is **not** the
 deployed commit (`45520db`), and merging it does not trigger a deployment
