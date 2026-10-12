@@ -1,15 +1,16 @@
 # Chrome Web Store listing (draft)
 
-> **Draft, not submitted.** This text describes beta 0.8.0 as it is built
-> today. Do not submit it until the open items in
-> [readiness.md](readiness.md) are resolved: the Developer Dashboard privacy
-> and distribution choices (the privacy policy is now hosted at
-> `https://milkdudpoe.github.io/refund-reconciler/privacy.html`, publisher
-> MJUD, contact `exiledeals@gmail.com`; see [publication.md](publication.md)), a real toolbar check of 0.8.0 and the review itself
-> (encryption at rest shipped in 0.7.0; the in-product disclosure and
-> agreement step in 0.8.0). The store images (padded icon, promotional tile
-> and three screenshots, Task 11) are done but not uploaded; files,
-> suggested order and captions are in [assets.md](assets.md).
+> **Prepared, not submitted.** This text describes beta 0.8.0 as it is
+> built today. The owner chose an **unlisted free beta**; the paste-ready
+> copy is bundled by `npm run store:handoff` (see
+> [submission-handoff.md](submission-handoff.md)). Before the owner submits:
+> the 0.8.0 desktop Chrome check (**not run**), an explicit decision on the
+> untested real refund wording, and the owner's own Developer Dashboard
+> privacy declarations. Google's review follows submission. The privacy
+> policy is live at
+> `https://milkdudpoe.github.io/refund-reconciler/privacy.html` (publisher
+> MJUD, contact `exiledeals@gmail.com`; [publication.md](publication.md)).
+> The store images are done but not uploaded ([assets.md](assets.md)).
 > No customers, testimonials, pricing, affiliations or results are claimed.
 
 ## Name
@@ -25,12 +26,14 @@ manifest.
 > Track refunds per returned item: expected amount, merchant reports and
 > money you confirmed. Stored in your browser, never sent.
 
-Length: 127 characters (counted with a script). The current manifest `description` is different
-("Beta: manually record refund evidence per returned item and track what is
-unresolved, kept locally and encrypted by passphrase."; 127 characters).
-If the dashboard takes the summary from the manifest, this text can only be
-used after a later manifest change. Whether it does was **not verified**,
-because no developer account was used.
+Length: 127 characters (counted with a script). **Not used for the 0.8.0
+submission.** Chrome takes the description from the manifest in the ZIP and
+it cannot be edited in the dashboard
+([Prepare your extension](https://developer.chrome.com/docs/webstore/prepare),
+checked 2026-10-12), so the store shows the current manifest `description`:
+"Beta: manually record refund evidence per returned item and track what is
+unresolved, kept locally and encrypted by passphrase." (127 characters).
+This summary could only be used after a later manifest change.
 
 ## Detailed description
 
@@ -117,49 +120,11 @@ no remote code.
 
 ## Reviewer instructions
 
-No account, login, payment or test credentials are needed. All data used
-below is synthetic.
-
-1. Install the extension and pin **Refund Reconciler** from the puzzle-piece
-   menu.
-2. Click the toolbar icon, then **Open dashboard to review**. The dashboard
-   shows **How Refund Reconciler handles your data**; choose **Agree and
-   continue** (**Not now** leaves every data feature off and stores nothing;
-   **Data and privacy** at the top shows the same text later). On **Protect
-   your records**, enter any test passphrase of at least 12 characters (for
-   example `reviewer test phrase 01`) twice, tick the acknowledgment and
-   choose **Protect my records**. The **How to use Refund Reconciler** guide
-   at the top explains the workflow. **Lock now** locks the records; the
-   same passphrase unlocks them.
-3. Optional quick look: at the bottom of the case list, choose **Load
-   synthetic demo**. Two clearly labelled fake cases appear, kept out of
-   your totals. **Remove synthetic demo** deletes them again.
-4. Manual flow: choose **Create case**, enter an order reference such as
-   `TEST-0001`, add an item "Test item" with an expected refund of `35.00`,
-   and save. Open the case, then:
-   - **Record merchant report** of `35.00`: the item shows the merchant
-     report, but no money is confirmed yet.
-   - **Confirm money received** of `20.00`: the item shows $20.00 confirmed
-     against $35.00 expected.
-   - **Record recharge** of `5.00`: the confirmed net amount drops to $15.00.
-   - On the merchant report, receipt or recharge, **Void…** with a reason:
-     the entry stays in the history, marked as voided, and no longer counts.
-     (Expected amounts are not voided; use **Edit expected amount**.)
-   - Filter the case list with **Needs attention** or **Needs review**.
-5. Exports: on a case, **Prepare case summary…** → **Copy** or
-   **Download**. On the list, **Your data → Download all data (JSON)…**.
-6. Restore: delete all cases (**Delete case…** on each, and **Remove
-   synthetic demo**), then use **Restore from a JSON backup…** with the file
-   from step 5.
-7. Capture (optional, no account needed; after agreement, with the records
-   unlocked):
-   open `https://www.amazon.com`,
-   highlight any ordinary text (for example a product name), click the
-   toolbar icon and choose **Capture selected refund text**. Expected:
-   **Cannot propose a report from this selection**, with a reason. Choose
-   **Discard**, and nothing is saved. On another `https` website, Capture
-   says that only pages on amazon.com or www.amazon.com are supported. Saving a real captured report
-   requires a real Amazon refund line for one item, which a reviewer does
-   not need to test.
-
-Nothing in these steps sends data anywhere.
+The short, paste-ready test steps for the dashboard's optional Test
+instructions tab are [handoff/reviewer-instructions.txt](handoff/reviewer-instructions.txt)
+(synthetic data only, no shared credentials; the reviewer chooses a
+throwaway passphrase). They cover disclosure and setup, manual recording,
+summary and backup, lock and unlock, and the optional toolbar refusal of
+ordinary Amazon text, and they state that real refund capture is untested.
+The longer walkthrough that stood here (demo data and restore) is in git
+history and in [../beta.md](../beta.md).

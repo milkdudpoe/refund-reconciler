@@ -54,6 +54,7 @@ npm run test:package  # package:beta, then smoke-test the extracted ZIP in Chrom
 npm run test:update   # package:beta, then update 0.5.0, 0.6.0 and 0.7.0 (each built from its own source) in place to that ZIP
 npm run icons       # re-render public/icons/*.png from assets-src/*.svg (after editing the SVGs)
 npm run assets:store  # package:beta, then store listing images from the extracted ZIP (see docs/store/assets.md)
+npm run store:handoff # bundle the verified ZIP and images with the owner's store handoff (see docs/store/submission-handoff.md)
 npm run site:policy   # regenerate both policy HTML copies from docs/store/privacy-policy.md (see docs/store/publisher-site.md)
 npm run site:check    # check the static publisher site and that the policy copies are current
 npm run site:publication-check  # site:check plus the publication requirements (passes the finalized site; deploys nothing)
@@ -87,9 +88,14 @@ of the production ZIP with synthetic data; see
 Task 12 prepared a small static publisher site in `publisher-site/` (home,
 privacy, support; finalized in Task 14 and live since Task 15 at
 https://milkdudpoe.github.io/refund-reconciler/; see
-[docs/store/publisher-site.md](docs/store/publisher-site.md)). The dashboard
-privacy labels and distribution choices, a real 0.8.0 toolbar check, real
-refund wording and the store review are still pending and block submission; see
+[docs/store/publisher-site.md](docs/store/publisher-site.md)). Task 16
+**prepared** (not uploaded or submitted) the owner's **unlisted free beta**
+submission: `npm run store:handoff` bundles the tested ZIP, images and
+paste-ready text (CI artifact `refund-reconciler-store-handoff`; see
+[docs/store/submission-handoff.md](docs/store/submission-handoff.md)).
+Before the owner submits: the 0.8.0 desktop Chrome check (not run), a
+decision on the untested real refund wording, and the owner's own dashboard
+privacy declarations. Google's review follows submission; see
 [docs/store/readiness.md](docs/store/readiness.md).
 
 ## Data practices: read, then agree
@@ -317,7 +323,7 @@ public/manifest.json, public/icons/   manifest and generated PNG icons
 assets-src/       editable icon SVGs (icon-store.svg: the padded 128 px icon)
 store-assets/     Chrome Web Store listing images, tile source and provenance report (never shipped)
 publisher-site/   static publisher website: home, privacy, support (never shipped; hosted on GitHub Pages)
-scripts/          icon generation, beta packaging and store-asset generation (dev tooling; never shipped)
+scripts/          icon generation, beta packaging, store-asset generation and the store handoff (dev tooling; never shipped)
 tests/unit/       Vitest
 tests/e2e/        Playwright MV3 extension harness (persistent Chromium profile,
                   synthetic Amazon-like fixtures served in-browser, no network)

@@ -263,14 +263,14 @@ The exact bytes and hashes of each image are in
 
 ## Still for the owner
 
-These are not decided here (see [readiness.md](readiness.md#publisher-inputs-pending)):
+The images are bundled, unchanged and in this order, in the store handoff
+(`npm run store:handoff`; [submission-handoff.md](submission-handoff.md)).
+Not decided here:
 
-- hosted policy URL (publisher MJUD and contact `exiledeals@gmail.com` were
-  supplied in Task 12; the site is finalized for publication but not
-  deployed, see [publisher-site.md](publisher-site.md));
-- distribution choices;
-- the exact Developer Dashboard privacy labels;
-- an owner-operated toolbar check of 0.8.0;
-- real refund wording;
-- whether to add up to two more screenshots or a marquee;
-- the store review itself.
+- the exact Developer Dashboard privacy labels (owner);
+- the owner-operated 0.8.0 desktop Chrome check (**not run**);
+- real refund wording (untested);
+- whether to add up to two more screenshots or a marquee.
+
+The policy URL is live ([publication.md](publication.md)) and the owner chose
+an unlisted free beta. Google's review follows submission.
